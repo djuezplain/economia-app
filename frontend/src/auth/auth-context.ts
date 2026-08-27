@@ -15,6 +15,13 @@ export interface AuthContextValue {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /**
+   * Usado por `OAuthCallbackPage` (H3, login con Google): tras el redirect de
+   * vuelta desde `/auth/google/callback` solo se recibe el access token en la
+   * URL, no el perfil del usuario (eso llega con `GET /users/me`, grupo 7) —
+   * a diferencia de `login()`, que sí devuelve ambos.
+   */
+  setSessionToken: (accessToken: string) => void;
 }
 
 // En un fichero aparte (sin componentes) para que Fast Refresh no se queje:

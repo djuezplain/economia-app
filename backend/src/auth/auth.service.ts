@@ -4,7 +4,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import * as argon2 from 'argon2';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
-import { emailTokens, users } from '../db/schema/index.js';
+import { emailTokens, oauthAccounts, users } from '../db/schema/index.js';
 import { MailService } from '../mail/mail.service.js';
 import { alreadyRegisteredEmail, verificationEmail } from '../mail/templates.js';
 import { generateOpaqueToken, hashOpaqueToken } from '../common/tokens.util.js';
@@ -12,6 +12,7 @@ import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { SessionsService } from './sessions.service.js';
 import type { DeviceInfo } from './sessions.service.js';
+import type { GoogleProfile } from './google/google.strategy.js';
 
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -200,6 +201,75 @@ export class AuthService {
       .update(users)
       .set({ failedLoginCount: newCount, lastFailedLoginAt: new Date(now), updatedAt: new Date() })
       .where(eq(users.id, user.id));
+  }
+
+  /**
+   * H3 (spec 001), plan §5 pasos 5-8. Tres casos:
+   * 1. Ya existe un `OAuthAccount(google, sub)` → es un login de vuelta, se usa ese usuario.
+   * 2. No existe el vínculo, pero sí un `User` con ese email (se registró por
+   *    contraseña) → se vincula la cuenta de Google a ese usuario existente,
+   *    sin duplicarlo (criterio 2).
+   * 3. No existe ni el vínculo ni el usuario → se crea un `User` nuevo, ya
+   *    `ACTIVE` (Google ya ha verificado el email, a diferencia del registro
+   *    por contraseña) y sin `passwordHash`.
+   */
+  async loginWithGoogleProfile(profile: GoogleProfile, device: DeviceInfo): Promise<LoginResult> {
+    const existingLink = await this.db.query.oauthAccounts.findFirst({
+      where: and(eq(oauthAccounts.provider, 'google'), eq(oauthAccounts.providerUserId, profile.googleId)),
+    });
+
+    let user: UserRow;
+
+    if (existingLink) {
+      const linkedUser = await this.db.query.users.findFirst({ where: eq(users.id, existingLink.userId) });
+      if (!linkedUser) {
+        throw new UnauthorizedException('La cuenta asociada a este login de Google ya no existe.');
+      }
+      user = linkedUser;
+    } else {
+      const existingUser = await this.db.query.users.findFirst({ where: eq(users.email, profile.email) });
+
+      if (existingUser) {
+        await this.db.insert(oauthAccounts).values({
+          userId: existingUser.id,
+          provider: 'google',
+          providerUserId: profile.googleId,
+        });
+        user = existingUser;
+      } else {
+        const [createdUser] = await this.db
+          .insert(users)
+          .values({
+            email: profile.email,
+            passwordHash: null,
+            name: profile.name,
+            status: 'ACTIVE',
+          })
+          .returning();
+        await this.db.insert(oauthAccounts).values({
+          userId: createdUser.id,
+          provider: 'google',
+          providerUserId: profile.googleId,
+        });
+        user = createdUser;
+      }
+    }
+
+    if (user.failedLoginCount > 0 || user.lockedUntil) {
+      // Un login por Google correcto es una prueba de identidad tan válida
+      // como una contraseña correcta: limpia cualquier bloqueo previo por
+      // intentos fallidos de contraseña sobre esta misma cuenta.
+      await this.db
+        .update(users)
+        .set({ failedLoginCount: 0, lockedUntil: null, lastFailedLoginAt: null, updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+    }
+
+    const tokens = await this.sessions.issueForUser(user.id, device);
+    return {
+      ...tokens,
+      user: { id: user.id, email: user.email, name: user.name, status: user.status },
+    };
   }
 
   private async sendVerificationEmail(userId: string, email: string, name: string): Promise<void> {

@@ -76,8 +76,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  function setSessionToken(accessToken: string): void {
+    setAccessToken(accessToken);
+    setIsAuthenticated(true);
+  }
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user, isAuthenticated, isLoading, login, logout }),
+    () => ({ user, isAuthenticated, isLoading, login, logout, setSessionToken }),
     [user, isAuthenticated, isLoading],
   );
 

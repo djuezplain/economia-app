@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { register } from '../api/auth';
+import { GOOGLE_LOGIN_URL, register } from '../api/auth';
 import { ApiError } from '../api/client';
 import { isStrongPassword, PASSWORD_POLICY_MESSAGE } from '../validators/password';
 
@@ -101,6 +101,14 @@ export function RegisterPage() {
           {isSubmitting ? 'Creando cuenta…' : 'Crear cuenta'}
         </button>
       </form>
+
+      {/* Enlace normal, no un manejador de JS: es una navegación completa del
+          navegador hacia el backend, que a su vez redirige a Google (H3).
+          Con Google, la cuenta se crea (o se vincula a una existente) sin
+          pasar por este formulario ni por la verificación de email. */}
+      <p>
+        <a href={GOOGLE_LOGIN_URL}>Continuar con Google</a>
+      </p>
     </main>
   );
 }

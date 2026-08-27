@@ -1,4 +1,8 @@
-import { api } from './client';
+import { api, API_BASE_URL } from './client';
+
+// H3 (spec 001): navegación completa del navegador a Google, no una llamada
+// fetch — por eso es una URL para usar en un <a href>, no una función de api/auth.ts.
+export const GOOGLE_LOGIN_URL = `${API_BASE_URL}/auth/google`;
 
 export interface RegisterInput {
   email: string;

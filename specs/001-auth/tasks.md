@@ -56,10 +56,12 @@
 
 ## Grupo 4 — H3 Login con Google
 
-- [ ] **T4.1** — Backend: estrategia OAuth de Google (`GET /auth/google`, `GET /auth/google/callback`), lógica de creación/vinculación de cuenta (plan §5).
-  *Verificación (spec H3):* email nuevo → cuenta creada y ACTIVE; email ya existente por contraseña → se vincula sin duplicar usuario.
-- [ ] **T4.2** — Frontend: botón "Continuar con Google" en login y registro.
-  *Verificación:* prueba manual del flujo completo contra un proyecto OAuth de pruebas.
+- [x] **T4.1** — Backend: estrategia OAuth de Google (`GET /auth/google`, `GET /auth/google/callback`), lógica de creación/vinculación de cuenta (plan §5).
+  *Verificación (spec H3, `test/auth-google.e2e-spec.ts`):* con `GOOGLE_CLIENT_ID`/`SECRET` sin configurar (este entorno todavía, igual que GitHub), ambas rutas responden 503 con mensaje claro en vez de fallar de forma confusa. La lógica de negocio (que es donde vive H3) se prueba directamente contra `AuthService.loginWithGoogleProfile`, simulando el perfil que en producción entregaría `GoogleStrategy` tras el intercambio real: email nuevo → usuario creado ACTIVE sin contraseña + `OAuthAccount` vinculado; email ya existente por contraseña → se vincula sin duplicar usuario (criterio 2); mismo `googleId` en un segundo login → reutiliza el mismo usuario; un login por Google correcto limpia un bloqueo previo por intentos fallidos de contraseña. ✅ hecho.
+  *Nota de diseño:* tres desviaciones de `plan.md` §2/§5 documentadas en `constitution.md` (sin PKCE, sin `state` de sesión, y el token se entrega a la SPA por query string en el redirect) — ninguna bloquea la spec, todas justificadas para un cliente confidencial como este backend.
+  *Pendiente real (no de código):* la verificación end-to-end contra Google de verdad requiere que Diego cree credenciales OAuth 2.0 en Google Cloud Console (tipo "Aplicación web", origen `http://localhost:5173`, redirect URI `http://localhost:3000/auth/google/callback`) y las ponga en `.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) — el mismo bloqueo de infraestructura que ya se dio con GitHub. En cuanto existan, el flujo funciona sin tocar código (el guard de "no configurado" deja de activarse solo).
+- [x] **T4.2** — Frontend: botón "Continuar con Google" en login y registro; `OAuthCallbackPage` para recoger el access token que devuelve el redirect y guardar la sesión.
+  *Verificación:* 2 tests con Testing Library (`OAuthCallbackPage.test.tsx`) + lint/build en verde. La prueba manual del flujo completo contra Google real queda pendiente de las credenciales mencionadas en T4.1.
 
 ## Grupo 5 — H5 Recuperación de contraseña
 

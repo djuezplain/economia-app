@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { ApiError } from '../api/client';
+import { GOOGLE_LOGIN_URL } from '../api/auth';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -61,6 +62,13 @@ export function LoginPage() {
           {isSubmitting ? 'Iniciando sesión…' : 'Iniciar sesión'}
         </button>
       </form>
+
+      {/* Enlace normal, no un manejador de JS: es una navegación completa del
+          navegador hacia el backend, que a su vez redirige a Google (H3). */}
+      <p>
+        <a href={GOOGLE_LOGIN_URL}>Continuar con Google</a>
+      </p>
+
       <p>
         ¿No tienes cuenta? <Link to="/register">Crear cuenta</Link>
       </p>
