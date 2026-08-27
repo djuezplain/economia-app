@@ -6,18 +6,18 @@
 
 ## Grupo 0 — Infraestructura base (necesaria antes de la primera historia)
 
-- [ ] **T0.1** — Estructura de monorepo: carpetas `/backend`, `/frontend`, config raíz (ESLint, Prettier, `.gitignore`, `tsconfig` base compartido).
-  *Verificación:* `npm run lint` corre sin error en ambos paquetes (aunque no haya código aún).
-- [ ] **T0.2** — Backend: inicializar proyecto NestJS + TypeScript estricto + Prisma. `docker-compose.yml` con PostgreSQL para desarrollo local.
-  *Verificación:* `nest start` arranca; `docker compose up -d db` levanta Postgres.
-- [ ] **T0.3** — Backend: esquema Prisma inicial (`User`, `OAuthAccount`, `Session`, `EmailToken`, `AuditLog` de `plan.md` §1) + primera migración.
-  *Verificación:* `prisma migrate dev` aplica sin error; `prisma studio` muestra las 5 tablas.
-- [ ] **T0.4** — Backend: `ConfigModule` con validación de variables de entorno (`.env.example` con `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `MAIL_*`) + endpoint `GET /health`.
-  *Verificación:* arrancar sin `.env` falla con error claro; con `.env` completo, `GET /health` devuelve 200.
-- [ ] **T0.5** — Frontend: inicializar proyecto React + TypeScript (Vite) + router + cliente HTTP tipado + estructura de carpetas (`/pages`, `/components`, `/api`).
-  *Verificación:* `npm run dev` sirve una página en blanco sin errores de consola.
-- [ ] **T0.6** — CI: workflow de GitHub Actions que corre lint + tests de `/backend` y `/frontend` en cada push/PR.
-  *Verificación:* el workflow se ejecuta en verde en un push de prueba (una vez el repo esté en GitHub).
+- [x] **T0.1** — Estructura de monorepo: carpetas `/backend`, `/frontend`, config raíz (Prettier, `.editorconfig`, `.gitignore`, npm workspaces).
+  *Verificación:* `npm run lint` corre sin error en ambos paquetes. ✅ hecho.
+- [x] **T0.2** — Backend: inicializar proyecto NestJS + TypeScript estricto + Drizzle ORM. PostgreSQL local (ver nota de implementación en `constitution.md` §3 — se usa Postgres nativo en vez de docker-compose en este entorno; `docker-compose.yml` queda pendiente para el equipo si prefieren Docker en su máquina).
+  *Verificación:* `nest start` arranca y conecta a Postgres. ✅ hecho — ver T0.4.
+- [x] **T0.3** — Backend: esquema Drizzle inicial (`users`, `oauth_accounts`, `sessions`, `email_tokens`, `audit_logs` de `plan.md` §1) + primera migración.
+  *Verificación:* `npx drizzle-kit generate` + `npx drizzle-kit migrate` aplican sin error contra Postgres; `\dt` muestra las 5 tablas. ✅ hecho.
+- [x] **T0.4** — Backend: `ConfigModule` con validación de variables de entorno (Joi) (`.env.example` con `DATABASE_URL`, `JWT_*_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `MAIL_FROM`) + endpoint `GET /health` (comprueba también la conexión a BD).
+  *Verificación:* arrancar sin `.env` falla con error claro (probado: `MAIL_FROM must be a valid email`); con `.env` completo, `GET /health` devuelve `{"status":"ok","db":"ok",...}`. ✅ hecho.
+- [x] **T0.5** — Frontend: inicializar proyecto React + TypeScript (Vite) + router + cliente HTTP tipado (`src/api/client.ts`) + estructura de carpetas (`/pages`, `/components`, `/api`) + Vitest + Testing Library.
+  *Verificación:* `npm run dev` sirve la página sin errores; `npm run lint` y `npm run test` en verde (1 test de `HomePage`). ✅ hecho.
+- [ ] **T0.6** — CI: workflow de GitHub Actions (`.github/workflows/ci.yml`) que corre lint + tests de `/backend` (con Postgres de servicio) y `/frontend` en cada push/PR.
+  *Verificación:* el workflow se ejecuta en verde en un push de prueba — **pendiente de verificar hasta que el repo esté en GitHub** (ver nota más abajo).
 
 ## Grupo 1 — H1 Registro
 

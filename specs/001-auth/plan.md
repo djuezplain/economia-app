@@ -1,11 +1,13 @@
 # Plan 001 — Autenticación y gestión de usuarios
 
-**Estado:** Borrador — pendiente de aprobación
-**Fase:** 2 de 4 (Spec ✅ → Plan → Tasks → Implementación)
+**Estado:** Aprobado
+**Fase:** 2 de 4 (Spec ✅ → Plan ✅ → Tasks → Implementación)
 **Implementa:** `spec.md` (todas las historias H1–H8)
 **Stack de referencia:** `specs/constitution.md` §3
 
-## 1. Modelo de datos (Prisma / PostgreSQL)
+## 1. Modelo de datos (Drizzle ORM / PostgreSQL)
+
+> **Nota:** el plan se escribió originalmente con sintaxis Prisma; el ORM final es Drizzle (ver nota en `constitution.md` §3). El bloque siguiente es el diseño conceptual — las mismas tablas, columnas y relaciones — y ya está implementado tal cual en `backend/src/db/schema/auth.schema.ts`, que es la fuente de verdad.
 
 ```prisma
 model User {

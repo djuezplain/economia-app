@@ -1,0 +1,110 @@
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  timestamp,
+  integer,
+  pgEnum,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+
+// --- Enums --------------------------------------------------------------
+
+export const roleEnum = pgEnum('role', ['USER', 'ADMIN']);
+export const userStatusEnum = pgEnum('user_status', [
+  'PENDING_VERIFICATION',
+  'ACTIVE',
+  'DISABLED',
+]);
+export const emailTokenTypeEnum = pgEnum('email_token_type', [
+  'VERIFY_EMAIL',
+  'RESET_PASSWORD',
+]);
+
+// --- Tables (ver specs/001-auth/plan.md §1) ------------------------------
+
+export const users = pgTable('users', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  passwordHash: text('password_hash'), // null si el usuario solo usa Google
+  name: varchar('name', { length: 255 }).notNull(),
+  currency: varchar('currency', { length: 3 }).notNull().default('EUR'),
+  locale: varchar('locale', { length: 10 }).notNull().default('es'),
+  role: roleEnum('role').notNull().default('USER'),
+  status: userStatusEnum('status').notNull().default('PENDING_VERIFICATION'),
+  failedLoginCount: integer('failed_login_count').notNull().default(0),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oauthAccounts = pgTable(
+  'oauth_accounts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: varchar('provider', { length: 32 }).notNull(), // "google"
+    providerUserId: varchar('provider_user_id', { length: 255 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('oauth_provider_user_unique').on(table.provider, table.providerUserId)],
+);
+
+export const sessions = pgTable('sessions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  refreshTokenHash: varchar('refresh_token_hash', { length: 64 }).notNull().unique(),
+  userAgent: text('user_agent'),
+  ipAddress: varchar('ip_address', { length: 45 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+});
+
+export const emailTokens = pgTable('email_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
+  type: emailTokenTypeEnum('type').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const auditLogs = pgTable('audit_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: varchar('action', { length: 64 }).notNull(),
+  ipAddress: varchar('ip_address', { length: 45 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// --- Relations (para queries con `with: {...}`) --------------------------
+
+export const usersRelations = relations(users, ({ many }) => ({
+  oauthAccounts: many(oauthAccounts),
+  sessions: many(sessions),
+  emailTokens: many(emailTokens),
+  auditLogs: many(auditLogs),
+}));
+
+export const oauthAccountsRelations = relations(oauthAccounts, ({ one }) => ({
+  user: one(users, { fields: [oauthAccounts.userId], references: [users.id] }),
+}));
+
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, { fields: [sessions.userId], references: [users.id] }),
+}));
+
+export const emailTokensRelations = relations(emailTokens, ({ one }) => ({
+  user: one(users, { fields: [emailTokens.userId], references: [users.id] }),
+}));

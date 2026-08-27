@@ -24,18 +24,21 @@ Regla de oro: **no se escribe código de producción sin una tarea de un `tasks.
 
 | Capa | Elección |
 |---|---|
-| Frontend | React + TypeScript |
+| Frontend | React + TypeScript (Vite) |
 | Gráficos | Recharts |
 | Backend | Node.js + NestJS + TypeScript |
 | Base de datos | PostgreSQL |
-| ORM | Prisma |
+| ORM | Drizzle ORM (ver nota) |
 | Autenticación | JWT (access + refresh token) + OAuth2 con Google |
 | Hash de contraseñas | argon2 |
-| Testing backend | Jest (unitario + integración) |
+| Testing backend | Vitest (unitario + integración) |
 | Testing frontend | Vitest + Testing Library |
-| Monorepo | `/frontend`, `/backend`, `/specs`, `/docs` en un único repositorio |
+| Linting | oxlint (backend y frontend) |
+| Monorepo | `/frontend`, `/backend`, `/specs`, `/docs` en un único repositorio, npm workspaces |
 
 Cambiar cualquier fila de esta tabla requiere actualizar este documento explícitamente, no decidirlo dentro de un plan de feature.
+
+> **Nota de implementación (T0.2, grupo 0 de `specs/001-auth/tasks.md`):** el plan original proponía Prisma y Jest. Al implementar, los binarios nativos de Prisma (`schema-engine`) devolvían 403 al descargarse desde `binaries.prisma.sh` en este entorno — un problema de la infraestructura de descarga de Prisma, no del código — y la última versión de NestJS CLI genera los proyectos con Vitest/oxlint por defecto en vez de Jest/ESLint. Se optó por **Drizzle ORM** (sin binario nativo, solo TypeScript + el driver `pg`) y por mantener Vitest/oxlint tal como los generan las herramientas oficiales, en vez de forzar Jest/ESLint contra la corriente. Ambos cambios están verificados funcionando de extremo a extremo (migraciones aplicadas contra Postgres real, backend y frontend arrancando, tests en verde).
 
 ## 4. Convenciones de código
 

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: economia_app
+          POSTGRES_PASSWORD: dev_password_local
+          POSTGRES_DB: economia_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U economia_app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://economia_app:dev_password_local@localhost:5432/economia_dev
+      JWT_ACCESS_SECRET: ci-only-secret-min-32-bytes-aaaaaaa
+      JWT_REFRESH_SECRET: ci-only-secret-min-32-bytes-bbbbbbb
+      GOOGLE_CLIENT_ID: ''
+      GOOGLE_CLIENT_SECRET: ''
+      MAIL_FROM: no-reply@economia-app.dev
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx drizzle-kit migrate
+      - run: npm run lint
+      - run: npm run test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build

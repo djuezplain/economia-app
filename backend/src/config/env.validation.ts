@@ -1,0 +1,17 @@
+import Joi from 'joi';
+
+/**
+ * Esquema de validación de variables de entorno.
+ * Si falta o es inválida alguna variable requerida, Nest falla al arrancar
+ * con un mensaje claro en vez de fallar más tarde en tiempo de ejecución.
+ */
+export const envValidationSchema = Joi.object({
+  NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
+  PORT: Joi.number().default(3000),
+  DATABASE_URL: Joi.string().uri({ scheme: ['postgresql', 'postgres'] }).required(),
+  JWT_ACCESS_SECRET: Joi.string().min(32).required(),
+  JWT_REFRESH_SECRET: Joi.string().min(32).required(),
+  GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
+  GOOGLE_CLIENT_SECRET: Joi.string().allow('').default(''),
+  MAIL_FROM: Joi.string().email().required(),
+});
