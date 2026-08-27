@@ -25,6 +25,6 @@ Este proyecto se desarrolla con **Spec Driven Development**: cada funcionalidad 
 - [x] Documento de requisitos completo de la app
 - [x] Constitution del proyecto (stack, principios)
 - [x] Spec 001 (Auth) — aprobada
-- [ ] Plan 001 (Auth) — **pendiente de revisión y aprobación**
-- [ ] Tasks 001 (Auth)
-- [ ] Implementación 001 (Auth)
+- [x] Plan 001 (Auth) — aprobado
+- [x] Tasks 001 (Auth) — listo, 24 tareas en 10 grupos
+- [ ] Implementación 001 (Auth) — **pendiente de empezar**
