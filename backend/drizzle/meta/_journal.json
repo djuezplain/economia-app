@@ -8,6 +8,13 @@
       "when": 1787846736833,
       "tag": "0000_regular_ravenous",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787857059162,
+      "tag": "0001_rare_charles_xavier",
+      "breakpoints": true
     }
   ]
 }

@@ -36,6 +36,10 @@ export const users = pgTable('users', {
   status: userStatusEnum('status').notNull().default('PENDING_VERIFICATION'),
   failedLoginCount: integer('failed_login_count').notNull().default(0),
   lockedUntil: timestamp('locked_until', { withTimezone: true }),
+  // Necesario para que el bloqueo cuente intentos "en 15 minutos" (spec H4,
+  // criterio 3) y no solo "los últimos 5 acumulados alguna vez": si ha pasado
+  // más de la ventana desde el último fallo, el contador se reinicia.
+  lastFailedLoginAt: timestamp('last_failed_login_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

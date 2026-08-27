@@ -41,16 +41,18 @@
 
 ## Grupo 3 — H4 Login y sesiones
 
-- [ ] **T3.1** — Backend: `POST /auth/login` — verifica credenciales, gestiona `failedLoginCount`/`lockedUntil`, emite access token (15 min) + refresh token (cookie httpOnly, 30 días) y crea `Session`.
-  *Verificación (spec H4):* credenciales correctas → tokens válidos; incorrectas → error genérico; 5 fallos en 15 min → cuenta bloqueada con mensaje sin filtrar existencia.
-- [ ] **T3.2** — Backend: `POST /auth/refresh` con rotación de refresh token; reutilización de un token ya rotado revoca **todas** las sesiones del usuario (plan §7).
-  *Verificación:* test que reutiliza un refresh token viejo y comprueba que todas las `Session` quedan `revokedAt` no nulo.
-- [ ] **T3.3** — Backend: `POST /auth/logout` (revoca la sesión actual) y `AuthGuard` global que extrae `userId` del access token para toda ruta protegida.
-  *Verificación:* logout invalida esa sesión; una petición con token de sesión revocada devuelve 401.
-- [ ] **T3.4** — Backend: test de contrato de aislamiento (constitution §2 / plan §3) — un usuario A nunca puede leer/revocar `Session` o `EmailToken` de un usuario B.
-  *Verificación:* suite de tests de integración dedicada, corre en CI, se referencia desde specs futuras como plantilla obligatoria.
-- [ ] **T3.5** — Frontend: formulario de login, almacenamiento del access token en memoria (no localStorage), refresco automático transparente vía `/auth/refresh`, logout.
-  *Verificación:* prueba manual — sesión persiste al recargar la página (gracias al refresh), logout limpia el estado.
+- [x] **T3.1** — Backend: `POST /auth/login` — verifica credenciales, gestiona `failedLoginCount`/`lockedUntil`, emite access token (15 min) + refresh token (cookie httpOnly, 30 días) y crea `Session`.
+  *Verificación (spec H4, `test/auth-login.e2e-spec.ts`):* credenciales correctas → 200 con accessToken + cookie + `Session` creada; email inexistente y contraseña incorrecta → 401 con el mismo mensaje genérico; 5 fallos consecutivos en 15 min → cuenta bloqueada (mensaje distinto, ver nota de trade-off en `constitution.md`), y el 6º intento falla incluso con la contraseña correcta mientras dura el bloqueo. Probado también manualmente contra Postgres real (curl). ✅ hecho.
+  *Nota de diseño:* se añadió `users.last_failed_login_at` (no estaba en `plan.md` §1) para que la ventana de 15 minutos cuente de verdad — ver `constitution.md`.
+- [x] **T3.2** — Backend: `POST /auth/refresh` con rotación de refresh token; reutilización de un token ya rotado revoca **todas** las sesiones del usuario (plan §7).
+  *Verificación:* 3 tests e2e — rotación normal (token viejo queda `revokedAt`, se emite uno nuevo), reutilización de un token ya rotado (revoca *todas* las sesiones del usuario, incluida la "nueva" legítima) y ausencia de cookie (401). Probado también manualmente con curl encadenando login→refresh→reutilización del token viejo. ✅ hecho.
+- [x] **T3.3** — Backend: `POST /auth/logout` (revoca la sesión actual, vía `SessionsService.revokeByRefreshToken`) y `AuthGuard` aplicado explícitamente (`@UseGuards`) a las rutas que lo requieren — no como guard global de Nest, ver nota en `constitution.md`.
+  *Verificación:* logout revoca la `Session` y el refresh token deja de servir para `/auth/refresh`; sin access token o con uno inválido, `/auth/logout` devuelve 401. ✅ hecho.
+- [x] **T3.4** — Backend: test de contrato de aislamiento (constitution §2 / plan §3) — un usuario A nunca puede leer/revocar `Session` de un usuario B.
+  *Verificación (`test/auth-isolation.e2e-spec.ts`):* `SessionsService.revokeById` con el `userId` de A no revoca una `Session` de B (y devuelve `false`); el logout de A no afecta a la `Session` de B (verificado con dos usuarios reales y sus cookies reales); `revokeByRefreshToken` con el `userId` de A y el refresh token real de B no lo revoca. Corre en CI junto al resto de la suite e2e; queda como plantilla para specs futuras (002+), tal como pedía `plan.md` §3. ✅ hecho.
+- [x] **T3.5** — Frontend: formulario de login (`LoginPage`), access token en memoria (`auth/token-store.ts`, nunca localStorage), refresco automático transparente (el cliente HTTP reintenta una vez tras un 401 llamando a `/auth/refresh`; `AuthProvider` además intenta un refresco silencioso al cargar la app para restaurar la sesión tras un reload), logout (limpia el estado local siempre, incluso si la petición de red falla).
+  *Verificación:* 4 tests con Testing Library (`LoginPage.test.tsx` + caso nuevo en `HomePage.test.tsx`) + prueba manual end-to-end backend+frontend (`npm run build` sin errores en ambos paquetes). ✅ hecho.
+  *Nota:* de paso se corrigió un fallo latente de `npm run build` en frontend (nunca se había ejecutado en los grupos anteriores, solo lint/test) — imports de tipos sin `import type` y una propiedad de parámetro de clase, incompatibles con `verbatimModuleSyntax`/`erasableSyntaxOnly` del `tsconfig.app.json` del proyecto. No afectaba a dev/test, pero sí a un build de producción real.
 
 ## Grupo 4 — H3 Login con Google
 

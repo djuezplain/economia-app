@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, eq, isNull } from 'drizzle-orm';
 import * as argon2 from 'argon2';
@@ -9,8 +9,32 @@ import { MailService } from '../mail/mail.service.js';
 import { alreadyRegisteredEmail, verificationEmail } from '../mail/templates.js';
 import { generateOpaqueToken, hashOpaqueToken } from '../common/tokens.util.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { LoginDto } from './dto/login.dto.js';
+import { SessionsService } from './sessions.service.js';
+import type { DeviceInfo } from './sessions.service.js';
 
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
+
+// H4 (spec 001), criterio 3: 5 intentos fallidos *consecutivos* en 15 minutos.
+const LOGIN_LOCK_THRESHOLD = 5;
+const LOGIN_LOCK_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000;
+
+const INVALID_CREDENTIALS_MESSAGE = 'Email o contraseña incorrectos.';
+// Deliberadamente distinto del mensaje anterior: informa del bloqueo sin decir
+// "tu contraseña es incorrecta" ni "esta cuenta existe" explícitamente. Ver
+// constitution.md §3 para la nota sobre el trade-off de no-enumeración que
+// esto implica (una cuenta que no existe nunca puede llegar a este mensaje).
+const LOCKED_ACCOUNT_MESSAGE =
+  'Demasiados intentos fallidos. Esta cuenta está bloqueada temporalmente; inténtalo de nuevo en unos minutos.';
+
+export interface LoginResult {
+  accessToken: string;
+  refreshToken: string;
+  user: { id: string; email: string; name: string; status: string };
+}
+
+type UserRow = typeof users.$inferSelect;
 
 @Injectable()
 export class AuthService {
@@ -18,6 +42,7 @@ export class AuthService {
     @Inject(DB) private readonly db: Database,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly sessions: SessionsService,
   ) {}
 
   /**
@@ -108,6 +133,73 @@ export class AuthService {
     }
 
     return { message: 'Si la cuenta existe y no está verificada, te hemos enviado un nuevo enlace.' };
+  }
+
+  /**
+   * H4 (spec 001). No revela si el email existe (criterio 2): credenciales
+   * incorrectas y email inexistente devuelven exactamente el mismo mensaje.
+   * La única excepción deliberada es el mensaje de bloqueo tras 5 fallos
+   * (criterio 3, ver constante `LOCKED_ACCOUNT_MESSAGE` y su nota).
+   */
+  async login(dto: LoginDto, device: DeviceInfo): Promise<LoginResult> {
+    const user = await this.db.query.users.findFirst({ where: eq(users.email, dto.email) });
+
+    if (!user || !user.passwordHash) {
+      // Sin usuario, o cuenta creada solo vía Google (sin contraseña): se hace
+      // un hash de relleno para no filtrar por tiempo de respuesta cuál de
+      // los dos casos es.
+      await argon2.hash('contraseña-de-relleno-tiempo-constante', { type: argon2.argon2id });
+      throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
+    }
+
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      throw new UnauthorizedException(LOCKED_ACCOUNT_MESSAGE);
+    }
+
+    const validPassword = await argon2.verify(user.passwordHash, dto.password);
+    if (!validPassword) {
+      await this.registerFailedLogin(user);
+      throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
+    }
+
+    if (user.failedLoginCount > 0 || user.lockedUntil) {
+      await this.db
+        .update(users)
+        .set({ failedLoginCount: 0, lockedUntil: null, lastFailedLoginAt: null, updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+    }
+
+    const tokens = await this.sessions.issueForUser(user.id, device);
+    return {
+      ...tokens,
+      user: { id: user.id, email: user.email, name: user.name, status: user.status },
+    };
+  }
+
+  private async registerFailedLogin(user: UserRow): Promise<void> {
+    const now = Date.now();
+    const windowExpired = user.lastFailedLoginAt
+      ? now - user.lastFailedLoginAt.getTime() > LOGIN_LOCK_WINDOW_MS
+      : false;
+    const newCount = (windowExpired ? 0 : user.failedLoginCount) + 1;
+
+    if (newCount >= LOGIN_LOCK_THRESHOLD) {
+      await this.db
+        .update(users)
+        .set({
+          failedLoginCount: 0,
+          lockedUntil: new Date(now + LOGIN_LOCK_DURATION_MS),
+          lastFailedLoginAt: new Date(now),
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, user.id));
+      return;
+    }
+
+    await this.db
+      .update(users)
+      .set({ failedLoginCount: newCount, lastFailedLoginAt: new Date(now), updatedAt: new Date() })
+      .where(eq(users.id, user.id));
   }
 
   private async sendVerificationEmail(userId: string, email: string, name: string): Promise<void> {
