@@ -43,6 +43,7 @@ jobs:
       - run: npx drizzle-kit migrate
       - run: npm run lint
       - run: npm run test
+      - run: npm run test:e2e
 
   frontend:
     runs-on: ubuntu-latest

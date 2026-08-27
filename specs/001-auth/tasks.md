@@ -31,12 +31,13 @@
 
 ## Grupo 2 — H2 Verificación de email
 
-- [ ] **T2.1** — Backend: `GET /auth/verify-email?token=` y `POST /auth/resend-verification` (rate-limited).
-  *Verificación (spec H2):* token válido activa la cuenta; token caducado o ya usado da error específico; reenvío genera un token nuevo e invalida el anterior.
-- [ ] **T2.2** — Backend: guard `RequireActiveUser` reutilizable — bloquea cualquier ruta futura de datos económicos si `status != ACTIVE` (no hay rutas económicas aún; se deja listo para las specs 002+).
-  *Verificación:* test unitario del guard con usuario ACTIVE / PENDING_VERIFICATION / DISABLED.
-- [ ] **T2.3** — Frontend: página de aterrizaje del enlace de verificación + aviso persistente "verifica tu email" con botón de reenvío cuando la cuenta no está activa.
-  *Verificación:* prueba manual — enlace válido, caducado y ya usado muestran mensajes distintos.
+- [x] **T2.1** — Backend: `GET /auth/verify-email?token=` y `POST /auth/resend-verification` (rate-limited: 5 solicitudes / 5 min por IP, ver nota sobre `RateLimitGuard` propio en `constitution.md` §3).
+  *Verificación (spec H2, 7 tests e2e en `test/auth-verify-email.e2e-spec.ts`):* token válido activa la cuenta; token inexistente, caducado o ya usado dan error específico y no activan la cuenta; reenvío invalida el token anterior y genera uno nuevo; email inexistente o cuenta ya verificada responden igual (200, sin filtrar nada) y no crean tokens de más. Probado también manualmente el rate limit (6º intento → 429) y el flujo real registro→token en email de dev→verificación contra Postgres. ✅ hecho.
+- [x] **T2.2** — Backend: guard `RequireActiveUserGuard` reutilizable — bloquea cualquier ruta futura de datos económicos si `status != ACTIVE` (no hay rutas económicas aún; se deja listo para las specs 002+, se aplicará junto al `AuthGuard` del grupo 3).
+  *Verificación:* 4 tests unitarios (`require-active-user.guard.spec.ts`) con usuario ACTIVE / PENDING_VERIFICATION / DISABLED / sin autenticar. ✅ hecho.
+- [x] **T2.3** — Frontend: `VerifyEmailPage` (aterrizaje del enlace) + `ResendVerificationPage`, enlazadas entre sí y desde la pantalla de "revisa tu correo" del registro.
+  *Verificación:* 5 tests con Testing Library + prueba manual del flujo real. ✅ hecho.
+  *Nota:* el "aviso persistente mientras la cuenta no esté activa" mencionado originalmente aquí necesita saber si hay una sesión iniciada y su estado — eso no existe hasta el grupo 3 (login). Lo implementado cubre todo lo que sí es alcanzable sin sesión: aterrizaje del enlace y reenvío manual. El aviso persistente ligado a la sesión se añadirá como parte del grupo 3.
 
 ## Grupo 3 — H4 Login y sesiones
 

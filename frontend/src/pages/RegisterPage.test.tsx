@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RegisterPage } from './RegisterPage';
 import * as authApi from '../api/auth';
@@ -10,6 +11,14 @@ describe('RegisterPage', () => {
     vi.restoreAllMocks();
   });
 
+  function renderPage() {
+    return render(
+      <MemoryRouter>
+        <RegisterPage />
+      </MemoryRouter>,
+    );
+  }
+
   async function fillForm(password: string) {
     await userEvent.type(screen.getByLabelText('Nombre'), 'Ana');
     await userEvent.type(screen.getByLabelText('Email'), 'ana@example.com');
@@ -19,7 +28,7 @@ describe('RegisterPage', () => {
 
   it('rechaza en cliente una contraseña débil sin llamar a la API (H1 criterio 3)', async () => {
     const registerSpy = vi.spyOn(authApi, 'register');
-    render(<RegisterPage />);
+    renderPage();
 
     await fillForm('123');
 
@@ -29,16 +38,17 @@ describe('RegisterPage', () => {
 
   it('con una contraseña válida, llama a la API y muestra el mensaje de éxito', async () => {
     vi.spyOn(authApi, 'register').mockResolvedValue({ message: 'ok' });
-    render(<RegisterPage />);
+    renderPage();
 
     await fillForm('unaClaveSegura123');
 
     expect(await screen.findByText('Revisa tu correo')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Reenviar enlace' })).toBeInTheDocument();
   });
 
   it('si la API devuelve un error, lo muestra sin romper el formulario', async () => {
     vi.spyOn(authApi, 'register').mockRejectedValue(new ApiError(400, 'Datos inválidos'));
-    render(<RegisterPage />);
+    renderPage();
 
     await fillForm('unaClaveSegura123');
 

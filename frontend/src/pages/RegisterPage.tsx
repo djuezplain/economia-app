@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { register } from '../api/auth';
 import { ApiError } from '../api/client';
 import { isStrongPassword, PASSWORD_POLICY_MESSAGE } from '../validators/password';
@@ -42,6 +43,9 @@ export function RegisterPage() {
         <p>
           Si los datos son correctos, te hemos enviado un email para confirmar tu cuenta. El
           enlace caduca en 24 horas.
+        </p>
+        <p>
+          ¿No te ha llegado? <Link to="/resend-verification">Reenviar enlace</Link>.
         </p>
       </main>
     );

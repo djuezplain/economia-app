@@ -13,3 +13,11 @@ export interface MessageResponse {
 export function register(input: RegisterInput): Promise<MessageResponse> {
   return api.post<MessageResponse>('/auth/register', input);
 }
+
+export function verifyEmail(token: string): Promise<MessageResponse> {
+  return api.get<MessageResponse>(`/auth/verify-email?token=${encodeURIComponent(token)}`);
+}
+
+export function resendVerification(email: string): Promise<MessageResponse> {
+  return api.post<MessageResponse>('/auth/resend-verification', { email });
+}

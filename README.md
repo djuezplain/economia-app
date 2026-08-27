@@ -55,6 +55,6 @@ npm run test
 - [x] Spec 001 (Auth) — aprobada
 - [x] Plan 001 (Auth) — aprobado
 - [x] Tasks 001 (Auth) — 24 tareas en 10 grupos
-- [~] Implementación 001 (Auth) — **en curso**: grupo 0 (infraestructura) ✅, grupo 1 (Registro, H1) ✅, grupo 2 (Verificación de email, H2) siguiente
+- [~] Implementación 001 (Auth) — **en curso**: grupo 0 (infraestructura) ✅, grupo 1 (Registro, H1) ✅, grupo 2 (Verificación de email, H2) ✅, grupo 3 (Login y sesiones, H4) siguiente
 
 Progreso detallado y checklist tarea a tarea: `specs/001-auth/tasks.md`.
