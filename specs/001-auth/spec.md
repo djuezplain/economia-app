@@ -1,6 +1,6 @@
 # Spec 001 — Autenticación y gestión de usuarios
 
-**Estado:** Borrador — pendiente de aprobación
+**Estado:** Aprobada
 **Fase:** 1 de 4 (Spec → Plan → Tasks → Implementación)
 **Basado en:** `docs/requisitos_app_economia.md`, secciones 4 y 5 (RF-U1 a RF-U15)
 
@@ -58,9 +58,9 @@ Como usuario, quiero editar mis datos de perfil y cambiar mi contraseña estando
 **H8 — Exportar y eliminar cuenta**
 Como usuario, quiero poder exportar todos mis datos y, si quiero, eliminar mi cuenta, para tener control total sobre mi información (RGPD).
 
-- Criterio de aceptación 1: puedo pedir una exportación de todos mis datos (perfil + todo dato económico) en un formato descargable (JSON o CSV).
-- Criterio de aceptación 2: eliminar la cuenta requiere confirmación explícita (reintroducir contraseña o email) y es irreversible; se informa de esto antes de confirmar.
-- Criterio de aceptación 3: tras eliminar la cuenta, ni el usuario ni ningún administrador puede volver a acceder a esos datos económicos (se elimina o se anonimiza, a decidir en el plan).
+- Criterio de aceptación 1: puedo pedir una exportación de todos mis datos (perfil + todo dato económico) en un fichero JSON descargable.
+- Criterio de aceptación 2: eliminar la cuenta requiere confirmación explícita (reintroducir contraseña o email) y es irreversible; se informa de esto antes de confirmar, incluyendo que el borrado es inmediato y sin periodo de gracia.
+- Criterio de aceptación 3: tras eliminar la cuenta, el borrado es inmediato: ni el usuario ni ningún administrador puede volver a acceder a esos datos económicos.
 
 ## 3. Aislamiento de datos (crítico, ver constitution §2)
 
@@ -80,11 +80,11 @@ Como usuario, quiero poder exportar todos mis datos y, si quiero, eliminar mi cu
 - Modelo de "economía compartida" entre varios usuarios — descartado para todo el proyecto según decisión ya tomada.
 - Panel de administración completo — solo lo mínimo para que un admin desactive una cuenta si hace falta; no es objeto de esta spec.
 
-## 6. Preguntas abiertas (a resolver antes o durante el plan)
+## 6. Decisiones (antes "preguntas abiertas")
 
-1. ¿El registro solo con email/contraseña + Google, o también se contempla Apple/Microsoft desde ya? (el documento de requisitos los marcaba como "opcional").
-2. Exportación de datos: ¿JSON, CSV, o ambos, en esta primera versión?
-3. Eliminación de cuenta: ¿borrado físico inmediato o soft-delete con purga diferida (p. ej. 30 días de gracia por si el usuario se arrepiente)?
+1. **Login social**: solo Google en esta spec. Apple/Microsoft quedan fuera de alcance (se añadirían como spec aparte si se priorizan).
+2. **Exportación de datos**: JSON único y completo (perfil + datos económicos), no CSV en esta versión.
+3. **Eliminación de cuenta**: borrado inmediato, sin periodo de gracia. (Ver H8, criterios 2 y 3.)
 
 ---
-**Siguiente paso:** revisar esta spec (ajustar historias, criterios o reglas de negocio) y aprobarla. Al aprobarla, se genera `plan.md` con el diseño técnico (modelo de datos, endpoints, decisiones de las preguntas abiertas).
+**Siguiente paso:** con la spec aprobada, se genera `plan.md` con el diseño técnico (modelo de datos, endpoints, decisiones de implementación).
