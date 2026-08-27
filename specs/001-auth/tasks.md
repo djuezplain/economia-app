@@ -21,12 +21,13 @@
 
 ## Grupo 1 — H1 Registro
 
-- [ ] **T1.1** — Backend: `MailService` (interfaz + implementación de desarrollo que loguea el email en consola) con plantillas para: verificación, reenvío, reset de contraseña.
-  *Verificación:* test unitario que renderiza cada plantilla con datos de ejemplo sin lanzar error.
-- [ ] **T1.2** — Backend: `POST /auth/register` — DTO validado, hash argon2id, crear `User` en `PENDING_VERIFICATION`, crear `EmailToken(VERIFY_EMAIL, exp=24h)`, enviar email.
-  *Verificación (tests, spec §2 H1):* registro válido → 201 y usuario en BD; email duplicado → error sin filtrar existencia; contraseña débil → rechazada por el servidor aunque se salte el cliente.
-- [ ] **T1.3** — Frontend: formulario de registro con validación de política de contraseña en cliente (mínimo 10 caracteres, letra + número) y manejo de los errores del backend.
-  *Verificación:* prueba manual/E2E — registro exitoso muestra pantalla "revisa tu email"; email duplicado muestra el error correspondiente.
+- [x] **T1.1** — Backend: `MailService` (interfaz + `ConsoleMailService` de desarrollo) con plantillas: verificación (`verificationEmail`, reutilizada también para reenvío), "ya tienes cuenta" (`alreadyRegisteredEmail`, ver nota T1.2) y reset de contraseña (`passwordResetEmail`).
+  *Verificación:* 3 tests unitarios (`mail/templates.spec.ts`), todos en verde. ✅ hecho.
+- [x] **T1.2** — Backend: `POST /auth/register` — DTO validado (`class-validator`, política de contraseña vía `IsStrongPassword`), hash argon2id, crear `User` en `PENDING_VERIFICATION`, crear `EmailToken(VERIFY_EMAIL, exp=24h)`, enviar email.
+  *Verificación (tests, spec §2 H1):* 4 tests e2e (`test/auth-register.e2e-spec.ts`) contra Postgres real (BD `economia_test`): registro válido crea el usuario y su token; email duplicado no crea un segundo usuario; contraseña débil y email inválido rechazados con 400. ✅ hecho.
+  *Nota de diseño (refina spec H1 criterio 2):* para que la respuesta nunca filtre si el email ya existía, `POST /auth/register` responde **siempre** `200` con el mismo mensaje genérico, tanto si crea la cuenta como si ya existía (en ese caso se envía `alreadyRegisteredEmail` en vez de crear un duplicado). Solo el dueño del email ve la diferencia, nunca quien hace la petición.
+- [x] **T1.3** — Frontend: formulario de registro (`RegisterPage`) con validación de política de contraseña en cliente (mismo regex que el backend, `validators/password.ts`) y manejo de errores de la API.
+  *Verificación:* 3 tests con Testing Library (`RegisterPage.test.tsx`) + prueba manual end-to-end backend+frontend con CORS real. ✅ hecho.
 
 ## Grupo 2 — H2 Verificación de email
 
