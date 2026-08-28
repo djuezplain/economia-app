@@ -8,7 +8,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
-import { auditLogs, emailTokens, oauthAccounts, sessions, users } from '../src/db/schema/index.js';
+import { auditLogs, categories, emailTokens, oauthAccounts, sessions, transactions, users } from '../src/db/schema/index.js';
 import { AuthService } from '../src/auth/auth.service.js';
 
 describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
@@ -66,8 +66,8 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       await request(app.getHttpServer()).get('/users/me/export').expect(401);
     });
 
-    it('devuelve el perfil y un placeholder de datos económicos, sin el hash de contraseña (H8 criterio 1)', async () => {
-      const user = await createActiveUser('exportar@example.com');
+    it('sin movimientos, devuelve el perfil con economicData vacío pero con la forma real (H8 criterio 1)', async () => {
+      const user = await createActiveUser('exportar-vacio@example.com');
       const accessToken = await login(user.email);
 
       const res = await request(app.getHttpServer())
@@ -78,7 +78,36 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       expect(res.body).toHaveProperty('exportedAt');
       expect(res.body.profile).toMatchObject({ id: user.id, email: user.email, name: 'Usuario de Prueba' });
       expect(res.body.profile).not.toHaveProperty('passwordHash');
-      expect(res.body).toHaveProperty('economicData');
+      expect(res.body.economicData).toEqual({ categories: [], transactions: [] });
+    });
+
+    // spec 002, T2.2: desde que existen categorías/movimientos reales (grupo
+    // 2), el export deja de ser un placeholder — se avisó de este cambio al
+    // revisar spec.md de la 002, pero no quedó anotado en plan.md; corregido
+    // aquí como hueco encontrado, no como cambio de alcance (ver tasks.md
+    // de la spec 002, T2.2).
+    it('con movimientos reales, el export los incluye completos (spec 002, T2.2)', async () => {
+      const owner = await createActiveUser('exportar-datos-dueno@example.com');
+      const other = await createActiveUser('exportar-datos-otro@example.com');
+      const [category] = await db
+        .insert(categories)
+        .values({ userId: owner.id, type: 'INCOME', name: 'Nómina' })
+        .returning();
+      await db.insert(transactions).values([
+        { userId: owner.id, type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'Nómina agosto', amount: '2000.00' },
+        { userId: other.id, type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'No debería salir', amount: '999.00' },
+      ]);
+      const accessToken = await login(owner.email);
+
+      const res = await request(app.getHttpServer())
+        .get('/users/me/export')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.economicData.categories).toHaveLength(1);
+      expect(res.body.economicData.categories[0]).toMatchObject({ id: category.id, name: 'Nómina' });
+      expect(res.body.economicData.transactions).toHaveLength(1);
+      expect(res.body.economicData.transactions[0]).toMatchObject({ concept: 'Nómina agosto', amount: '2000.00' });
     });
   });
 

@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import * as argon2 from 'argon2';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
-import { users } from '../db/schema/index.js';
+import { categories, transactions, users } from '../db/schema/index.js';
 import { SessionsService } from '../auth/sessions.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { accountDeletedEmail } from '../mail/templates.js';
@@ -29,17 +29,24 @@ export interface UserProfile {
   hasPassword: boolean;
 }
 
+type CategoryRow = typeof categories.$inferSelect;
+type TransactionRow = typeof transactions.$inferSelect;
+
 /**
- * H8 (spec 001), criterio 1: perfil + "placeholder" de datos económicos,
- * porque las specs 002+ (donde vivirán esos datos) todavía no existen. Se
- * deja `economicData` como un objeto explicativo, no un array vacío, para
- * que quien abra el JSON entienda por qué no hay nada ahí — no porque el
- * export esté roto.
+ * H8 (spec 001), criterio 1. Desde la spec 002 (T2.2), `economicData`
+ * incluye las categorías y movimientos reales del usuario — hasta entonces
+ * era un objeto placeholder explicativo (specs 002+ no existían todavía).
+ * Se avisó a Diego de este cambio al revisar `spec.md` de la 002, pero no
+ * quedó anotado como tarea en `plan.md`: hueco encontrado al desglosar
+ * `tasks.md`, corregido aquí (T2.2), no un cambio de alcance nuevo.
  */
 export interface AccountExport {
   exportedAt: string;
   profile: UserProfile;
-  economicData: { note: string };
+  economicData: {
+    categories: CategoryRow[];
+    transactions: TransactionRow[];
+  };
 }
 
 type UserRow = typeof users.$inferSelect;
@@ -120,15 +127,17 @@ export class UsersService {
     return { message: 'Contraseña actualizada correctamente.' };
   }
 
-  /** H8, criterio 1. Ver la nota de `AccountExport` sobre por qué `economicData` es un placeholder. */
+  /** H8, criterio 1. Ver la nota de `AccountExport` — categorías y movimientos reales del usuario (spec 002, T2.2). */
   async exportData(userId: string): Promise<AccountExport> {
     const user = await this.findOrThrow(userId);
+    const [userCategories, userTransactions] = await Promise.all([
+      this.db.query.categories.findMany({ where: eq(categories.userId, userId) }),
+      this.db.query.transactions.findMany({ where: eq(transactions.userId, userId) }),
+    ]);
     return {
       exportedAt: new Date().toISOString(),
       profile: this.toProfile(user),
-      economicData: {
-        note: 'Todavía no hay datos económicos en la aplicación (llegarán con las specs 002+); este export se ampliará entonces para incluirlos.',
-      },
+      economicData: { categories: userCategories, transactions: userTransactions },
     };
   }
 
