@@ -5,8 +5,11 @@ import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { users } from '../db/schema/index.js';
 import { SessionsService } from '../auth/sessions.service.js';
+import { MailService } from '../mail/mail.service.js';
+import { accountDeletedEmail } from '../mail/templates.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { DeleteAccountDto } from './dto/delete-account.dto.js';
 
 export interface UserProfile {
   id: string;
@@ -16,6 +19,26 @@ export interface UserProfile {
   locale: string;
   status: string;
   createdAt: Date;
+  /**
+   * H8 (spec 001), grupo 8: el frontend necesita saber, antes de pedir la
+   * confirmación de borrado de cuenta, si debe pedir la contraseña o el
+   * email (ver `DeleteAccountDto`) — sin esto no hay forma de decidirlo sin
+   * intentar primero y fallar. Nunca se expone `passwordHash` en sí.
+   */
+  hasPassword: boolean;
+}
+
+/**
+ * H8 (spec 001), criterio 1: perfil + "placeholder" de datos económicos,
+ * porque las specs 002+ (donde vivirán esos datos) todavía no existen. Se
+ * deja `economicData` como un objeto explicativo, no un array vacío, para
+ * que quien abra el JSON entienda por qué no hay nada ahí — no porque el
+ * export esté roto.
+ */
+export interface AccountExport {
+  exportedAt: string;
+  profile: UserProfile;
+  economicData: { note: string };
 }
 
 type UserRow = typeof users.$inferSelect;
@@ -34,6 +57,7 @@ export class UsersService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly sessions: SessionsService,
+    private readonly mail: MailService,
   ) {}
 
   async getProfile(userId: string): Promise<UserProfile> {
@@ -93,6 +117,61 @@ export class UsersService {
     return { message: 'Contraseña actualizada correctamente.' };
   }
 
+  /** H8, criterio 1. Ver la nota de `AccountExport` sobre por qué `economicData` es un placeholder. */
+  async exportData(userId: string): Promise<AccountExport> {
+    const user = await this.findOrThrow(userId);
+    return {
+      exportedAt: new Date().toISOString(),
+      profile: this.toProfile(user),
+      economicData: {
+        note: 'Todavía no hay datos económicos en la aplicación (llegarán con las specs 002+); este export se ampliará entonces para incluirlos.',
+      },
+    };
+  }
+
+  /**
+   * H8, criterio 2. "Reintroducir contraseña o email" se interpreta como una
+   * alternativa según lo que la cuenta tenga disponible (ver `DeleteAccountDto`):
+   * contraseña si la cuenta la tiene, email de confirmación si no (cuenta
+   * solo-Google, mismo caso que `changePassword`).
+   *
+   * Criterio 3: el borrado es inmediato — se ejecuta un `DELETE` real sobre
+   * la fila de `users`, no un borrado lógico. `sessions`, `oauth_accounts` y
+   * `email_tokens` tienen `ON DELETE CASCADE` hacia `users.id` (definido
+   * desde T0.3, verificado a nivel de BD real), así que desaparecen con ella
+   * en la misma sentencia; `audit_logs.user_id` tiene `ON DELETE SET NULL`
+   * — el log de auditoría no se borra (para eso existe), pero deja de
+   * apuntar a ninguna cuenta.
+   */
+  async deleteAccount(userId: string, dto: DeleteAccountDto): Promise<void> {
+    const user = await this.findOrThrow(userId);
+
+    if (user.passwordHash) {
+      if (!dto.password) {
+        throw new BadRequestException('Introduce tu contraseña para confirmar la eliminación.');
+      }
+      const validPassword = await argon2.verify(user.passwordHash, dto.password);
+      if (!validPassword) {
+        throw new UnauthorizedException('La contraseña no es correcta.');
+      }
+    } else {
+      if (!dto.confirmEmail) {
+        throw new BadRequestException(
+          'Esta cuenta no tiene contraseña (inicia sesión solo con Google): reintroduce tu email para confirmar.',
+        );
+      }
+      if (dto.confirmEmail.toLowerCase() !== user.email.toLowerCase()) {
+        throw new UnauthorizedException('El email no coincide con el de tu cuenta.');
+      }
+    }
+
+    await this.db.delete(users).where(eq(users.id, userId));
+
+    // Aviso posterior, no confirmación previa: para cuando se envía, el
+    // borrado ya es un hecho consumado e irreversible (criterio 2/3).
+    await this.mail.send(accountDeletedEmail({ to: user.email, name: user.name }));
+  }
+
   private async findOrThrow(userId: string): Promise<UserRow> {
     const user = await this.db.query.users.findFirst({ where: eq(users.id, userId) });
     if (!user) {
@@ -112,6 +191,7 @@ export class UsersService {
       locale: user.locale,
       status: user.status,
       createdAt: user.createdAt,
+      hasPassword: user.passwordHash !== null,
     };
   }
 }

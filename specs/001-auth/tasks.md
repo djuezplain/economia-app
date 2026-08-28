@@ -91,12 +91,14 @@
 
 ## Grupo 8 — H8 Exportar y eliminar cuenta (RGPD)
 
-- [ ] **T8.1** — Backend: `GET /users/me/export` — genera JSON con perfil + (placeholder de) datos económicos para cuando existan.
-  *Verificación:* el JSON exportado incluye todos los campos del perfil y es válido.
-- [ ] **T8.2** — Backend: `DELETE /users/me` — requiere reconfirmar contraseña, borrado inmediato en cascada.
-  *Verificación (spec H8):* borra `User` y, por cascada, `Session`/`OAuthAccount`/`EmailToken`; `AuditLog.userId` queda `null` (no se borra el log).
-- [ ] **T8.3** — Frontend: sección "Mi cuenta" con exportar datos y eliminar cuenta (modal de confirmación explícita).
-  *Verificación:* prueba manual — el modal deja claro que es inmediato e irreversible antes de confirmar.
+- [x] **T8.1** — Backend: `GET /users/me/export` — genera JSON con perfil + (placeholder de) datos económicos para cuando existan.
+  *Verificación:* el JSON exportado incluye todos los campos del perfil (sin `passwordHash`) y es válido — probado con un test e2e dedicado y manualmente con curl contra Postgres real. `economicData` es un objeto explicativo (no un array vacío) para que quien abra el fichero entienda que no hay datos económicos porque las specs 002+ aún no existen, no porque el export esté roto. ✅ hecho.
+- [x] **T8.2** — Backend: `DELETE /users/me` — requiere reconfirmar contraseña, borrado inmediato en cascada.
+  *Verificación (`test/users-account.e2e-spec.ts`, 7 tests + `test/users-profile.e2e-spec.ts` ampliado):* sin confirmación → 400, no borra nada; contraseña incorrecta → 401, no borra nada; contraseña correcta → 204, borra `User` de inmediato (no borrado lógico) y en cascada `Session`/`OAuthAccount`/`EmailToken` (comprobado consultando la BD directamente tras el borrado); `AuditLog.userId` queda `null`, el log en sí no se borra (verificado insertando una fila de prueba antes de borrar la cuenta); tras el borrado, ni el login con esas credenciales ni el propio access token en curso vuelven a servir (`AuthGuard` revalida el usuario contra la BD en cada petición). Cuenta solo-Google (sin contraseña): pide y valida `confirmEmail` en su lugar. Suite completa en verde: 63/63 e2e + 9/9 unitarios. Verificado también manualmente con curl contra Postgres real, incluyendo comprobar que se envía el aviso de cuenta eliminada (`ConsoleMailService`, ver log de dev). ✅ hecho.
+  *Nota de diseño:* `plan.md` §2 solo decía "requiere confirmar contraseña"; `spec.md` H8 criterio 2 amplía a "contraseña o email". Se interpreta como una alternativa según lo que la cuenta tenga disponible (contraseña si la tiene; email de confirmación si es una cuenta solo-Google sin contraseña, grupo 4) — no como que el cliente elija libremente. Se añade `hasPassword: boolean` a `GET/PATCH /users/me` para que el frontend sepa cuál pedir sin tener que intentar y fallar primero.
+- [x] **T8.3** — Frontend: sección "Mi cuenta" (en `ProfilePage`) con exportar datos y eliminar cuenta (panel de confirmación explícita).
+  *Verificación:* 7 tests con Testing Library + prueba manual end-to-end contra el backend en marcha (login → exportar → JSON descargado con perfil completo → abrir el panel de borrado → contraseña correcta → cuenta eliminada, access token y credenciales dejan de servir, llega el email de aviso). Lint/build en verde en ambos paquetes. ✅ hecho.
+  *Desviación documentada (no silenciosa):* tasks.md pedía un "modal"; se implementó como un panel de confirmación inline (expandible dentro de la misma página), no un `<dialog>` verdadero. Motivo: la app no usa ninguna librería ni convención de modales/CSS en ningún otro sitio (todas las páginas son HTML semántico plano), y el soporte de `<dialog>`/`showModal()` en el entorno de test (jsdom) es poco fiable — introducir uno solo para esta pantalla habría sido inconsistente con el resto y frágil de testear. El panel cumple el mismo objetivo funcional del criterio (aviso explícito de que es inmediato e irreversible, con confirmación separada, antes de ejecutar el borrado) — verificado en el propio test ("avisa de que es irreversible al abrirlo").
 
 ## Grupo 9 — Auditoría y cierre de la spec
 

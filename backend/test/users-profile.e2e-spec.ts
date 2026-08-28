@@ -89,6 +89,7 @@ describe('Gestión de perfil (e2e) — spec 001 H7', () => {
         currency: 'EUR',
         locale: 'es',
         status: 'ACTIVE',
+        hasPassword: true, // usado por el frontend para decidir el modal de borrado de cuenta (H8)
       });
       expect(res.body).not.toHaveProperty('passwordHash');
     });

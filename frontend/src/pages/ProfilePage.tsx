@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
-import { getProfile, updateProfile, changePassword } from '../api/users';
+import { getProfile, updateProfile, changePassword, exportAccountData, deleteAccount } from '../api/users';
 import type { UserProfile } from '../api/users';
 import { ApiError } from '../api/client';
 import { isStrongPassword, PASSWORD_POLICY_MESSAGE } from '../validators/password';
@@ -34,6 +34,18 @@ export function ProfilePage() {
   const [passwordFormError, setPasswordFormError] = useState<string | null>(null);
   const [passwordChanged, setPasswordChanged] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Exportar datos (H8 criterio 1).
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Eliminar cuenta (H8 criterio 2 — panel de confirmación explícita).
+  const [isDeletePanelOpen, setIsDeletePanelOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmEmail, setDeleteConfirmEmail] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [accountDeleted, setAccountDeleted] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -106,10 +118,73 @@ export function ProfilePage() {
     }
   }
 
+  async function handleExport() {
+    setExportError(null);
+    setIsExporting(true);
+    try {
+      const data = await exportAccountData();
+      // H8 criterio 1: fichero JSON descargable. Se genera en el cliente a
+      // partir de la respuesta (sin endpoint aparte para "descargar como
+      // fichero"): un Blob + un enlace temporal es suficiente y no necesita
+      // que el backend sirva `Content-Disposition`.
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `economia-app-datos-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : 'No se han podido exportar tus datos.');
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  async function handleDeleteAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setDeleteError(null);
+    setIsDeleting(true);
+    try {
+      // H8 criterio 2: "reintroducir contraseña o email" según lo que la
+      // cuenta tenga disponible (backend: DeleteAccountDto / UsersService).
+      await deleteAccount(
+        profile?.hasPassword ? { password: deletePassword } : { confirmEmail: deleteConfirmEmail },
+      );
+      setAccountDeleted(true);
+      try {
+        await logout();
+      } catch {
+        // La cuenta ya no existe (el backend acaba de borrarla): un intento
+        // de logout contra el servidor fallará (401), pero eso no cambia
+        // nada — solo interesa limpiar el estado local.
+      }
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la cuenta.');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   if (isAuthLoading) {
     return (
       <main>
         <p>Comprobando tu sesión…</p>
+      </main>
+    );
+  }
+
+  if (accountDeleted) {
+    // Misma razón que `passwordChanged` más abajo: el borrado acaba de
+    // cerrar la sesión local, así que tiene que comprobarse antes que
+    // `isAuthenticated`.
+    return (
+      <main>
+        <h1>Cuenta eliminada</h1>
+        <p>Tu cuenta y todos tus datos se han eliminado de forma permanente e inmediata.</p>
+        <p>
+          <Link to="/">Volver al inicio</Link>
+        </p>
       </main>
     );
   }
@@ -229,6 +304,81 @@ export function ProfilePage() {
                 {isChangingPassword ? 'Cambiando…' : 'Cambiar contraseña'}
               </button>
             </form>
+          </section>
+
+          <section>
+            <h2>Mi cuenta</h2>
+
+            <div>
+              <p>Descarga una copia de todos tus datos (perfil y, cuando existan, datos económicos).</p>
+              {exportError && <p role="alert">{exportError}</p>}
+              <button type="button" disabled={isExporting} onClick={() => void handleExport()}>
+                {isExporting ? 'Exportando…' : 'Exportar mis datos'}
+              </button>
+            </div>
+
+            <div>
+              <h3>Eliminar cuenta</h3>
+
+              {!isDeletePanelOpen && (
+                <button type="button" onClick={() => setIsDeletePanelOpen(true)}>
+                  Eliminar cuenta
+                </button>
+              )}
+
+              {isDeletePanelOpen && (
+                <form onSubmit={handleDeleteAccount} noValidate>
+                  <p role="alert">
+                    Esto eliminará tu cuenta y todos tus datos de forma <strong>inmediata e irreversible</strong>:
+                    no hay periodo de gracia ni forma de recuperarlos después.
+                  </p>
+
+                  {profile.hasPassword ? (
+                    <div>
+                      <label htmlFor="deletePassword">Repite tu contraseña para confirmar</label>
+                      <input
+                        id="deletePassword"
+                        type="password"
+                        required
+                        value={deletePassword}
+                        onChange={(e) => setDeletePassword(e.target.value)}
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label htmlFor="deleteConfirmEmail">
+                        Esta cuenta no tiene contraseña (usas Google) — escribe tu email para confirmar
+                      </label>
+                      <input
+                        id="deleteConfirmEmail"
+                        type="email"
+                        required
+                        value={deleteConfirmEmail}
+                        onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  {deleteError && <p role="alert">{deleteError}</p>}
+
+                  <button type="submit" disabled={isDeleting}>
+                    {isDeleting ? 'Eliminando…' : 'Eliminar cuenta definitivamente'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => {
+                      setIsDeletePanelOpen(false);
+                      setDeleteError(null);
+                      setDeletePassword('');
+                      setDeleteConfirmEmail('');
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </form>
+              )}
+            </div>
           </section>
         </>
       )}

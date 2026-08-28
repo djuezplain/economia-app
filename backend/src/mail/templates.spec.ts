@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alreadyRegisteredEmail, passwordResetEmail, verificationEmail } from './templates.js';
+import { accountDeletedEmail, alreadyRegisteredEmail, passwordResetEmail, verificationEmail } from './templates.js';
 
 describe('mail templates', () => {
   it('verificationEmail se renderiza con datos de ejemplo sin lanzar error', () => {
@@ -31,5 +31,13 @@ describe('mail templates', () => {
     });
     expect(msg.text).toContain('xyz');
     expect(msg.html).toContain('xyz');
+  });
+
+  it('accountDeletedEmail se renderiza con datos de ejemplo sin lanzar error', () => {
+    const msg = accountDeletedEmail({ to: 'ana@example.com', name: 'Ana' });
+    expect(msg.to).toBe('ana@example.com');
+    expect(msg.subject).toBe('Tu cuenta ha sido eliminada');
+    expect(msg.text).toContain('Ana');
+    expect(msg.html).toContain('eliminado');
   });
 });

@@ -35,3 +35,20 @@ export function passwordResetEmail(params: { to: string; name: string; resetUrl:
     html: `<p>Hola ${name},</p><p>Restablece tu contraseña haciendo clic en el siguiente enlace (caduca en 1 hora):</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>Si no lo has pedido tú, ignora este email; tu contraseña actual sigue funcionando.</p>`,
   };
 }
+
+/**
+ * H8 (spec 001), grupo 8. Se envía DESPUÉS de borrar la cuenta (plan.md §6):
+ * es un aviso, no una confirmación previa — para entonces el borrado ya es
+ * irreversible y no hay marcha atrás posible desde este email. Va a la
+ * última dirección de correo conocida de la cuenta, capturada antes de
+ * borrar la fila de `users`.
+ */
+export function accountDeletedEmail(params: { to: string; name: string }): MailMessage {
+  const { to, name } = params;
+  return {
+    to,
+    subject: 'Tu cuenta ha sido eliminada',
+    text: `Hola ${name},\n\nTu cuenta y todos los datos asociados (sesiones, vínculos de inicio de sesión, etc.) se han eliminado de forma permanente e inmediata, como pediste.\n\nSi no has sido tú quien ha pedido esto, contacta con nosotros lo antes posible.`,
+    html: `<p>Hola ${name},</p><p>Tu cuenta y todos los datos asociados (sesiones, vínculos de inicio de sesión, etc.) se han eliminado de forma permanente e inmediata, como pediste.</p><p>Si no has sido tú quien ha pedido esto, contacta con nosotros lo antes posible.</p>`,
+  };
+}

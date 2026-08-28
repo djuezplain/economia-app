@@ -16,6 +16,7 @@ const PROFILE: usersApi.UserProfile = {
   locale: 'es',
   status: 'ACTIVE',
   createdAt: '2026-01-01T00:00:00.000Z',
+  hasPassword: true,
 };
 
 describe('ProfilePage', () => {
@@ -137,5 +138,132 @@ describe('ProfilePage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('La contraseña actual no es correcta.');
     expect(logoutSpy).not.toHaveBeenCalled();
+  });
+
+  describe('Mi cuenta — exportar datos (H8 criterio 1)', () => {
+    beforeEach(() => {
+      // jsdom no implementa URL.createObjectURL/revokeObjectURL (son APIs de
+      // navegador para Blob, no del estándar URL que jsdom sí cubre).
+      URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+      URL.revokeObjectURL = vi.fn();
+    });
+
+    it('exporta los datos de la cuenta al pulsar el botón', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+      const exportSpy = vi
+        .spyOn(usersApi, 'exportAccountData')
+        .mockResolvedValue({ exportedAt: '2026-01-01T00:00:00.000Z', profile: PROFILE, economicData: {} });
+
+      renderPage();
+      await screen.findByLabelText('Nombre');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Exportar mis datos' }));
+
+      await waitFor(() => expect(exportSpy).toHaveBeenCalled());
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('si falla la exportación, muestra el error', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+      vi.spyOn(usersApi, 'exportAccountData').mockRejectedValue(new ApiError(500, 'Error de servidor.'));
+
+      renderPage();
+      await screen.findByLabelText('Nombre');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Exportar mis datos' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Error de servidor.');
+    });
+  });
+
+  describe('Mi cuenta — eliminar cuenta (H8 criterio 2)', () => {
+    it('el panel de confirmación empieza cerrado y avisa de que es irreversible al abrirlo', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+
+      renderPage();
+      await screen.findByLabelText('Nombre');
+
+      expect(screen.queryByLabelText(/Repite tu contraseña/)).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar cuenta' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/inmediata e irreversible/i);
+      expect(screen.getByLabelText(/Repite tu contraseña/)).toBeInTheDocument();
+    });
+
+    it('cancelar cierra el panel sin llamar a la API', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+      const deleteSpy = vi.spyOn(usersApi, 'deleteAccount');
+
+      renderPage();
+      await screen.findByLabelText('Nombre');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar cuenta' }));
+      await screen.findByLabelText(/Repite tu contraseña/);
+      await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+      expect(screen.queryByLabelText(/Repite tu contraseña/)).not.toBeInTheDocument();
+      expect(deleteSpy).not.toHaveBeenCalled();
+    });
+
+    it('con la contraseña correcta, elimina la cuenta, cierra la sesión y muestra el aviso final', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(authApi, 'logout').mockResolvedValue({ message: 'Sesión cerrada.' });
+      vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+      const deleteSpy = vi.spyOn(usersApi, 'deleteAccount').mockResolvedValue(undefined);
+
+      renderPage();
+      await screen.findByLabelText('Nombre');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar cuenta' }));
+      await userEvent.type(await screen.findByLabelText(/Repite tu contraseña/), 'Contraseña-Segura-123');
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar cuenta definitivamente' }));
+
+      expect(await screen.findByText('Cuenta eliminada')).toBeInTheDocument();
+      expect(deleteSpy).toHaveBeenCalledWith({ password: 'Contraseña-Segura-123' });
+      await waitFor(() => expect(authApi.logout).toHaveBeenCalled());
+    });
+
+    it('si el backend rechaza la eliminación, muestra el error y no navega', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      const logoutSpy = vi.spyOn(authApi, 'logout');
+      vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+      vi.spyOn(usersApi, 'deleteAccount').mockRejectedValue(new ApiError(401, 'La contraseña no es correcta.'));
+
+      renderPage();
+      await screen.findByLabelText('Nombre');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar cuenta' }));
+      await userEvent.type(await screen.findByLabelText(/Repite tu contraseña/), 'ClaveIncorrecta123');
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar cuenta definitivamente' }));
+
+      expect(await screen.findByText('La contraseña no es correcta.')).toBeInTheDocument();
+      expect(screen.queryByText('Cuenta eliminada')).not.toBeInTheDocument();
+      expect(logoutSpy).not.toHaveBeenCalled();
+    });
+
+    it('en una cuenta sin contraseña (solo Google), pide el email de confirmación en vez de la contraseña', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(authApi, 'logout').mockResolvedValue({ message: 'Sesión cerrada.' });
+      vi.spyOn(usersApi, 'getProfile').mockResolvedValue({ ...PROFILE, hasPassword: false });
+      const deleteSpy = vi.spyOn(usersApi, 'deleteAccount').mockResolvedValue(undefined);
+
+      renderPage();
+      await screen.findByLabelText('Nombre');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar cuenta' }));
+
+      expect(screen.queryByLabelText(/Repite tu contraseña/)).not.toBeInTheDocument();
+      const emailField = await screen.findByLabelText(/escribe tu email/i);
+      await userEvent.type(emailField, 'diego@example.com');
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar cuenta definitivamente' }));
+
+      expect(await screen.findByText('Cuenta eliminada')).toBeInTheDocument();
+      expect(deleteSpy).toHaveBeenCalledWith({ confirmEmail: 'diego@example.com' });
+    });
   });
 });
