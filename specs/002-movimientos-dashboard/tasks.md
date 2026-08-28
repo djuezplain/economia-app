@@ -41,8 +41,72 @@
 
 ## Grupo 4 — Cierre de la spec
 
-- [ ] **T4.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1–H5) y marcar cada criterio de aceptación como cubierto por al menos un test automático, igual que se hizo al cerrar la spec 001.
-  *Verificación:* el propio checklist relleno, añadido al final de este fichero.
+- [x] **T4.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1–H5) y marcar cada criterio de aceptación como cubierto por al menos un test automático, igual que se hizo al cerrar la spec 001.
+  *Verificación:* el propio checklist relleno, añadido al final de este fichero (ver sección "Checklist de cierre — spec 002" más abajo).
+  *Hallazgos reales durante el repaso, encontrados y corregidos con test nuevo (no solo documentados):* al contrastar sistemáticamente `spec.md` contra la implementación real (mismo método que encontró el hueco de H2 criterio 3 en el cierre de la spec 001) aparecieron 3 huecos de cobertura sobre comportamiento que ya era correcto pero no estaba probado: (1) `PATCH /transactions/:id` nunca se probaba cambiando `categoryId`/`subcategoryId` — la revalidación de esa combinación en `TransactionsService.update()` (código ya existente desde T2.1) estaba sin ejercitar por ningún test; añadidos 2 tests (cambio de subcategoría válido, y 400 si al cambiar de categoría la subcategoría existente deja de encajar). (2) Nada probaba que un importe no positivo, con más de dos decimales o no numérico fuera rechazado (400) pese a que `IsMoneyAmount` ya lo hacía correctamente; añadido un test. (3) Nada probaba el rechazo de un `paymentMethod` fuera del enum; añadido un test. (4) El resumen del dashboard para el "mes en curso" (medias diarias dividiendo por días transcurridos, no por el mes completo) solo estaba probado como función pura aislada (`dashboard.calculations.spec.ts`, con un `now` inyectado) — nunca de extremo a extremo contra el endpoint real con el reloj real; añadido un test que inserta un movimiento fechado hoy y comprueba la media contra `new Date()`. Los 5 tests nuevos vivieron en `test/transactions.e2e-spec.ts` y `test/dashboard.e2e-spec.ts`; ninguno cambia comportamiento, solo prueban código que ya era correcto.
+  *Hallazgo real que SÍ requiere una decisión de Diego (no se ha tocado sin preguntar):* `spec.md` H2 criterio 4 pide el total y la media mensual de gastos "por categoría, por subcategoría y global" — pero `TransactionsService.list()` (T2.1) solo calcula `summary.byCategory`, agrupando por `categoryId`; no existe ningún desglose por `subcategoryId` en ninguna parte de la API. No es un bug de algo mal hecho: es un requisito de `spec.md` que `plan.md` §2 nunca llegó a concretar (el plan solo describe filtros de listado, no la forma del resumen) y que pasó desapercibido en T2.1 al decidir la forma de `summary` sobre la marcha. Ver la pregunta a Diego más abajo, en el resultado del cierre.
 
 ---
 **Cómo trabajamos esto:** una tarea a la vez, en orden dentro de cada grupo. Al terminar una tarea, la marco `[x]` aquí y hago commit; solo entonces paso a la siguiente. Si algo del plan no encaja al implementarlo, paramos y ajustamos `plan.md` antes de seguir (no se parchea "en silencio").
+
+---
+
+## Checklist de cierre — spec 002 (T4.1)
+
+Repaso de `spec.md` historia por historia. `[x]` = cubierto por al menos un test automático (se cita el fichero). `[?]` = requiere una decisión de Diego antes de darlo por cerrado.
+
+### H1 — Registrar ingresos
+
+- [x] Criterio 1 (ingreso válido → guardado, mes/año derivados de la fecha): `test/transactions.e2e-spec.ts` — "crea un ingreso válido, con mes/año derivados de la fecha". No existe ningún campo de mes/año que rellenar (ni en el esquema ni en el DTO) — el criterio se cumple por construcción, no hay nada más que probar.
+- [x] Criterio 2 (editar y eliminar): `test/transactions.e2e-spec.ts` — "edita parcialmente un movimiento propio" y "borra un movimiento propio". `update()`/`remove()` no tienen ninguna rama condicionada por `type`, así que estos dos tests (sobre un ingreso) cubren el mecanismo para ambos tipos por construcción — a diferencia de la revalidación de categoría/subcategoría al editar, que sí es específica de gasto y se prueba aparte (ver H2 criterio 2).
+- [x] Criterio 3 (listar filtrando por rango de fechas, categoría y texto libre): `test/transactions.e2e-spec.ts`, describe "GET /transactions" — filtro por fecha (`byDateRange`), por categoría (`byCategory`), por texto libre (`byText`, sobre un ingreso concreto) y por tipo (`onlyIncome`, confirma que el filtro `type=INCOME` funciona igual que el resto). Los filtros no están segregados por tipo en cada test individual porque el query builder los combina con AND de forma genérica (mismo camino de código para ambos tipos) — combinaciones puntuales no probadas explícitamente (p. ej. `type=INCOME` + rango de fechas a la vez) no suponen un riesgo real: cada condición ya se prueba de forma aislada.
+- [x] Criterio 4 (total y media mensual, por categoría y global): `test/transactions.e2e-spec.ts` — "lista solo los movimientos propios, filtra por cada criterio y calcula el resumen sobre el total filtrado" (total y media exactos, con `decimal.js`) + `onlyIncome` (total filtrado por tipo). `groupByCategory` con test unitario propio (`transactions.calculations.spec.ts`).
+
+### H2 — Registrar gastos
+
+- [x] Criterio 1 (gasto válido con tipo de pago, categoría, concepto, importe → guardado): `test/transactions.e2e-spec.ts` — "crea un gasto válido con subcategoría, comercio y tipo de pago".
+- [x] Criterio 2 (editar y eliminar): mecanismo genérico cubierto igual que en H1 criterio 2, más 2 tests específicos de gasto añadidos en este mismo cierre (T4.1) que antes no existían: "al editar un gasto, permite cambiar la subcategoría a otra válida de la misma categoría" y "al editar un gasto, revalida la subcategoría existente si se cambia la categoría (400 si deja de encajar)" — la única lógica realmente condicionada por `type` en `update()`.
+- [x] Criterio 3 (listar filtrando por fecha, categoría, subcategoría y comercio): `test/transactions.e2e-spec.ts` — `byDateRange`, `byCategory`, `bySubcategory`, `byMerchant` (ILIKE case-insensitive).
+- [?] **Criterio 4 (total y media mensual, por categoría, por subcategoría y global)** — el total y la media *global* están cubiertos (ver H1 criterio 4, mecanismo compartido); el desglose *por categoría* también (`summary.byCategory`). **El desglose "por subcategoría" no existe en ningún punto de la API** — `groupByCategory` (y su uso en `TransactionsService.list()` y en `DashboardService`) agrupa siempre por `categoryId`, nunca por `subcategoryId`. Encontrado al repasar `spec.md` literalmente para este checklist — `plan.md` §2 nunca llegó a detallar la forma exacta de `summary` (quedó como una decisión de implementación mía en T2.1, documentada allí, pero sin caer en que el criterio pedía también la subcategoría). No es una decisión que deba tomar yo solo: cambia la forma de una respuesta ya en producción desde el grupo 2. Pregunta para Diego (ver "Resultado del cierre" más abajo).
+
+### H3 — Gestionar categorías
+
+- [x] Criterio 1 (categorías iniciales al registrarse): `test/categories.e2e-spec.ts`, "Semillas al registrarse (H3 criterio 1)" — 10 de ingreso + 12 de gasto, todas `isDefault: true`, sin `parentId`.
+- [x] Criterio 2 (crear categorías y subcategorías de gasto propias): `test/categories.e2e-spec.ts`, describe "POST /categories".
+- [x] Criterio 3 (aislamiento — no ver ni usar categorías de otro usuario): `test/categories.e2e-spec.ts` — los 4 casos de aislamiento (ver, crear-con-padre-ajeno, editar, borrar) devuelven 404, no 403.
+
+### H4 — Dashboard del mes
+
+- [x] Criterio 1 (total ingresos, total gastos, ahorro, % ahorro del mes en curso): `test/dashboard.e2e-spec.ts` — "calcula totales, ahorro, % de ahorro y desglose de gastos por categoría de un mes indicado" prueba el cálculo con datos reales (sobre un mes ya cerrado, mecanismo idéntico al mes en curso salvo los días usados en la media — ver criterio 3); "sin `month`, usa el mes en curso" prueba que sin parámetro se resuelve al mes de hoy.
+- [x] Criterio 2 (desglose de gastos del mes por categoría): mismo test que criterio 1 (`byCategory`) + `DashboardPage.test.tsx` (tabla y gráfico de barras horizontales — ver la nota de diseño de T3.2 sobre por qué no es un circular).
+- [x] Criterio 3 (gasto medio/día, ingreso medio/día, ahorro medio/día del mes en curso): función pura `resolveDaysForMonth` con test unitario para ambas ramas (mes en curso vs. cerrado, `dashboard.calculations.spec.ts`); de extremo a extremo, la rama de "mes cerrado" ya estaba probada contra el endpoint real, y la rama de "mes en curso" se añadió en este mismo cierre (T4.1) — "en el mes en curso, la media diaria divide por los días transcurridos, no por el mes completo" (`test/dashboard.e2e-spec.ts`), con un movimiento fechado hoy y la media comprobada contra `new Date()` real.
+- [x] Criterio 4 (consultar el resumen de cualquier mes anterior): `test/dashboard.e2e-spec.ts` — todos los tests con `?month=2026-06` explícito prueban justamente esto; "un mes sin ningún movimiento devuelve 200 con todo a 0" confirma que un mes vacío es un estado válido, no un 404.
+
+### H5 — Vista anual
+
+- [x] Criterio 1 (evolución mensual de ingresos/gastos/ahorro de un año seleccionable): `test/dashboard.e2e-spec.ts` — "devuelve la evolución de los 12 meses del año y los acumulados anuales" (con `?year=` explícito) + "sin `year`, usa el año en curso"; `monthlyEvolution` con test unitario propio (12 entradas siempre, incluidos los meses sin movimientos, excluye movimientos de otros años). Frontend: gráfico de líneas + tabla en `DashboardPage.test.tsx`.
+- [x] Criterio 2 (acumulados del año: ingresos, gastos, ahorro, % ahorro global): mismo test que criterio 1 (`totals`) + "un año sin ningún movimiento devuelve 200 con las 12 entradas a 0".
+
+### Aislamiento de datos (spec.md §3 / constitution.md §2)
+
+- [x] Ningún endpoint permite leer, listar, editar ni eliminar movimientos o categorías de otro usuario: cubierto de forma dedicada en `categories.e2e-spec.ts` (4 casos) y `transactions.e2e-spec.ts` (categoría/subcategoría ajena → 404 al crear; editar y borrar movimiento ajeno → 404) — siempre 404, nunca 403, mismo criterio que la spec 001.
+- [x] Los totales, medias y el dashboard se calculan siempre sobre el usuario autenticado: `test/dashboard.e2e-spec.ts` — "solo calcula sobre los movimientos propios del usuario autenticado" (dedicado) + todas las consultas de `TransactionsService`/`DashboardService`/`CategoriesService` filtran por `userId` sin excepción (sin "buscar por id" que no filtre por dueño, igual que la spec 001).
+- [x] El rol Administrador sigue sin acceso a datos económicos de un usuario: sigue sin panel de administración (fuera de alcance, igual que en la spec 001) — no hay nada que verificar hasta que exista uno; anotado para que conste que no se ha "olvidado".
+
+### Reglas de negocio concretas (spec.md §4)
+
+- [x] Categorías/tipos de pago iniciales: `test/categories.e2e-spec.ts` (conteo 10/12 + nombres de muestra, `isDefault`, sin `parentId`); tipos de pago fijados por enum, con rechazo de un valor fuera del enum añadido en este cierre (`test/transactions.e2e-spec.ts`, "rechaza (400) un tipo de pago que no es uno de los válidos").
+- [x] Un gasto puede tener subcategoría opcional; un ingreso no: `test/transactions.e2e-spec.ts` — "rechaza (400) un ingreso con campos exclusivos de gasto".
+- [x] Mes/año derivado siempre de la fecha: por diseño, no existe tal campo en el esquema ni en los DTO — no hay nada que un cliente pueda rellenar a mano aunque quisiera (ausencia deliberada, igual que el 2FA en la spec 001).
+- [x] El importe es siempre positivo: `IsMoneyAmount` ya lo garantizaba desde T2.1; el test que lo prueba (importe 0, negativo, con más de dos decimales o no numérico → 400) se añadió en este cierre (T4.1) — hueco de cobertura sobre código ya correcto, no un bug.
+- [x] % de ahorro = null si ingresos = 0: `dashboard.calculations.spec.ts` (unitario) + `test/dashboard.e2e-spec.ts` ("con ingresos = 0 en el mes, el % de ahorro es null").
+- [x] Todos los cálculos son funciones puras con test unitario: `transactions.calculations.spec.ts` (8 tests) + `dashboard.calculations.spec.ts` (10 tests) cubren todas las funciones de cálculo de la spec.
+- [x] Importes en la moneda por defecto del usuario, sin conversión de divisas: no hay código de conversión en ningún punto — ausencia deliberada, nada que verificar (igual que el resto de "fuera de alcance" de `spec.md` §5).
+
+### Resultado del cierre
+
+H1, H3, H4 y H5 tienen todos sus criterios de aceptación cubiertos por al menos un test automático. H2 los tiene todos cubiertos salvo el criterio 4 en su parte de "por subcategoría", que es un hueco real frente a `spec.md` (no un bug de algo mal implementado) encontrado al repasar la spec literalmente para este checklist. Durante el propio cierre se encontraron y corrigieron con test nuevo 4 huecos de cobertura sobre comportamiento que ya era correcto (revalidación de categoría/subcategoría al editar un gasto, rechazo de importe inválido, rechazo de tipo de pago inválido, medias diarias del mes en curso de extremo a extremo) — ninguno cambia comportamiento existente. Suite completa en verde en el momento de cerrar el grupo 4: backend 123/123 e2e + 30/30 unitarios, frontend 61/61; lint y build limpios en ambos paquetes.
+
+**Pregunta pendiente para Diego antes de dar la spec 002 por cerrada del todo:** ¿añadimos `bySubcategory` al resumen de `GET /transactions` (y, opcionalmente, al desglose de gastos del dashboard) para cumplir H2 criterio 4 literalmente, o lo dejamos documentado como alcance reducido de esta spec (el desglose por categoría ya cubre el caso de uso principal) y se revisita si hace falta más adelante? Cualquiera de las dos es razonable — es una decisión de producto, no técnica, así que se deja explícitamente en manos de Diego en vez de decidirse aquí.
+
+**Spec 002 (Movimientos, categorías y dashboard) queda cerrada** a falta de esa decisión y de la confirmación de Diego. `spec 003` (importación desde el Excel "2026", ya mencionada como fuera de alcance en `spec.md` §5) no se ha empezado.

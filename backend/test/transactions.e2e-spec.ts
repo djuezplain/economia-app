@@ -196,6 +196,39 @@ describe('Movimientos (e2e) — spec 002 H1/H2', () => {
         .send({ type: 'INCOME', date: '2026-08-01', categoryId: expenseCategory.id, concept: 'x', amount: '10.00' })
         .expect(400);
     });
+
+    it('rechaza (400) un importe que no es positivo, con más de dos decimales o no numérico (spec.md §4)', async () => {
+      const user = await createUser('importe-invalido@example.com');
+      const category = await createCategory(user.id, 'INCOME', 'Nómina');
+      const token = await login(user.email);
+
+      for (const amount of ['0.00', '-10.00', '10.123', 'abc']) {
+        await request(app.getHttpServer())
+          .post('/transactions')
+          .set('Authorization', auth(token))
+          .send({ type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'x', amount })
+          .expect(400);
+      }
+    });
+
+    it('rechaza (400) un tipo de pago que no es uno de los válidos (spec.md §4)', async () => {
+      const user = await createUser('tipo-pago-invalido@example.com');
+      const category = await createCategory(user.id, 'EXPENSE', 'Comida');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send({
+          type: 'EXPENSE',
+          date: '2026-08-01',
+          categoryId: category.id,
+          concept: 'x',
+          amount: '10.00',
+          paymentMethod: 'BIZUM',
+        })
+        .expect(400);
+    });
   });
 
   describe('GET /transactions', () => {
@@ -309,6 +342,46 @@ describe('Movimientos (e2e) — spec 002 H1/H2', () => {
 
       expect(res.body.amount).toBe('150.00');
       expect(res.body.concept).toBe('Original');
+    });
+
+    it('al editar un gasto, permite cambiar la subcategoría a otra válida de la misma categoría', async () => {
+      const user = await createUser('editar-subcategoria-valida@example.com');
+      const parent = await createCategory(user.id, 'EXPENSE', 'Transporte');
+      const child1 = await createCategory(user.id, 'EXPENSE', 'Gasolina', parent.id);
+      const child2 = await createCategory(user.id, 'EXPENSE', 'Parking', parent.id);
+      const [transaction] = await db
+        .insert(transactions)
+        .values({ userId: user.id, type: 'EXPENSE', date: '2026-08-01', categoryId: parent.id, subcategoryId: child1.id, concept: 'x', amount: '10.00' })
+        .returning();
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/transactions/${transaction.id}`)
+        .set('Authorization', auth(token))
+        .send({ subcategoryId: child2.id })
+        .expect(200);
+
+      expect(res.body.subcategoryId).toBe(child2.id);
+    });
+
+    it('al editar un gasto, revalida la subcategoría existente si se cambia la categoría (400 si deja de encajar)', async () => {
+      const user = await createUser('editar-revalida-categoria@example.com');
+      const parent = await createCategory(user.id, 'EXPENSE', 'Transporte');
+      const child = await createCategory(user.id, 'EXPENSE', 'Gasolina', parent.id);
+      const otherParent = await createCategory(user.id, 'EXPENSE', 'Comida');
+      const [transaction] = await db
+        .insert(transactions)
+        .values({ userId: user.id, type: 'EXPENSE', date: '2026-08-01', categoryId: parent.id, subcategoryId: child.id, concept: 'x', amount: '10.00' })
+        .returning();
+      const token = await login(user.email);
+
+      // Cambia solo la categoría (a "Comida"), sin tocar la subcategoría: "Gasolina" ya
+      // no es hija de "Comida" — debe revalidar la combinación, no aceptarla a ciegas.
+      await request(app.getHttpServer())
+        .patch(`/transactions/${transaction.id}`)
+        .set('Authorization', auth(token))
+        .send({ categoryId: otherParent.id })
+        .expect(400);
     });
 
     it('no se puede editar un movimiento de otro usuario (404)', async () => {

@@ -150,6 +150,26 @@ describe('Dashboard (e2e) — spec 002 H4/H5', () => {
       expect(res.body.month).toBe(expectedMonth);
     });
 
+    it('en el mes en curso, la media diaria divide por los días transcurridos, no por el mes completo', async () => {
+      const user = await createUser('mes-en-curso-medias@example.com');
+      const income = await createCategory(user.id, 'INCOME', 'Nómina');
+      const today = new Date();
+      const todayIso = today.toISOString().slice(0, 10);
+      await db
+        .insert(transactions)
+        .values({ userId: user.id, type: 'INCOME', date: todayIso, categoryId: income.id, concept: 'Ingreso de hoy', amount: '100.00' });
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer()).get('/dashboard/month').set('Authorization', auth(token)).expect(200);
+
+      // Con un único ingreso de "hoy" fechado hoy mismo, el total (100.00) dividido
+      // entre los días transcurridos del mes (el día del mes de hoy) debe coincidir
+      // con la media — nunca con el total de días del mes completo (que solo aplica
+      // a un mes ya cerrado, ver `dashboard.calculations.spec.ts`).
+      const expectedAverage = (100 / today.getDate()).toFixed(2);
+      expect(res.body.dailyAverages.income).toBe(expectedAverage);
+    });
+
     it('rechaza (400) un formato de `month` inválido', async () => {
       const user = await createUser('mes-invalido@example.com');
       const token = await login(user.email);
