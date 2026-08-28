@@ -11,6 +11,15 @@
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
+  /* Spec 007 (mejoras visuales), plan.md §1. Rampa de 4 niveles para el
+     progreso de objetivos/presupuestos (H1/H3) — a qué color corresponde
+     cada nivel (verde/ámbar/naranja/rojo, sin dirección) se decide en
+     `goals-shared.ts`, no aquí. */
+  --status-green: #1baf7a;
+  --status-amber: #d6a92a;
+  --status-orange: #eb6834;
+  --status-red: #d64545;
+
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
@@ -43,6 +52,11 @@
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+
+    --status-green: #34d399;
+    --status-amber: #eab308;
+    --status-orange: #f97316;
+    --status-red: #f87171;
   }
 
   #social .button-icon {
