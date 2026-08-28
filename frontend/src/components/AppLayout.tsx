@@ -10,13 +10,13 @@ import { useAuth } from '../auth/auth-context';
 // `AppLayout` original: sin él, "/" quedaría activo en cualquier ruta).
 const NAV_ITEMS = [
   { to: '/', end: true, label: 'Inicio', Icon: Home },
-  { to: '/categories', label: 'Categorías', Icon: Tags },
-  { to: '/movements', label: 'Ingresos y gastos', Icon: ArrowLeftRight },
-  { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
-  { to: '/import', label: 'Importar Excel', Icon: FileUp },
-  { to: '/goals', label: 'Objetivos y presupuestos', Icon: Target },
-  { to: '/profile', label: 'Tu perfil', Icon: User },
-  { to: '/sessions', label: 'Dispositivos y sesiones', Icon: Monitor },
+  { to: '/categories', end: false, label: 'Categorías', Icon: Tags },
+  { to: '/movements', end: false, label: 'Ingresos y gastos', Icon: ArrowLeftRight },
+  { to: '/dashboard', end: false, label: 'Dashboard', Icon: LayoutDashboard },
+  { to: '/import', end: false, label: 'Importar Excel', Icon: FileUp },
+  { to: '/goals', end: false, label: 'Objetivos y presupuestos', Icon: Target },
+  { to: '/profile', end: false, label: 'Tu perfil', Icon: User },
+  { to: '/sessions', end: false, label: 'Dispositivos y sesiones', Icon: Monitor },
 ] as const;
 
 /**
