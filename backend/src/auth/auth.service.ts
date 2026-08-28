@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto.js';
 import { SessionsService } from './sessions.service.js';
 import type { DeviceInfo } from './sessions.service.js';
 import type { GoogleProfile } from './google/google.strategy.js';
+import { AuditLogService } from '../audit/audit-log.service.js';
 
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_PASSWORD_TTL_MS = 60 * 60 * 1000; // H5 (spec 001), criterio 1: 1 hora
@@ -45,6 +46,7 @@ export class AuthService {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     private readonly sessions: SessionsService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   /**
@@ -151,16 +153,22 @@ export class AuthService {
       // un hash de relleno para no filtrar por tiempo de respuesta cuál de
       // los dos casos es.
       await argon2.hash('contraseña-de-relleno-tiempo-constante', { type: argon2.argon2id });
+      // userId null a propósito: si el usuario no existe no hay id que
+      // registrar, y hacerlo distinto según el caso reintroduciría por otra
+      // vía la fuga de "existe / no existe" que el resto del método evita.
+      await this.auditLog.record('login_failed', { ipAddress: device.ipAddress });
       throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
     }
 
     if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      await this.auditLog.record('login_failed', { userId: user.id, ipAddress: device.ipAddress });
       throw new UnauthorizedException(LOCKED_ACCOUNT_MESSAGE);
     }
 
     const validPassword = await argon2.verify(user.passwordHash, dto.password);
     if (!validPassword) {
       await this.registerFailedLogin(user);
+      await this.auditLog.record('login_failed', { userId: user.id, ipAddress: device.ipAddress });
       throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
     }
 
@@ -170,6 +178,8 @@ export class AuthService {
         .set({ failedLoginCount: 0, lockedUntil: null, lastFailedLoginAt: null, updatedAt: new Date() })
         .where(eq(users.id, user.id));
     }
+
+    await this.auditLog.record('login_success', { userId: user.id, ipAddress: device.ipAddress });
 
     const tokens = await this.sessions.issueForUser(user.id, device);
     return {
@@ -266,6 +276,8 @@ export class AuthService {
         .where(eq(users.id, user.id));
     }
 
+    await this.auditLog.record('login_success', { userId: user.id, ipAddress: device.ipAddress });
+
     const tokens = await this.sessions.issueForUser(user.id, device);
     return {
       ...tokens,
@@ -319,7 +331,7 @@ export class AuthService {
    * token, nunca del cliente — un token de un usuario no puede usarse para
    * tocar la cuenta de otro, por construcción.
    */
-  async resetPassword(tokenPlaintext: string, newPassword: string): Promise<{ message: string }> {
+  async resetPassword(tokenPlaintext: string, newPassword: string, ipAddress?: string): Promise<{ message: string }> {
     const tokenHash = hashOpaqueToken(tokenPlaintext);
 
     const token = await this.db.query.emailTokens.findFirst({
@@ -357,6 +369,8 @@ export class AuthService {
 
     // H5 criterio 2: tras el reset, todas las sesiones activas anteriores se cierran.
     await this.sessions.revokeAllForUser(token.userId, 'PASSWORD_RESET');
+
+    await this.auditLog.record('password_reset', { userId: token.userId, ipAddress });
 
     return { message: 'Contraseña restablecida correctamente.' };
   }

@@ -7,6 +7,7 @@ import { users } from '../db/schema/index.js';
 import { SessionsService } from '../auth/sessions.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { accountDeletedEmail } from '../mail/templates.js';
+import { AuditLogService } from '../audit/audit-log.service.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { DeleteAccountDto } from './dto/delete-account.dto.js';
@@ -58,6 +59,7 @@ export class UsersService {
     @Inject(DB) private readonly db: Database,
     private readonly sessions: SessionsService,
     private readonly mail: MailService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   async getProfile(userId: string): Promise<UserProfile> {
@@ -113,6 +115,7 @@ export class UsersService {
     await this.db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, userId));
 
     await this.sessions.revokeAllForUser(userId, 'PASSWORD_CHANGED');
+    await this.auditLog.record('password_changed', { userId });
 
     return { message: 'Contraseña actualizada correctamente.' };
   }
@@ -164,6 +167,13 @@ export class UsersService {
         throw new UnauthorizedException('El email no coincide con el de tu cuenta.');
       }
     }
+
+    // Se registra ANTES de borrar, no después: `audit_logs.user_id` exige
+    // (si no es null) que el usuario referenciado exista en ese momento — y
+    // es justo lo que se quiere: que la fila quede con `userId` puesto hasta
+    // que el propio `DELETE` de abajo la deje en null vía `ON DELETE SET NULL`
+    // (grupo 9, T9.1, acción `account_deleted`).
+    await this.auditLog.record('account_deleted', { userId });
 
     await this.db.delete(users).where(eq(users.id, userId));
 

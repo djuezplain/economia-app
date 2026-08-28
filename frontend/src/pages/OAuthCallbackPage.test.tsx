@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OAuthCallbackPage } from './OAuthCallbackPage';
 import { AuthProvider } from '../auth/AuthContext';
 import * as authApi from '../api/auth';
+import * as usersApi from '../api/users';
 import { ApiError } from '../api/client';
 
 describe('OAuthCallbackPage', () => {
@@ -12,6 +13,19 @@ describe('OAuthCallbackPage', () => {
     // AuthProvider intenta un refresco silencioso al montar; se simula "sin
     // sesión previa" para aislar el comportamiento propio de esta página.
     vi.spyOn(authApi, 'refresh').mockRejectedValue(new ApiError(401, 'No hay sesión.'));
+    // `setSessionToken` (lo que dispara esta página al recibir el token de
+    // Google) pide el perfil de fondo (grupo 9: aviso de email pendiente,
+    // H2 criterio 3) — se mockea para que no intente una llamada de red real.
+    vi.spyOn(usersApi, 'getProfile').mockResolvedValue({
+      id: 'user-1',
+      email: 'google-user@example.com',
+      name: 'Usuario de Google',
+      currency: 'EUR',
+      locale: 'es',
+      status: 'ACTIVE',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      hasPassword: false,
+    });
   });
 
   function renderAt(path: string) {

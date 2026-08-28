@@ -6,6 +6,7 @@ import type { Database } from '../db/db.module.js';
 import { sessions } from '../db/schema/index.js';
 import { generateOpaqueToken, hashOpaqueToken } from '../common/tokens.util.js';
 import { REFRESH_TOKEN_TTL_MS } from './session-cookie.js';
+import { AuditLogService } from '../audit/audit-log.service.js';
 
 export interface DeviceInfo {
   userAgent?: string;
@@ -54,6 +55,7 @@ export class SessionsService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly jwt: JwtService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   async issueForUser(userId: string, device: DeviceInfo): Promise<IssuedTokens> {
@@ -119,25 +121,51 @@ export class SessionsService {
       .where(and(eq(sessions.refreshTokenHash, hash), eq(sessions.userId, userId)));
   }
 
-  /** Igual que arriba, pero por id de sesión (lo usa "mis sesiones", grupo 6, H6). */
+  /**
+   * Igual que arriba, pero por id de sesión (lo usa "mis sesiones", grupo 6,
+   * H6). Es el único cierre de sesión que se registra en `audit_logs`
+   * (grupo 9, T9.1, acción `session_revoked`): un cierre explícito de "este
+   * dispositivo" es la señal con valor real para una futura auditoría —
+   * a diferencia del logout normal (`revokeByRefreshToken`) o de una
+   * rotación rutinaria (`rotate`), que son ciclo de vida esperado, no
+   * eventos de seguridad.
+   */
   async revokeById(sessionId: string, userId: string): Promise<boolean> {
     const result = await this.db
       .update(sessions)
       .set({ revokedAt: new Date(), revokedReason: 'USER_REVOKED' })
       .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)))
       .returning({ id: sessions.id });
-    return result.length > 0;
+
+    const revoked = result.length > 0;
+    if (revoked) {
+      await this.auditLog.record('session_revoked', { userId });
+    }
+    return revoked;
   }
 
   /**
    * Revoca todas las sesiones de un usuario. Requiere el motivo explícito:
    * lo usa tanto la detección de robo (`rotate()`, con `REUSE_DETECTED`) como
    * el reset de contraseña (`AuthService.resetPassword`, con
-   * `PASSWORD_RESET`) — casos con implicaciones muy distintas para quien
-   * audite `audit_logs` en el futuro (grupo 9).
+   * `PASSWORD_RESET`) y el cambio de contraseña autenticado
+   * (`UsersService.changePassword`, con `PASSWORD_CHANGED`) — casos con
+   * implicaciones muy distintas para quien audite `audit_logs`.
+   *
+   * Solo `REUSE_DETECTED` (robo real detectado, ver `rotate()`) se registra
+   * aquí como `session_revoked` (grupo 9, T9.1): las revocaciones masivas por
+   * `PASSWORD_RESET`/`PASSWORD_CHANGED` ya quedan cubiertas por sus propios
+   * eventos de auditoría (`password_reset`/`password_changed`, registrados
+   * en el servicio que las dispara) — registrar además una fila de
+   * `session_revoked` por cada sesión cerrada sería ruido redundante, no
+   * información nueva.
    */
   async revokeAllForUser(userId: string, reason: SessionRevokedReason): Promise<void> {
     await this.db.update(sessions).set({ revokedAt: new Date(), revokedReason: reason }).where(eq(sessions.userId, userId));
+
+    if (reason === 'REUSE_DETECTED') {
+      await this.auditLog.record('session_revoked', { userId });
+    }
   }
 
   /**

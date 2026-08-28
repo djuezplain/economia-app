@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { MailModule } from '../mail/mail.module.js';
+import { AuditModule } from '../audit/audit.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { SessionsService } from './sessions.service.js';
@@ -14,6 +15,7 @@ import { ACCESS_TOKEN_TTL } from './session-cookie.js';
 @Module({
   imports: [
     MailModule,
+    AuditModule,
     PassportModule,
     // No se registra como `global: true`: el access token de esta app es de
     // uso interno de auth (AuthGuard); si otro módulo necesitara firmar/verificar

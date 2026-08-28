@@ -5,12 +5,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionsPage } from './SessionsPage';
 import { AuthProvider } from '../auth/AuthContext';
 import * as authApi from '../api/auth';
+import * as usersApi from '../api/users';
 import * as sessionsApi from '../api/sessions';
 import { ApiError } from '../api/client';
 
 describe('SessionsPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // AuthProvider pide el perfil (GET /users/me) en cuanto sabe que hay
+    // sesión (grupo 9: aviso persistente de email pendiente, H2 criterio 3);
+    // esta página no usa ese perfil para nada, pero sin este mock por
+    // defecto AuthProvider intentaría una llamada de red real en cada test
+    // "con sesión activa".
+    vi.spyOn(usersApi, 'getProfile').mockResolvedValue({
+      id: 'user-1',
+      email: 'ana@example.com',
+      name: 'Ana',
+      currency: 'EUR',
+      locale: 'es',
+      status: 'ACTIVE',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      hasPassword: true,
+    });
   });
 
   function renderPage() {

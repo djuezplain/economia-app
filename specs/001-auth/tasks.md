@@ -102,10 +102,83 @@
 
 ## Grupo 9 — Auditoría y cierre de la spec
 
-- [ ] **T9.1** — Backend: registrar en `AuditLog` los eventos clave (`login_success`, `login_failed`, `password_reset`, `account_deleted`, `session_revoked`).
-  *Verificación:* cada endpoint relevante añade su entrada; test que comprueba al menos un caso de cada evento.
-- [ ] **T9.2** — Checklist de cierre: repasar `spec.md` historia por historia (H1–H8) y marcar cada criterio de aceptación como cubierto por al menos un test automático o, si es solo de UI, una verificación manual documentada.
-  *Verificación:* el propio checklist relleno, añadido al final de este fichero.
+- [x] **T9.1** — Backend: registrar en `AuditLog` los eventos clave (`login_success`, `login_failed`, `password_reset`, `account_deleted`, `session_revoked`).
+  *Verificación (`test/audit-log.e2e-spec.ts`, 9 tests):* los 6 tipos de evento quedan cubiertos, incluyendo casos con y sin `userId`: `login_success` (con contraseña y con Google), `login_failed` (cuenta existente y email inexistente, este último sin `userId`), `password_reset`, `password_changed`, `account_deleted` (el log sobrevive con `userId: null` tras el borrado en cascada — mismo mecanismo que ya cubría `test/users-account.e2e-spec.ts` del grupo 8), `session_revoked` (cierre explícito de una sesión propia y robo detectado por reutilización de un refresh token ya rotado). Suite completa en verde tras el cambio: 72/72 e2e + 12/12 unitarios. ✅ hecho.
+  *Nota de diseño (amplía la lista literal de la tarea):* se añadió un sexto tipo de evento, `password_changed`, distinto de `password_reset` — la tarea original solo listaba 5, pero el proyecto ya distingue estos dos casos desde el grupo 7 (`sessions.revoked_reason`: `PASSWORD_CHANGED` vs `PASSWORD_RESET`) precisamente para poder auditarlos por separado; omitir uno de los dos en el log de auditoría habría sido inconsistente con esa distinción ya existente.
+  *Decisión de alcance para `session_revoked` (documentada, no todas las revocaciones se auditan):* solo se registra evento cuando la revocación es una señal por sí misma — cierre explícito de una sesión propia (`USER_REVOKED`, H6) o robo detectado (`REUSE_DETECTED`). Las revocaciones masivas por `PASSWORD_RESET`/`PASSWORD_CHANGED` **no** generan además un `session_revoked` (quedan ya cubiertas por su propio evento dedicado) y el logout/rotación normales (`LOGOUT`/`ROTATED`) tampoco, por ser ruido operativo esperado, no señales de auditoría. Ver `AuditLogService`/`SessionsService.revokeAllForUser` para el razonamiento en código.
+  *Diseño (best-effort, no bloqueante):* `AuditLogService.record()` captura cualquier error de escritura internamente (`Logger`, nunca relanza) para que un fallo al auditar no pueda tumbar la operación de negocio real (login, cambio de contraseña, etc.) — verificado con un test unitario dedicado (`audit-log.service.spec.ts`) que fuerza un fallo de BD y comprueba que `record()` no lanza.
+- [x] **T9.2** — Checklist de cierre: repasar `spec.md` historia por historia (H1–H8) y marcar cada criterio de aceptación como cubierto por al menos un test automático o, si es solo de UI, una verificación manual documentada.
+  *Verificación:* el propio checklist relleno, añadido al final de este fichero (ver sección "Checklist de cierre — spec 001" más abajo).
+  *Hallazgo real durante el repaso (H2 criterio 3), encontrado y corregido, no solo documentado:* el aviso persistente de "verifica tu email" prometido en el grupo 2 (nota de T2.3: "se añadirá como parte del grupo 3") nunca se llegó a implementar en ningún grupo posterior — quedó como una promesa pendiente sin tarea propia que la reclamara, y ningún test la cubría. Encontrado al contrastar sistemáticamente spec.md contra la implementación real para este checklist. Se preguntó a Diego si arreglarlo ahora o documentarlo como hueco conocido; eligió arreglarlo. Solución: `AuthContext` ahora pide el perfil propio (`GET /users/me`) en cuanto sabe que hay sesión — tanto al restaurar la sesión en el arranque de la app (antes solo se sabía `isAuthenticated`, nunca el `status` de la cuenta) como tras el login por Google (`setSessionToken`, que solo recibía el access token) — y `HomePage` muestra un aviso persistente (`role="alert"`, enlace a reenviar verificación) mientras `status === 'PENDING_VERIFICATION'`, sin bloquear el resto del acceso. Cubierto por un test nuevo (`HomePage.test.tsx`, "con la cuenta sin verificar, muestra un aviso persistente..."). Ver `constitution.md` §3 para el detalle completo de esta nota de implementación.
 
 ---
 **Cómo trabajamos esto:** una tarea a la vez, en orden dentro de cada grupo (los grupos 4–8 pueden reordenarse entre sí si prefieres priorizar Google antes que perfil, por ejemplo, pero dentro de un grupo el orden importa). Al terminar una tarea, la marco `[x]` aquí y hago commit; solo entonces paso a la siguiente. Si algo del plan no encaja al implementarlo, paramos y ajustamos `plan.md` antes de seguir (no se parchea "en silencio").
+
+---
+
+## Checklist de cierre — spec 001 (T9.2)
+
+Repaso de `spec.md` historia por historia. `[x]` = cubierto por al menos un test automático (se cita el fichero). `[m]` = solo verificable manualmente (documentado en el propio grupo) porque depende de infraestructura externa que no existe en este entorno todavía (credenciales OAuth reales de Google).
+
+### H1 — Registro
+
+- [x] Criterio 1 (email libre + contraseña válida → cuenta `PENDING_VERIFICATION` + email de verificación): `test/auth-register.e2e-spec.ts` — "crea la cuenta en PENDING_VERIFICATION y genera un token de verificación".
+- [x] Criterio 2 (email ya registrado → error sin filtrar existencia): `test/auth-register.e2e-spec.ts` — "con un email ya registrado responde igual (mismo status y mensaje) y no duplica el usuario".
+- [x] Criterio 3 (contraseña débil rechazada en cliente y en servidor): validación en cliente — `RegisterPage.test.tsx`; rechazo en servidor pese a saltarse el cliente — `test/auth-register.e2e-spec.ts`, "rechaza una contraseña que no cumple la política mínima, aunque no se valide en el cliente".
+
+### H2 — Verificación de email
+
+- [x] Criterio 1 (token válido → cuenta ACTIVA): `test/auth-verify-email.e2e-spec.ts` — "activa la cuenta con un token válido".
+- [x] Criterio 2 (token caduca a las 24h, reenvío disponible): `test/auth-verify-email.e2e-spec.ts` — "rechaza un token caducado y no activa la cuenta" + "reenvía y el enlace anterior deja de ser válido".
+- [x] Criterio 3 (sin verificar puedo iniciar sesión pero no crear/ver datos económicos, solo aviso): el bloqueo de datos económicos está listo en el backend desde el grupo 2 (`RequireActiveUserGuard`, 4 tests unitarios en `require-active-user.guard.spec.ts`) pero sin rutas económicas todavía que proteger (specs 002+); el aviso persistente en el frontend — encontrado como hueco real durante este mismo checklist (prometido en el grupo 2, nunca implementado) — se corrigió en el grupo 9: `HomePage.test.tsx`, "con la cuenta sin verificar, muestra un aviso persistente para reenviar el enlace (H2 criterio 3)".
+
+### H3 — Registro/login con Google
+
+- [x] Criterio 1 (email nuevo de Google → cuenta nueva ya ACTIVA): `test/auth-google.e2e-spec.ts` — "con un email nuevo, crea un usuario ACTIVE (sin contraseña) y lo vincula a Google".
+- [x] Criterio 2 (email ya existente por contraseña → se vincula, no se duplica): `test/auth-google.e2e-spec.ts` — "con un email ya registrado por contraseña, vincula la cuenta de Google sin duplicar el usuario".
+- [m] Flujo real contra Google (intercambio OAuth de verdad): pendiente de que Diego cree credenciales OAuth en Google Cloud Console (documentado en el grupo 4 y en `constitution.md`) — mientras tanto, ambas rutas responden 503 de forma controlada (`GoogleConfiguredGuard`, cubierto por test) y la lógica de negocio que sí depende de esta spec (creación/vinculación de cuenta) está probada directamente contra `AuthService.loginWithGoogleProfile`.
+
+### H4 — Login
+
+- [x] Criterio 1 (credenciales correctas → sesión iniciada): `test/auth-login.e2e-spec.ts` — "con credenciales correctas devuelve accessToken, cookie de refresh y crea una Session".
+- [x] Criterio 2 (credenciales incorrectas → error genérico sin indicar cuál falló): `test/auth-login.e2e-spec.ts` — "con email inexistente responde 401 con mensaje genérico" + "con contraseña incorrecta responde 401 con el mismo mensaje genérico y no crea Session".
+- [x] Criterio 3 (5 fallos en 15 min → bloqueo 15 min, sin filtrar existencia): `test/auth-login.e2e-spec.ts` — "bloquea la cuenta tras 5 intentos fallidos consecutivos en 15 minutos" (trade-off de no-enumeración del mensaje de bloqueo, documentado en `constitution.md` §3, grupo 3).
+
+### H5 — Recuperación de contraseña
+
+- [x] Criterio 1 (enlace de un solo uso, 1h, exista o no la cuenta): `test/auth-password-reset.e2e-spec.ts` — "con un email existente, responde 200 genérico y crea un EmailToken de tipo RESET_PASSWORD" + "con un email inexistente, responde exactamente igual (200, mismo mensaje) y no crea ningún token" + "con un token caducado, responde 400 y no cambia la contraseña".
+- [x] Criterio 2 (nueva contraseña → se cierran todas las sesiones anteriores): `test/auth-password-reset.e2e-spec.ts` — "con un token válido, cambia la contraseña, invalida el token y cierra todas las sesiones activas".
+
+### H6 — Sesión y cierre de sesión
+
+- [x] Criterio 1 ("Cerrar sesión" invalida el token de la sesión actual): `test/auth-login.e2e-spec.ts` — "revoca la sesión actual; el refresh token deja de servir para refrescar".
+- [x] Criterio 2 (lista de sesiones activas + cierre remoto de cualquiera): `test/users-sessions.e2e-spec.ts` — "lista solo las sesiones activas del propio usuario, sin exponer el hash del token" + "revoca una sesión propia y deja de servir para refrescar, sin afectar a las demás sesiones del usuario (regresión — bug real encontrado y corregido en el grupo 6, ver `constitution.md` §3)". Frontend: `SessionsPage.test.tsx`.
+
+### H7 — Gestión de perfil
+
+- [x] Criterio 1 (editar nombre, moneda, idioma): `test/users-profile.e2e-spec.ts` — "actualiza parcialmente solo los campos enviados (H7 criterio 1)". Frontend: `ProfilePage.test.tsx`.
+- [x] Criterio 2 (cambiar contraseña requiere confirmar la actual): `test/users-profile.e2e-spec.ts` — "con la contraseña actual incorrecta, falla y no cambia nada" + "con la contraseña actual correcta, la cambia y revoca todas las sesiones activas (H7 criterio 2)" (revocar también la sesión propia es una decisión de diseño explícita, documentada en `constitution.md` §3, grupo 7).
+
+### H8 — Exportar y eliminar cuenta (RGPD)
+
+- [x] Criterio 1 (exportación completa en JSON descargable): `test/users-account.e2e-spec.ts` — "devuelve el perfil y un placeholder de datos económicos, sin el hash de contraseña (H8 criterio 1)". Frontend: `ProfilePage.test.tsx` (descarga del Blob).
+- [x] Criterio 2 (eliminar cuenta exige confirmación explícita — contraseña o email según el tipo de cuenta — avisando de que es inmediato e irreversible): `test/users-account.e2e-spec.ts` — "sin contraseña en el body (cuenta con contraseña), responde 400 y no borra nada" + "con la contraseña incorrecta, responde 401 y no borra nada" + "en una cuenta sin contraseña (solo Google), exige y valida el email de confirmación en su lugar" (interpretación de "contraseña o email" documentada en `constitution.md` §3, grupo 8). El aviso explícito de irreversibilidad antes de confirmar está en `ProfilePage.test.tsx` ("avisa de que es irreversible al abrirlo").
+- [x] Criterio 3 (borrado inmediato, sin acceso posterior de nadie): `test/users-account.e2e-spec.ts` — "con la contraseña correcta, borra la cuenta de inmediato y en cascada (H8 criterios 2 y 3)" — verifica borrado físico inmediato (no lógico), cascada real sobre `Session`/`OAuthAccount`/`EmailToken`, y que ni el login ni el access token en curso sigan sirviendo tras el borrado.
+
+### Aislamiento de datos (spec.md §3 / constitution.md §2)
+
+- [x] Ningún usuario puede leer/listar/modificar datos de otro a través de la API — cubierto de forma dedicada, no solo asumido del diseño: `test/auth-isolation.e2e-spec.ts` (3 tests sobre `SessionsService`: `revokeById`, logout y `revokeByRefreshToken` con dos usuarios reales) + `test/auth-password-reset.e2e-spec.ts` ("aislamiento: el token de reset de un usuario nunca afecta a otro usuario") + `test/users-sessions.e2e-spec.ts` ("aislamiento: intentar revocar la sesión de otro usuario devuelve 404, no 403 (no confirma que exista)"). El resto de endpoints de `/users/me/*` no aceptan ningún id de usuario del cliente (siempre usan el del token autenticado), por lo que no hay superficie donde probar "acceder a otro usuario" — es aislamiento por construcción, no por comprobación en cada petición.
+- [x] Rol Administrador limitado a ciclo de vida de cuenta, sin lectura directa de datos económicos sin motivo auditado: fuera de alcance real todavía — no existe panel de administración en esta spec (ver spec.md §5, "fuera de alcance") ni datos económicos que leer (specs 002+); no hay nada que verificar hasta que exista alguno de los dos. Anotado aquí para que quede explícito que no se ha "olvidado", sino que no aplica todavía.
+
+### Reglas de negocio concretas (spec.md §4)
+
+- [x] Política de contraseña (mínimo 10 caracteres, letra + número): validada en cliente (`validators/password.ts`, `RegisterPage.test.tsx`) y en servidor (`IsStrongPassword`, `test/auth-register.e2e-spec.ts`).
+- [x] Bloqueo por intentos fallidos (5 / 15 min): `test/auth-login.e2e-spec.ts`, ver H4 criterio 3 arriba.
+- [x] Caducidad de tokens (verificación 24h, reset 1h): `test/auth-verify-email.e2e-spec.ts` y `test/auth-password-reset.e2e-spec.ts`, ver H2 y H5 arriba.
+- [x] 2FA fuera de alcance de esta spec: no implementado, tal como pide spec.md §5 — no hay nada que verificar aquí, es una ausencia deliberada.
+
+### Resultado del cierre
+
+Todos los criterios de aceptación de H1–H8 están cubiertos por al menos un test automático, salvo el intercambio OAuth real con Google (H3), que depende de credenciales externas que Diego todavía no ha creado y queda documentado como pendiente de infraestructura, no de código. El único hueco real encontrado durante este repaso (H2 criterio 3, aviso persistente de email pendiente en el frontend) se corrigió en este mismo grupo, con test dedicado. Suite completa en verde en el momento de cerrar el grupo 9: backend 72/72 e2e + 12/12 unitarios, frontend 41/41; lint y build limpios en ambos paquetes.
+
+**Spec 001 (Auth) queda cerrada** a falta de la confirmación de Diego. `spec 002` (datos económicos) no se ha empezado — spec 001 solo la menciona como contexto/placeholder (export, `RequireActiveUserGuard`) en varios puntos.
