@@ -22,15 +22,19 @@ import type { RawExpenseRow, RawIncomeRow } from './import.parsing.js';
  * (`plan.md` §4, §7), pero con filas inventadas.
  */
 
-// Mismas columnas que plan.md §4 (1-based, como las usa `exceljs`).
-const INCOME_COLS = { fecha: 7, tipo: 8, concepto: 9, valor: 10 };
-const EXPENSE_COLS = { fecha: 8, tipo: 9, subtipo: 10, concepto: 11, tienda: 12, valor: 13 };
+// Mismas columnas que plan.md §4 (1-based, como las usa `exceljs`). `mes`
+// (K en Ingresos, N en Gastos) solo existe aquí para el test de abajo que
+// demuestra que nunca se lee — no forma parte de `INCOME_COLS`/`EXPENSE_COLS`
+// reales de `import.parsing.ts`.
+const INCOME_COLS = { fecha: 7, tipo: 8, concepto: 9, valor: 10, mes: 11 };
+const EXPENSE_COLS = { fecha: 8, tipo: 9, subtipo: 10, concepto: 11, tienda: 12, valor: 13, mes: 14 };
 
 interface IncomeRowInput {
   fecha?: unknown;
   tipo?: unknown;
   concepto?: unknown;
   valor?: unknown;
+  mes?: unknown;
 }
 
 interface ExpenseRowInput {
@@ -40,6 +44,7 @@ interface ExpenseRowInput {
   concepto?: unknown;
   tienda?: unknown;
   valor?: unknown;
+  mes?: unknown;
 }
 
 async function buildWorkbookBuffer(options: {
@@ -59,6 +64,7 @@ async function buildWorkbookBuffer(options: {
     if (row.tipo !== undefined) excelRow.getCell(INCOME_COLS.tipo).value = row.tipo as never;
     if (row.concepto !== undefined) excelRow.getCell(INCOME_COLS.concepto).value = row.concepto as never;
     if (row.valor !== undefined) excelRow.getCell(INCOME_COLS.valor).value = row.valor as never;
+    if (row.mes !== undefined) excelRow.getCell(INCOME_COLS.mes).value = row.mes as never;
   });
 
   const expenseSheet = workbook.addWorksheet(expenseSheetName);
@@ -74,6 +80,7 @@ async function buildWorkbookBuffer(options: {
     if (row.concepto !== undefined) excelRow.getCell(EXPENSE_COLS.concepto).value = row.concepto as never;
     if (row.tienda !== undefined) excelRow.getCell(EXPENSE_COLS.tienda).value = row.tienda as never;
     if (row.valor !== undefined) excelRow.getCell(EXPENSE_COLS.valor).value = row.valor as never;
+    if (row.mes !== undefined) excelRow.getCell(EXPENSE_COLS.mes).value = row.mes as never;
   });
 
   const arrayBuffer = await workbook.xlsx.writeBuffer();
@@ -158,6 +165,29 @@ describe('import.parsing', () => {
       });
       const parsed = await parseExcelWorkbook(buffer);
       expect(parsed.incomeRows).toHaveLength(1); // se mantiene para que validateIncomeRow la descarte con motivo
+    });
+
+    it('el mes/año se deriva siempre de "Fecha", nunca de la columna "Mes" (spec.md §4, H1 criterio 2)', async () => {
+      // Reproduce el caso encontrado en el fichero real de Diego: una fila
+      // con Fecha 31/08 pero columna "Mes" = "Septiembre" (no coinciden).
+      // La columna "Mes" no se extrae siquiera (no está en `INCOME_COLS`/
+      // `EXPENSE_COLS` de `import.parsing.ts`), así que da igual lo que
+      // contenga: la fecha del movimiento importado es siempre la de
+      // "Fecha".
+      const buffer = await buildWorkbookBuffer({
+        incomeRows: [
+          { fecha: new Date(Date.UTC(2026, 7, 31)), tipo: 'Otros', concepto: 'Ingreso fin de mes', valor: 10, mes: 'Septiembre' },
+        ],
+        expenseRows: [
+          { fecha: new Date(Date.UTC(2026, 7, 31)), tipo: 'Tarjeta', subtipo: 'Varios', concepto: 'Gasto fin de mes', valor: 5, mes: 'Septiembre' },
+        ],
+      });
+      const parsed = await parseExcelWorkbook(buffer);
+
+      const incomeResult = validateIncomeRow(parsed.incomeRows[0]);
+      const expenseResult = validateExpenseRow(parsed.expenseRows[0]);
+      expect(incomeResult.valid && incomeResult.row.date).toBe('2026-08-31');
+      expect(expenseResult.valid && expenseResult.row.date).toBe('2026-08-31');
     });
 
     it('acepta una celda de importe guardada como texto ("0.89")', async () => {

@@ -220,9 +220,29 @@ describe('Importación de Excel (e2e) — spec 003 H1/H2', () => {
         where: and(eq(transactions.userId, user.id), eq(transactions.concept, 'Venta acciones X')),
       });
       expect(accionesTx?.categoryId).toBe(accionesCategory?.id); // se asoció al alias, no creó "Acciones" nueva
+      // H1 criterio 2: fecha, concepto e importe del ingreso, tal cual el Excel.
+      expect(accionesTx).toMatchObject({ type: 'INCOME', date: '2026-02-01', amount: '300.50', paymentMethod: null });
 
       const allTransactions = await db.query.transactions.findMany({ where: eq(transactions.userId, user.id) });
       expect(allTransactions).toHaveLength(4);
+
+      // H1 criterio 3: el gasto importado lleva fecha, tipo de pago,
+      // categoría, concepto, comercio e importe — y nunca subcategoría (el
+      // Excel no distingue ese nivel, spec.md §4).
+      const comidaCategory = allCategories.find((c) => c.name === 'Comida');
+      const cenaTx = await db.query.transactions.findFirst({
+        where: and(eq(transactions.userId, user.id), eq(transactions.concept, 'Cena')),
+      });
+      expect(cenaTx).toMatchObject({
+        type: 'EXPENSE',
+        date: '2026-02-03',
+        categoryId: comidaCategory?.id,
+        subcategoryId: null,
+        merchant: 'Bar X',
+        amount: '20.00',
+        paymentMethod: 'CARD',
+      });
+      expect(allTransactions.every((t) => t.type !== 'EXPENSE' || t.subcategoryId === null)).toBe(true);
     });
 
     it('las filas inválidas no se importan y aparecen en el resumen con su motivo', async () => {

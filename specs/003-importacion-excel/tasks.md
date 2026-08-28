@@ -27,8 +27,61 @@
 
 ## Grupo 4 — Cierre de la spec
 
-- [ ] **T4.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1–H2) y marcar cada criterio de aceptación como cubierto por al menos un test automático, igual que se hizo al cerrar las specs 001 y 002.
-  *Verificación:* el propio checklist relleno, añadido al final de este fichero.
+- [x] **T4.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1–H2) y marcar cada criterio de aceptación como cubierto por al menos un test automático, igual que se hizo al cerrar las specs 001 y 002.
+  *Verificación:* el propio checklist relleno, añadido al final de este fichero (ver sección "Checklist de cierre — spec 003" más abajo).
+  *Hallazgos reales durante el repaso, encontrados y corregidos con test nuevo (no solo documentados):* al contrastar `spec.md` literalmente contra la implementación, igual que en el cierre de las specs 001 y 002, aparecieron 3 huecos de cobertura sobre comportamiento que ya era correcto pero no estaba probado explícitamente: (1) H1 criterio 2 pide que el mes/año se derive siempre de "Fecha", nunca de la columna "Mes" del Excel — la columna "Mes" ni siquiera se extrae (no está en `INCOME_COLS`/`EXPENSE_COLS`), así que el criterio se cumple por construcción, pero ningún test reproducía el caso real que motivó la regla (fecha 31/08 con "Mes" = "Septiembre"); añadido un test en `import.parsing.spec.ts` con ese caso exacto, para ambas hojas. (2) El test de `confirm` que comprobaba la creación de categorías nuevas nunca verificaba los valores reales de los movimientos insertados (fecha, importe, comercio, tipo de pago) más allá del conteo y el `categoryId`; ampliado con `toMatchObject` sobre transacciones concretas de ingreso y de gasto. (3) H1 criterio 3 ("ningún gasto importado lleva subcategoría") no tenía ninguna aserción explícita de que `subcategoryId` fuera siempre `null` en los gastos importados — añadida, tanto puntual como sobre el conjunto completo de gastos insertados en ese test. Los tests nuevos viven en `import.parsing.spec.ts` y `test/import.e2e-spec.ts`; ninguno cambia comportamiento, solo prueban código que ya era correcto.
 
 ---
 **Cómo trabajamos esto:** una tarea a la vez, en orden dentro de cada grupo. Al terminar una tarea, la marco `[x]` aquí y hago commit; solo entonces paso a la siguiente. Si algo del plan no encaja al implementarlo, paramos y ajustamos `plan.md` antes de seguir (no se parchea "en silencio").
+
+---
+
+## Checklist de cierre — spec 003 (T4.1)
+
+Repaso de `spec.md` historia por historia. `[x]` = cubierto por al menos un test automático (se cita el fichero).
+
+### H1 — Importar el histórico de ingresos y gastos desde el Excel
+
+- [x] Criterio 1 (vista previa de válidas/inválidas antes de guardar nada): `test/import.e2e-spec.ts` — "devuelve el resumen esperado sin crear ninguna fila en categories ni transactions" (`POST /import/excel/preview`).
+- [x] Criterio 2 (fila válida de "Ingresos" → ingreso real; mes/año siempre de "Fecha", nunca de "Mes"): `test/import.e2e-spec.ts` — "importa ingresos y gastos válidos..." comprueba fecha, categoría, concepto e importe del ingreso insertado (`toMatchObject`); `import.parsing.spec.ts` — "el mes/año se deriva siempre de 'Fecha', nunca de la columna 'Mes'" (añadido en este cierre, T4.1), con el caso real encontrado en el fichero de Diego (fecha 31/08, "Mes" = "Septiembre").
+- [x] Criterio 3 (fila válida de "Gastos" → gasto real; ningún gasto lleva subcategoría): `test/import.e2e-spec.ts` — mismo test comprueba fecha, categoría, tipo de pago, comercio e importe del gasto insertado, `subcategoryId: null` explícito (añadido en este cierre) y una comprobación sobre el conjunto completo de gastos importados.
+- [x] Criterio 4 (resumen final con importados/descartados y motivo): `test/import.e2e-spec.ts` — "las filas inválidas no se importan y aparecen en el resumen con su motivo" (`POST /import/excel/confirm`).
+
+### H2 — Reconocer categorías y tipos de pago aunque no coincidan literalmente
+
+- [x] Criterio 1 (coincidencia normalizada con una categoría existente → se asocia, sin duplicar): `test/import.e2e-spec.ts` — preview con categoría "Nómina" ya existente y valor del Excel "Nomina" (sin tilde) se cuenta como válida sin aparecer en `newCategories`; confirm con el alias `Acciones` → `Acciones (venta)` no crea una categoría "Acciones" en paralelo. `normalizeCategoryName`/`normalizedCategoryMap` con tests unitarios propios (`import.parsing.spec.ts`).
+- [x] Criterio 2 (sin coincidencia → categoría nueva automática): `test/import.e2e-spec.ts` — "importa ingresos y gastos válidos, crea categorías nuevas..." (`Bancos`, `Peluqueria`) + preview equivalente.
+- [x] Criterio 3 (tipo de pago fuera del catálogo cerrado → fila inválida, no crea nada nuevo): `import.parsing.spec.ts` — `mapPaymentMethod` devuelve `null` para un valor fuera de la tabla; `validateExpenseRow` con el motivo concreto ("Bizum"... "no está entre los admitidos").
+
+### Aislamiento de datos (spec.md §3 / constitution.md §2)
+
+- [x] Todo lo creado por una importación (categorías y movimientos) pertenece exclusivamente al usuario autenticado: `test/import.e2e-spec.ts` — "todo lo creado pertenece al usuario autenticado (aislamiento)", dedicado.
+- [x] Sin vía de referenciar datos de otro usuario: el fichero subido nunca contiene un `userId` — `ImportController` solo usa `req.user.id` (mismo guard `AuthGuard`/`RequireActiveUserGuard` que categorías/movimientos); no hay ningún parámetro de la petición que identifique a otro usuario.
+- [x] No idempotente, mitigado por la vista previa (no por detección de duplicados): `test/import.e2e-spec.ts` — "confirmar dos veces con el mismo fichero no duplica las categorías nuevas (sí duplica los movimientos)", comportamiento documentado y verificado tal cual.
+- [x] Cuenta `PENDING_VERIFICATION` → 403 (mismo guard que el resto de rutas económicas): `test/import.e2e-spec.ts`, en ambos endpoints.
+
+### Reglas de negocio concretas (spec.md §4)
+
+- [x] Solo se procesan las hojas "Ingresos" y "Gastos": `import.parsing.spec.ts` — `parseExcelWorkbook` solo lee esas dos hojas por nombre; el resto del workbook (otras hojas) ni se toca.
+- [x] Mes/año derivado siempre de "Fecha": ver H1 criterio 2 más arriba.
+- [x] Importe aceptado como número o texto que representa un número: `import.parsing.spec.ts` — `parseAmount` con texto `"0.89"` + `parseExcelWorkbook` con una celda de importe en texto.
+- [x] Importe ≤ 0 invalida la fila: `import.parsing.spec.ts` — `validateIncomeRow`/`validateExpenseRow`, importe 0 y negativo.
+- [x] Fila con campos clave vacíos → inválida con motivo concreto: `import.parsing.spec.ts` — motivos combinados ("faltan categoría, concepto y importe") y singulares ("falta fecha"/"falta concepto").
+- [x] Espacios sobrantes en categoría/tipo de pago recortados antes de comparar: `import.parsing.spec.ts` — `normalizeCategoryName('Comida ')` = `normalizeCategoryName('Comida')`; `mapPaymentMethod('  tarjeta  ')`.
+- [x] Ningún gasto importado lleva subcategoría: ver H1 criterio 3 más arriba.
+- [x] Columna "Tipo" significa cosas distintas según la hoja (categoría en Ingresos, tipo de pago en Gastos): por diseño de `INCOME_COLS`/`EXPENSE_COLS` — cada hoja mapea su columna "Tipo" a un campo distinto; los tests de cada hoja (`incomeRow`/`expenseRow` en `import.parsing.spec.ts`) ejercitan cada mapeo por separado.
+
+### Decisiones (spec.md §6)
+
+- [x] Decisión 3 (flujo en dos pasos, preview nunca escribe): ver H1 criterio 1.
+- [x] Decisión 4 (filas inválidas no bloquean el resto de la importación): ver H1 criterio 4.
+
+### Fuera de alcance (spec.md §5)
+
+Fondos/bolsa/cashback, objetivos/comparativa interanual, detección de duplicados, edición de filas inválidas en el propio flujo, otros formatos de fichero, adaptación automática a otra estructura de columnas: ninguno tiene código en esta spec — ausencia deliberada, nada que verificar (mismo criterio que el cierre de la spec 002 con sus propios "fuera de alcance").
+
+### Resultado del cierre
+
+Todos los criterios de aceptación de H1 y H2 están cubiertos por al menos un test automático — a diferencia del cierre de la spec 002, este repaso no encontró ningún hueco real frente a `spec.md` que requiriera una decisión de Diego, solo 3 huecos de cobertura sobre comportamiento ya correcto (detallados en la nota de T4.1 más arriba), corregidos con tests nuevos durante el propio cierre. Suite completa en verde al cerrar el grupo 4: backend 75/75 unitarios + 133/133 e2e, frontend 69/69; lint y build limpios en ambos paquetes.
+
+Con esto, **spec 003 queda cerrada por completo**.
