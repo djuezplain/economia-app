@@ -65,10 +65,11 @@
 
 ## Grupo 5 — H5 Recuperación de contraseña
 
-- [ ] **T5.1** — Backend: `POST /auth/forgot-password` (siempre 200) y `POST /auth/reset-password` (token de 1h, revoca todas las sesiones al usarse).
-  *Verificación (spec H5):* email inexistente responde igual que uno existente; token de otro usuario falla; tras reset, sesiones antiguas dejan de funcionar.
-- [ ] **T5.2** — Frontend: páginas "olvidé mi contraseña" y "restablecer contraseña".
-  *Verificación:* prueba manual del flujo end-to-end con el email de desarrollo (T1.1).
+- [x] **T5.1** — Backend: `POST /auth/forgot-password` (siempre 200) y `POST /auth/reset-password` (token de 1h, revoca todas las sesiones al usarse).
+  *Verificación (spec H5, `test/auth-password-reset.e2e-spec.ts`, 8 tests):* email inexistente responde exactamente igual (200, mismo mensaje) que uno existente y no crea ningún token; una segunda solicitud invalida el enlace anterior sin usar; token inválido/caducado/ya usado → 400 con el motivo concreto (no hay riesgo de enumeración: el token es un secreto de alta entropía); reset válido cambia la contraseña, marca el token usado y revoca **todas** las sesiones activas anteriores (probado con una sesión real creada antes del reset); test de aislamiento dedicado — el token de reset de un usuario nunca afecta a otro, por construcción (el `userId` sale siempre del propio token, nunca del cliente). Reutiliza `passwordResetEmail` (ya escrita en el grupo 1, T1.1). Probado también manualmente end-to-end con curl. ✅ hecho.
+  *Nota de diseño:* igual que con el login por Google, un reset de contraseña correcto también limpia `failedLoginCount`/`lockedUntil` — es una prueba de identidad tan válida como acertar la contraseña.
+- [x] **T5.2** — Frontend: páginas "olvidé mi contraseña" (`ForgotPasswordPage`) y "restablecer contraseña" (`ResetPasswordPage`), enlazadas desde `LoginPage`.
+  *Verificación:* 6 tests con Testing Library + prueba manual del flujo real (registro → forgot-password → email de dev → reset-password → login con la contraseña nueva, contraseña vieja rechazada) contra Postgres real. ✅ hecho.
 
 ## Grupo 6 — H6 Gestión de sesiones activas
 

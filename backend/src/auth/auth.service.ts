@@ -6,7 +6,7 @@ import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { emailTokens, oauthAccounts, users } from '../db/schema/index.js';
 import { MailService } from '../mail/mail.service.js';
-import { alreadyRegisteredEmail, verificationEmail } from '../mail/templates.js';
+import { alreadyRegisteredEmail, passwordResetEmail, verificationEmail } from '../mail/templates.js';
 import { generateOpaqueToken, hashOpaqueToken } from '../common/tokens.util.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -15,6 +15,7 @@ import type { DeviceInfo } from './sessions.service.js';
 import type { GoogleProfile } from './google/google.strategy.js';
 
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
+const RESET_PASSWORD_TTL_MS = 60 * 60 * 1000; // H5 (spec 001), criterio 1: 1 hora
 
 // H4 (spec 001), criterio 3: 5 intentos fallidos *consecutivos* en 15 minutos.
 const LOGIN_LOCK_THRESHOLD = 5;
@@ -270,6 +271,94 @@ export class AuthService {
       ...tokens,
       user: { id: user.id, email: user.email, name: user.name, status: user.status },
     };
+  }
+
+  /**
+   * H5 (spec 001), criterio 1. Mismo principio de no-enumeración que registro
+   * y reenvío de verificación: la respuesta es siempre igual, exista o no la
+   * cuenta con ese email.
+   */
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const user = await this.db.query.users.findFirst({ where: eq(users.email, email) });
+
+    if (user) {
+      // Invalida cualquier enlace de restablecimiento anterior sin usar: solo el último enviado es válido.
+      await this.db
+        .update(emailTokens)
+        .set({ usedAt: new Date() })
+        .where(
+          and(eq(emailTokens.userId, user.id), eq(emailTokens.type, 'RESET_PASSWORD'), isNull(emailTokens.usedAt)),
+        );
+
+      const { plaintext, hash } = generateOpaqueToken();
+      await this.db.insert(emailTokens).values({
+        userId: user.id,
+        tokenHash: hash,
+        type: 'RESET_PASSWORD',
+        expiresAt: new Date(Date.now() + RESET_PASSWORD_TTL_MS),
+      });
+
+      await this.mail.send(
+        passwordResetEmail({
+          to: user.email,
+          name: user.name,
+          resetUrl: `${this.frontendUrl}/reset-password?token=${plaintext}`,
+        }),
+      );
+    }
+
+    return this.genericResponse();
+  }
+
+  /**
+   * H5 (spec 001), criterio 2. A diferencia de `forgotPassword`, aquí sí se
+   * distingue el motivo del error: el token es un secreto de alta entropía
+   * que solo conoce quien recibió el email, así que no hay riesgo de
+   * enumeración de cuentas al ser específico (mismo principio que
+   * `verifyEmail`). El `userId` sobre el que se actúa sale siempre del propio
+   * token, nunca del cliente — un token de un usuario no puede usarse para
+   * tocar la cuenta de otro, por construcción.
+   */
+  async resetPassword(tokenPlaintext: string, newPassword: string): Promise<{ message: string }> {
+    const tokenHash = hashOpaqueToken(tokenPlaintext);
+
+    const token = await this.db.query.emailTokens.findFirst({
+      where: and(eq(emailTokens.tokenHash, tokenHash), eq(emailTokens.type, 'RESET_PASSWORD')),
+    });
+
+    if (!token) {
+      throw new BadRequestException('Enlace de restablecimiento inválido.');
+    }
+    if (token.usedAt) {
+      throw new BadRequestException('Este enlace ya se ha utilizado.');
+    }
+    if (token.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Este enlace ha caducado. Solicita uno nuevo.');
+    }
+
+    const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({
+          passwordHash,
+          // Un restablecimiento correcto es una prueba de identidad tan
+          // válida como una contraseña acertada: limpia cualquier bloqueo
+          // previo por intentos fallidos sobre esta misma cuenta.
+          failedLoginCount: 0,
+          lockedUntil: null,
+          lastFailedLoginAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, token.userId));
+      await tx.update(emailTokens).set({ usedAt: new Date() }).where(eq(emailTokens.id, token.id));
+    });
+
+    // H5 criterio 2: tras el reset, todas las sesiones activas anteriores se cierran.
+    await this.sessions.revokeAllForUser(token.userId);
+
+    return { message: 'Contraseña restablecida correctamente.' };
   }
 
   private async sendVerificationEmail(userId: string, email: string, name: string): Promise<void> {

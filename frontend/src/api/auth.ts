@@ -47,6 +47,19 @@ export function resendVerification(email: string): Promise<MessageResponse> {
   return api.post<MessageResponse>('/auth/resend-verification', { email });
 }
 
+export function forgotPassword(email: string): Promise<MessageResponse> {
+  return api.post<MessageResponse>('/auth/forgot-password', { email });
+}
+
+export interface ResetPasswordInput {
+  token: string;
+  password: string;
+}
+
+export function resetPassword(input: ResetPasswordInput): Promise<MessageResponse> {
+  return api.post<MessageResponse>('/auth/reset-password', input);
+}
+
 export function login(input: LoginInput): Promise<LoginResponse> {
   // skipAuthRetry: un 401 aquí es "credenciales incorrectas", no un access
   // token caducado — no tiene sentido intentar refrescarlo.

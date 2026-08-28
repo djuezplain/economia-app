@@ -63,6 +63,10 @@ export function LoginPage() {
         </button>
       </form>
 
+      <p>
+        <Link to="/forgot-password">¿Olvidaste tu contraseña?</Link>
+      </p>
+
       {/* Enlace normal, no un manejador de JS: es una navegación completa del
           navegador hacia el backend, que a su vez redirige a Google (H3). */}
       <p>

@@ -6,6 +6,8 @@ import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { ResendVerificationPage } from './pages/ResendVerificationPage';
 import { LoginPage } from './pages/LoginPage';
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 
 function App() {
   return (
@@ -18,6 +20,8 @@ function App() {
           <Route path="/resend-verification" element={<ResendVerificationPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/oauth-callback" element={<OAuthCallbackPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

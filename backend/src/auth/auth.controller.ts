@@ -25,6 +25,8 @@ import { RegisterDto } from './dto/register.dto.js';
 import { VerifyEmailQueryDto } from './dto/verify-email.dto.js';
 import { ResendVerificationDto } from './dto/resend-verification.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { GoogleConfiguredGuard } from './google/google-configured.guard.js';
 import type { GoogleProfile } from './google/google.strategy.js';
 
@@ -83,6 +85,22 @@ export class AuthController {
     );
     res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, refreshCookieOptions());
     return { accessToken };
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RateLimitGuard)
+  // Mismo motivo que en resend-verification: evita usarlo para acosar una
+  // bandeja de entrada o tantear qué emails existen.
+  @RateLimit({ limit: 5, windowMs: 5 * 60 * 1000 })
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.token, dto.password);
   }
 
   @Get('google')
