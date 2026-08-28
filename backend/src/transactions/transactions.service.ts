@@ -3,7 +3,7 @@ import { and, desc, eq, gte, ilike, lte } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { categories, transactions } from '../db/schema/index.js';
-import { average, distinctMonthsCount, groupByCategory, sumAmounts } from './transactions.calculations.js';
+import { average, distinctMonthsCount, groupByCategory, groupBySubcategory, sumAmounts } from './transactions.calculations.js';
 import type { CreateTransactionDto } from './dto/create-transaction.dto.js';
 import type { UpdateTransactionDto } from './dto/update-transaction.dto.js';
 import type { ListTransactionsQueryDto } from './dto/list-transactions-query.dto.js';
@@ -15,6 +15,8 @@ export interface TransactionsSummary {
   total: string;
   averagePerMonth: string | null;
   byCategory: Array<{ categoryId: string; total: string }>;
+  /** H2 criterio 4 (spec.md §2). Solo los gastos con subcategoría entran aquí. */
+  bySubcategory: Array<{ subcategoryId: string; total: string }>;
 }
 
 export interface ListTransactionsResult {
@@ -97,6 +99,7 @@ export class TransactionsService {
         total,
         averagePerMonth: allMatching.length > 0 ? average(total, months) : null,
         byCategory: groupByCategory(allMatching),
+        bySubcategory: groupBySubcategory(allMatching),
       },
     };
   }

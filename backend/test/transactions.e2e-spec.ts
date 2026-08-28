@@ -264,6 +264,9 @@ describe('Movimientos (e2e) — spec 002 H1/H2', () => {
       expect(all.body.summary.total).toBe('2105.30');
       // Los movimientos propios caen en dos meses distintos (2026-07 y 2026-08).
       expect(all.body.summary.averagePerMonth).toBe('1052.65');
+      // H2 criterio 4: desglose por subcategoría — solo el "Depósito" (con
+      // subcategoría) entra; "Bus mensual" (sin subcategoría) no aporta nada aquí.
+      expect(all.body.summary.bySubcategory).toEqual([{ subcategoryId: expenseChild.id, total: '65.30' }]);
 
       const onlyIncome = await request(app.getHttpServer())
         .get('/transactions?type=INCOME')
@@ -321,6 +324,8 @@ describe('Movimientos (e2e) — spec 002 H1/H2', () => {
       expect(res.body.items).toEqual([]);
       expect(res.body.summary.total).toBe('0.00');
       expect(res.body.summary.averagePerMonth).toBeNull();
+      expect(res.body.summary.byCategory).toEqual([]);
+      expect(res.body.summary.bySubcategory).toEqual([]);
     });
   });
 

@@ -23,6 +23,8 @@ export interface TransactionsSummary {
   total: string;
   averagePerMonth: string | null;
   byCategory: Array<{ categoryId: string; total: string }>;
+  // H2 criterio 4 (spec.md §2). Solo los gastos con subcategoría entran aquí.
+  bySubcategory: Array<{ subcategoryId: string; total: string }>;
 }
 
 export interface ListTransactionsResult {

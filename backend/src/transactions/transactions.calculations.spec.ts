@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { average, distinctMonthsCount, groupByCategory, sumAmounts, sumByType } from './transactions.calculations.js';
+import { average, distinctMonthsCount, groupByCategory, groupBySubcategory, sumAmounts, sumByType } from './transactions.calculations.js';
 
 describe('transactions.calculations', () => {
   describe('sumAmounts', () => {
@@ -57,6 +57,25 @@ describe('transactions.calculations', () => {
       expect(result).toHaveLength(2);
       expect(result).toContainEqual({ categoryId: 'cat-1', total: '125.50' });
       expect(result).toContainEqual({ categoryId: 'cat-2', total: '50.00' });
+    });
+  });
+
+  describe('groupBySubcategory', () => {
+    it('agrupa y suma por subcategoryId, ignorando los movimientos sin subcategoría', () => {
+      const transactions = [
+        { subcategoryId: 'sub-1', amount: '30.00' },
+        { subcategoryId: null, amount: '999.00' },
+        { subcategoryId: 'sub-2', amount: '20.00' },
+        { subcategoryId: 'sub-1', amount: '5.50' },
+      ];
+      const result = groupBySubcategory(transactions);
+      expect(result).toHaveLength(2);
+      expect(result).toContainEqual({ subcategoryId: 'sub-1', total: '35.50' });
+      expect(result).toContainEqual({ subcategoryId: 'sub-2', total: '20.00' });
+    });
+
+    it('devuelve una lista vacía si ningún movimiento tiene subcategoría', () => {
+      expect(groupBySubcategory([{ subcategoryId: null, amount: '10.00' }])).toEqual([]);
     });
   });
 });

@@ -77,7 +77,12 @@ const EXPENSE_RESULT: ListTransactionsResult = {
   page: 1,
   limit: 20,
   totalItems: 1,
-  summary: { total: '45.00', averagePerMonth: '45.00', byCategory: [{ categoryId: 'cat-expense-1', total: '45.00' }] },
+  summary: {
+    total: '45.00',
+    averagePerMonth: '45.00',
+    byCategory: [{ categoryId: 'cat-expense-1', total: '45.00' }],
+    bySubcategory: [{ subcategoryId: 'cat-expense-2', total: '45.00' }],
+  },
 };
 
 const EXPENSE_EMPTY_RESULT: ListTransactionsResult = {
@@ -85,7 +90,7 @@ const EXPENSE_EMPTY_RESULT: ListTransactionsResult = {
   page: 1,
   limit: 20,
   totalItems: 0,
-  summary: { total: '0.00', averagePerMonth: null, byCategory: [] },
+  summary: { total: '0.00', averagePerMonth: null, byCategory: [], bySubcategory: [] },
 };
 
 const INCOME_RESULT: ListTransactionsResult = {
@@ -93,7 +98,12 @@ const INCOME_RESULT: ListTransactionsResult = {
   page: 1,
   limit: 20,
   totalItems: 1,
-  summary: { total: '2000.00', averagePerMonth: '2000.00', byCategory: [{ categoryId: 'cat-income-1', total: '2000.00' }] },
+  summary: {
+    total: '2000.00',
+    averagePerMonth: '2000.00',
+    byCategory: [{ categoryId: 'cat-income-1', total: '2000.00' }],
+    bySubcategory: [],
+  },
 };
 
 const INCOME_EMPTY_RESULT: ListTransactionsResult = {
@@ -101,7 +111,7 @@ const INCOME_EMPTY_RESULT: ListTransactionsResult = {
   page: 1,
   limit: 20,
   totalItems: 0,
-  summary: { total: '0.00', averagePerMonth: null, byCategory: [] },
+  summary: { total: '0.00', averagePerMonth: null, byCategory: [], bySubcategory: [] },
 };
 
 describe('MovementsPage', () => {
@@ -159,8 +169,11 @@ describe('MovementsPage', () => {
     expect(screen.getByText(/Total: 45\.00/)).toBeInTheDocument();
     expect(screen.getByText(/Media mensual: 45\.00/)).toBeInTheDocument();
     expect(screen.getByText('Transporte: 45.00')).toBeInTheDocument();
-    // Datos del movimiento: subcategoría, comercio y tipo de pago.
-    expect(screen.getByText(/Gasolina/)).toBeInTheDocument();
+    // Desglose por subcategoría (H2 criterio 4), aparte del desglose por categoría.
+    expect(screen.getByRole('heading', { name: 'Por subcategoría' })).toBeInTheDocument();
+    expect(screen.getByText('Gasolina: 45.00')).toBeInTheDocument();
+    // Datos del movimiento: subcategoría (en el propio listado, no en el resumen), comercio y tipo de pago.
+    expect(screen.getByText(/Gasolina/, { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText(/Repsol/)).toBeInTheDocument();
     expect(screen.getByText(/Tarjeta/, { selector: 'span' })).toBeInTheDocument();
   });

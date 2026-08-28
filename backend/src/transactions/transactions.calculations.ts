@@ -47,3 +47,23 @@ export function groupByCategory(
   }
   return Array.from(totals.entries()).map(([categoryId, total]) => ({ categoryId, total: total.toFixed(2) }));
 }
+
+/**
+ * H2 criterio 4 (spec.md §2): desglose por subcategoría, además de por
+ * categoría — solo los gastos con `subcategoryId` informado entran en el
+ * resultado (un ingreso, o un gasto sin subcategoría, no aporta nada aquí).
+ * Añadida en el cierre de la spec (T4.2): `groupByCategory` agrupaba solo
+ * por `categoryId` desde T2.1, sin desglose por subcategoría — hueco real
+ * frente a `spec.md` encontrado en el checklist de cierre (T4.1) y resuelto
+ * con Diego antes de tocar código (ver `tasks.md`, grupo 4).
+ */
+export function groupBySubcategory(
+  transactions: Array<{ subcategoryId: string | null; amount: string }>,
+): Array<{ subcategoryId: string; total: string }> {
+  const totals = new Map<string, Decimal>();
+  for (const t of transactions) {
+    if (!t.subcategoryId) continue;
+    totals.set(t.subcategoryId, (totals.get(t.subcategoryId) ?? new Decimal(0)).plus(t.amount));
+  }
+  return Array.from(totals.entries()).map(([subcategoryId, total]) => ({ subcategoryId, total: total.toFixed(2) }));
+}

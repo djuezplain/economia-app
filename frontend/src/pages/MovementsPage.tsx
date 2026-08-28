@@ -296,6 +296,21 @@ export function MovementsPage() {
               ))}
             </ul>
           )}
+          {/* H2 criterio 4 (spec.md §2): desglose también por subcategoría — solo
+              hay subcategorías en gastos, así que en ingresos esta lista sale
+              siempre vacía y no se muestra nada. */}
+          {result.summary.bySubcategory.length > 0 && (
+            <>
+              <h3>Por subcategoría</h3>
+              <ul>
+                {result.summary.bySubcategory.map((entry) => (
+                  <li key={entry.subcategoryId}>
+                    {categoryName(entry.subcategoryId)}: {entry.total}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
       )}
 
