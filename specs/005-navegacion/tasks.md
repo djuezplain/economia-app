@@ -16,8 +16,27 @@
 
 ## Grupo 3 — Cierre de la spec
 
-- [ ] **T3.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1-H2) y marcar cada criterio de aceptación como cubierto por al menos un test automático, igual que en el cierre de las specs 001-004 y 006.
+- [x] **T3.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1-H2) y marcar cada criterio de aceptación como cubierto por al menos un test automático, igual que en el cierre de las specs 001-004.
   *Verificación:* el propio checklist relleno, añadido al final de este fichero.
+  *Hallazgo real durante el repaso, encontrado y corregido con test nuevo (no solo documentado):* al contrastar `spec.md` H1 criterio 4 literalmente contra `AppLayout.test.tsx`, faltaba el caso "mientras se comprueba la sesión (`isLoading`) tampoco se muestra el menú" — el código ya lo hacía bien desde T1.1 (`showSidebar = !isLoading && isAuthenticated`, no solo `isAuthenticated`), pero ningún test lo demostraba; el test que había ("sin sesión no muestra el menú") solo cubría el estado ya resuelto de "no autenticado", nunca el estado transitorio de "todavía comprobando, pero acabará habiendo sesión". Añadido: "mientras se comprueba la sesión, no muestra el menú lateral (evita parpadeo, H1 criterio 4)". No cambia comportamiento, solo prueba código que ya era correcto. Suite tras el cierre: 86/86 tests frontend (16 ficheros); lint y build limpios.
 
 ---
 **Cómo trabajamos esto:** una tarea a la vez, en orden dentro de cada grupo. Al terminar una tarea, la marco `[x]` aquí y hago commit; solo entonces paso a la siguiente. Si algo del plan no encaja al implementarlo, paramos y ajustamos `plan.md` antes de seguir (no se parchea "en silencio").
+
+---
+
+## Checklist de cierre — spec 005 (T3.1)
+
+Repaso de `spec.md` historia por historia. `[x]` = cubierto por al menos un test automático (se cita el fichero), o garantizado por construcción (se explica por qué).
+
+### H1 — Moverme entre secciones sin quedarme atrapado
+
+- [x] Criterio 1 (menú lateral siempre presente en las 8 páginas autenticadas, con enlaces a las 7 secciones, "Inicio" y "Cerrar sesión"): `AppLayout.test.tsx` — "con sesión muestra los 8 enlaces y el botón de cerrar sesión" prueba que `AppLayout` (el componente que envuelve las 8 rutas) los renderiza todos. Que las 8 páginas reales están efectivamente envueltas por `AppLayout` en `App.tsx` se verificó leyendo el propio `App.tsx` tras T1.1 (las 8 rutas listadas dentro de `<Route element={<AppLayout />}>`, exactamente las que enumera este criterio) — no hay un test de integración de `App.tsx` completo (el proyecto no tiene ninguno; tampoco lo tenía para enlazar `/goals` en spec 004), coherente con el resto del proyecto.
+- [x] Criterio 2 (sección activa distinguible visualmente, sin breadcrumb aparte): `AppLayout.test.tsx` — "marca como activo solo el enlace de la ruta actual...", vía `aria-current="page"` (`NavLink`, sin `useState` propio). No se comprueba el color exacto (CSS) por test automático, mismo criterio que el resto del proyecto para detalles puramente visuales.
+- [x] Criterio 3 (plegar/desplegar con un botón): `AppLayout.test.tsx` — "el botón de plegar oculta los enlaces y el de cerrar sesión, y se puede desplegar de nuevo".
+- [x] Criterio 4 (sin menú en páginas sin sesión): dos mecanismos distintos, los dos verificados. (a) Las páginas sin sesión (login, registro, verificar email, reenviar verificación, recuperar/resetear contraseña, callback OAuth) nunca están envueltas por `AppLayout` en `App.tsx` — quedan fuera de `<Route element={<AppLayout />}>` (verificado leyendo `App.tsx`), así que `AppLayout` ni se monta ahí, sea cual sea el estado de sesión. (b) Home sí está envuelta por `AppLayout` y es accesible sin sesión — para ese caso, `AppLayout.test.tsx` prueba "sin sesión no muestra el menú lateral" y, añadido en este cierre, "mientras se comprueba la sesión, no muestra el menú lateral (evita parpadeo)".
+
+### H2 — Home deja de ser el único punto de navegación
+
+- [x] Criterio 1 (Home deja de mostrar el listado de enlaces; conserva saludo, aviso de cuenta sin verificar; el botón de cerrar sesión pasa al menú lateral): `HomePage.test.tsx` — "con sesión activa muestra el nombre del usuario..." comprueba explícitamente que el botón "Cerrar sesión" ya NO está en `HomePage` y que el saludo sigue ahí; "con la cuenta sin verificar, muestra un aviso persistente..." (sin cambios, sigue en verde). El propio botón trasladado se prueba en `AppLayout.test.tsx` — "pulsar 'Cerrar sesión' llama a logout".
+- [x] Criterio 2 (enlaces "Crear cuenta"/"Iniciar sesión" se mantienen en Home sin sesión): `HomePage.test.tsx` — "muestra el título de la aplicación y enlaces a crear cuenta e iniciar sesión sin sesión activa" (sin cambios, sigue en verde).

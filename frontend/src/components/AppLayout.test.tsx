@@ -65,6 +65,18 @@ describe('AppLayout', () => {
     expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
   });
 
+  it('mientras se comprueba la sesión, no muestra el menú lateral (evita parpadeo, H1 criterio 4)', () => {
+    // Con sesión real pendiente de confirmar (el refresco silencioso de
+    // AuthProvider todavía no se ha resuelto): `isLoading` sigue siendo
+    // `true` justo tras montar, aunque acabará habiendo sesión — el menú no
+    // debe aparecer y desaparecer de golpe (`showSidebar` exige
+    // `!isLoading`, no solo `isAuthenticated`).
+    mockLoggedIn();
+    renderLayout();
+
+    expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
+  });
+
   it('con sesión muestra los 8 enlaces y el botón de cerrar sesión', async () => {
     mockLoggedIn();
     renderLayout();
