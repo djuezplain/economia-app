@@ -22,6 +22,13 @@
       "when": 1787897802367,
       "tag": "0002_aromatic_ogun",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787898975664,
+      "tag": "0003_easy_winter_soldier",
+      "breakpoints": true
     }
   ]
 }

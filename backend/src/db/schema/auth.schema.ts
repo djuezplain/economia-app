@@ -24,14 +24,21 @@ export const emailTokenTypeEnum = pgEnum('email_token_type', [
 ]);
 // Por qué se revocó una sesión (grupo 6, H6): distingue una rotación normal
 // de refresh token (`ROTATED`) de un cierre de sesión legítimo iniciado por
-// el propio usuario (`LOGOUT`, `USER_REVOKED`, `PASSWORD_RESET`). Solo la
-// reutilización de una sesión marcada `ROTATED` es señal real de robo — ver
-// `SessionsService.rotate()` y la nota de implementación en constitution.md.
+// el propio usuario (`LOGOUT`, `USER_REVOKED`, `PASSWORD_RESET`,
+// `PASSWORD_CHANGED`). Solo la reutilización de una sesión marcada `ROTATED`
+// es señal real de robo — ver `SessionsService.rotate()` y la nota de
+// implementación en constitution.md.
+// `PASSWORD_RESET` (flujo "olvidé mi contraseña", sin sesión) y
+// `PASSWORD_CHANGED` (grupo 7, H7: cambio de contraseña estando ya
+// autenticado) se guardan como motivos distintos aunque el efecto inmediato
+// sea el mismo (revocar todo) — son eventos distintos de cara a una futura
+// auditoría (`audit_logs`, grupo 9).
 export const sessionRevokedReasonEnum = pgEnum('session_revoked_reason', [
   'ROTATED',
   'LOGOUT',
   'USER_REVOKED',
   'PASSWORD_RESET',
+  'PASSWORD_CHANGED',
   'REUSE_DETECTED',
 ]);
 

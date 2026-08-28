@@ -9,6 +9,7 @@ import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SessionsPage } from './pages/SessionsPage';
+import { ProfilePage } from './pages/ProfilePage';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/sessions" element={<SessionsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

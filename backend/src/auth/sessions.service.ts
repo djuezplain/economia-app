@@ -34,7 +34,13 @@ export interface SessionSummary {
  * pestaña que aún no se ha enterado del logout hecho en otra) no debe
  * desencadenar la respuesta de "revocar todo lo demás". Ver `rotate()`.
  */
-export type SessionRevokedReason = 'ROTATED' | 'LOGOUT' | 'USER_REVOKED' | 'PASSWORD_RESET' | 'REUSE_DETECTED';
+export type SessionRevokedReason =
+  | 'ROTATED'
+  | 'LOGOUT'
+  | 'USER_REVOKED'
+  | 'PASSWORD_RESET'
+  | 'PASSWORD_CHANGED'
+  | 'REUSE_DETECTED';
 
 /**
  * Toda la gestión de `sessions` (creación, rotación, revocación) vive aquí,

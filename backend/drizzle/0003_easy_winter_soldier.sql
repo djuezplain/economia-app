@@ -1,0 +1,1 @@
+ALTER TYPE "public"."session_revoked_reason" ADD VALUE 'PASSWORD_CHANGED' BEFORE 'REUSE_DETECTED';

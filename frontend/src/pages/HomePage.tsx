@@ -14,7 +14,7 @@ export function HomePage() {
       {!isLoading && isAuthenticated && (
         <p>
           {user ? `Sesión iniciada como ${user.name}.` : 'Sesión iniciada.'}{' '}
-          <Link to="/sessions">Dispositivos y sesiones</Link> ·{' '}
+          <Link to="/profile">Tu perfil</Link> · <Link to="/sessions">Dispositivos y sesiones</Link> ·{' '}
           <button type="button" onClick={() => void logout()}>
             Cerrar sesión
           </button>

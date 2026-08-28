@@ -82,10 +82,12 @@
 
 ## Grupo 7 — H7 Perfil
 
-- [ ] **T7.1** — Backend: `GET/PATCH /users/me`, `POST /users/me/change-password` (requiere contraseña actual).
-  *Verificación:* cambiar contraseña sin la actual correcta falla; con la correcta, funciona y (opcional) cierra otras sesiones.
-- [ ] **T7.2** — Frontend: página de perfil (nombre, moneda, idioma, cambio de contraseña).
-  *Verificación:* prueba manual.
+- [x] **T7.1** — Backend: `GET/PATCH /users/me`, `POST /users/me/change-password` (requiere contraseña actual).
+  *Verificación (`test/users-profile.e2e-spec.ts`, 10 tests):* sin autenticar, `GET`/`PATCH`/`change-password` → 401; `GET` devuelve el perfil propio sin `passwordHash`; `PATCH` actualiza parcialmente (solo los campos enviados, el resto no se toca) y rechaza una moneda con formato inválido (400) sin modificar la fila; intentar mandar `email` en el `PATCH` → 400 (no está en el DTO, y `forbidNonWhitelisted` del `ValidationPipe` global lo rechaza en vez de ignorarlo en silencio); `change-password` con la contraseña actual incorrecta → 401 y no cambia nada (la vieja sigue sirviendo para login); con la actual correcta → cambia la contraseña, la vieja deja de servir, la nueva sí, y **revoca todas las sesiones activas, incluida la que hizo el cambio** (verificado con dos sesiones simultáneas); una cuenta sin contraseña (solo Google) → 400 en vez de comparar contra `null`. Suite completa en verde: 56/56 e2e + 8/8 unitarios. Probado también manualmente end-to-end con curl contra Postgres real (incluye la revocación de sesión). ✅ hecho.
+  *Nota de diseño:* se añadió `PASSWORD_CHANGED` como motivo de revocación distinto de `PASSWORD_RESET` (columna `sessions.revoked_reason`, grupo 6) — mismo efecto inmediato (revocar todo), pero son eventos distintos de cara a una futura auditoría (cambiar la contraseña estando ya autenticado y confirmando la actual, frente a restablecerla vía email sin sesión). Se decidió, por consistencia con H5 y como opción más segura por defecto, que el cambio de contraseña revoque también la sesión que hizo la petición — tasks.md ya marcaba esto como "(opcional)".
+- [x] **T7.2** — Frontend: página de perfil (nombre, moneda, idioma, cambio de contraseña), enlazada desde `HomePage`.
+  *Verificación:* 7 tests con Testing Library (`ProfilePage.test.tsx`) + prueba manual end-to-end contra el backend en marcha (login → ver perfil → cambiar moneda/idioma → cambiar contraseña → sesión anterior revocada → login con la contraseña nueva). Lint/build en verde en ambos paquetes. ✅ hecho.
+  *Nota:* tras un cambio de contraseña correcto, la página cierra la sesión local de inmediato (en vez de esperar a que el próximo refresco automático falle de forma confusa) y muestra un aviso explícito antes de enlazar a login. La primera versión de esta pantalla tenía un bug encontrado por su propio test: al comprobar `!isAuthenticated` antes que el aviso de "contraseña cambiada", el cierre de sesión local (deliberado) hacía que se mostrara el mensaje genérico de "inicia sesión" en vez de la confirmación — corregido reordenando las comprobaciones.
 
 ## Grupo 8 — H8 Exportar y eliminar cuenta (RGPD)
 
