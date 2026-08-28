@@ -7,7 +7,7 @@ export function HomePage() {
   return (
     <main>
       <h1>App de Gestión de Economía Personal</h1>
-      <p>En construcción — feature 001: autenticación.</p>
+      <p>En construcción — spec 002: ingresos, gastos y dashboard mensual.</p>
 
       {isLoading && <p>Comprobando tu sesión…</p>}
 
@@ -15,12 +15,10 @@ export function HomePage() {
         <>
           {user?.status === 'PENDING_VERIFICATION' && (
             // H2 (spec 001), criterio 3: no bloquea el acceso (se puede
-            // iniciar sesión igualmente), pero avisa de forma persistente —
-            // esta app todavía no tiene datos económicos que bloquear
-            // (specs 002+), así que el "no puedes crear ni ver datos
-            // económicos" del criterio no tiene todavía dónde aplicarse en
-            // la UI; el guard del backend (RequireActiveUserGuard) ya está
-            // listo para cuando existan esas rutas.
+            // iniciar sesión igualmente), pero avisa de forma persistente.
+            // Desde spec 002 grupo 1 ya hay una ruta real de datos
+            // económicos (categorías) protegida por `RequireActiveUserGuard`
+            // — este aviso deja de ser solo informativo.
             <p role="alert">
               Todavía no has verificado tu email. <Link to="/resend-verification">Reenviar el enlace</Link>
             </p>
@@ -28,6 +26,7 @@ export function HomePage() {
           <p>
             {user ? `Sesión iniciada como ${user.name}.` : 'Sesión iniciada.'}{' '}
             <Link to="/profile">Tu perfil</Link> · <Link to="/sessions">Dispositivos y sesiones</Link> ·{' '}
+            <Link to="/categories">Categorías</Link> ·{' '}
             <button type="button" onClick={() => void logout()}>
               Cerrar sesión
             </button>

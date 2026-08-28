@@ -10,6 +10,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SessionsPage } from './pages/SessionsPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { CategoriesPage } from './pages/CategoriesPage';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/categories" element={<CategoriesPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
