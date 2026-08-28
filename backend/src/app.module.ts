@@ -7,6 +7,7 @@ import { HealthController } from './health/health.controller.js';
 import { envValidationSchema } from './config/env.validation.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
+import { CategoriesModule } from './categories/categories.module.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { UsersModule } from './users/users.module.js';
     DbModule,
     AuthModule,
     UsersModule,
+    CategoriesModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],
