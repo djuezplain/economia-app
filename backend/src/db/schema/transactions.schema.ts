@@ -27,6 +27,13 @@ export const paymentMethodEnum = pgEnum('payment_method', [
   'TRANSFER',
 ]);
 
+// Alias reutilizable del enum — hasta spec 003 (importación) cada sitio
+// repetía la unión literal a mano (dto/create-transaction.dto.ts,
+// dto/update-transaction.dto.ts); se añade aquí para que
+// `import/import.parsing.ts` no vuelva a declararla por su cuenta. No
+// cambia ningún tipo existente, solo evita una cuarta repetición.
+export type PaymentMethod = (typeof paymentMethodEnum.enumValues)[number];
+
 // --- Tables (ver specs/002-movimientos-dashboard/plan.md §1) ------------
 
 export const categories = pgTable(
