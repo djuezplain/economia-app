@@ -1,6 +1,23 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { ArrowLeftRight, FileUp, Home, LayoutDashboard, LogOut, Monitor, Tags, Target, User } from 'lucide-react';
 import { useAuth } from '../auth/auth-context';
+
+// Spec 007 (mejoras visuales), H5 / plan.md §5. Un icono por sección del
+// menú lateral (spec 005) — decorativo, el nombre accesible del enlace
+// sigue siendo `label` (el texto visible, o `aria-label` con el menú
+// plegado, T6.2). `end` solo hace falta en "Inicio" (mismo motivo que
+// `AppLayout` original: sin él, "/" quedaría activo en cualquier ruta).
+const NAV_ITEMS = [
+  { to: '/', end: true, label: 'Inicio', Icon: Home },
+  { to: '/categories', label: 'Categorías', Icon: Tags },
+  { to: '/movements', label: 'Ingresos y gastos', Icon: ArrowLeftRight },
+  { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+  { to: '/import', label: 'Importar Excel', Icon: FileUp },
+  { to: '/goals', label: 'Objetivos y presupuestos', Icon: Target },
+  { to: '/profile', label: 'Tu perfil', Icon: User },
+  { to: '/sessions', label: 'Dispositivos y sesiones', Icon: Monitor },
+] as const;
 
 /**
  * Spec 005 (navegación), H1/H2. Ruta de layout (envuelve las 8 páginas
@@ -28,35 +45,16 @@ export function AppLayout() {
           </button>
           {!isCollapsed && (
             <ul>
-              <li>
-                <NavLink to="/" end>
-                  Inicio
-                </NavLink>
-              </li>
-              <li>
-                <NavLink to="/categories">Categorías</NavLink>
-              </li>
-              <li>
-                <NavLink to="/movements">Ingresos y gastos</NavLink>
-              </li>
-              <li>
-                <NavLink to="/dashboard">Dashboard</NavLink>
-              </li>
-              <li>
-                <NavLink to="/import">Importar Excel</NavLink>
-              </li>
-              <li>
-                <NavLink to="/goals">Objetivos y presupuestos</NavLink>
-              </li>
-              <li>
-                <NavLink to="/profile">Tu perfil</NavLink>
-              </li>
-              <li>
-                <NavLink to="/sessions">Dispositivos y sesiones</NavLink>
-              </li>
+              {NAV_ITEMS.map(({ to, end, label, Icon }) => (
+                <li key={to}>
+                  <NavLink to={to} end={end}>
+                    <Icon aria-hidden="true" size={18} /> {label}
+                  </NavLink>
+                </li>
+              ))}
               <li>
                 <button type="button" onClick={() => void logout()}>
-                  Cerrar sesión
+                  <LogOut aria-hidden="true" size={18} /> Cerrar sesión
                 </button>
               </li>
             </ul>

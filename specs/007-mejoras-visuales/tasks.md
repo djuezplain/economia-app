@@ -33,7 +33,7 @@
 
 ## Grupo 6 — H5: iconos de `lucide-react` en el menú lateral
 
-- [ ] **T6.1** — `npm install lucide-react` en `frontend/`. `AppLayout.tsx`: array `NAV_ITEMS` con icono por sección (`plan.md` §5); cada `NavLink` renderiza `<Icon aria-hidden="true" />` + `<span>{label}</span>`. Botón "Cerrar sesión" recibe el icono `LogOut` con el mismo tratamiento.
+- [x] **T6.1** — `npm install lucide-react` en `frontend/`. `AppLayout.tsx`: array `NAV_ITEMS` con icono por sección (`plan.md` §5); cada `NavLink` renderiza `<Icon aria-hidden="true" />` + `<span>{label}</span>`. Botón "Cerrar sesión" recibe el icono `LogOut` con el mismo tratamiento.
   *Verificación (planeada, ampliando `AppLayout.test.tsx`):* con el menú desplegado, los 8 enlaces y el botón de cerrar sesión siguen siendo accesibles por su nombre exactamente igual que hoy (regresión del test ya existente, sin cambios de comportamiento en este estado) — solo se añade que cada uno tiene ahora un icono (`container.querySelector('svg')` dentro del enlace/botón).
 
 - [ ] **T6.2** — `AppLayout.tsx`: con el menú plegado, el `<ul>` deja de ocultarse por completo — cada `<NavLink>`/el botón de cerrar sesión oculta visualmente su `<span>` de texto (clase `sr-only`, nueva en `index.css`) y añade `aria-label`/`title` con el nombre completo (`plan.md` §5).

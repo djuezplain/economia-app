@@ -77,7 +77,7 @@ describe('AppLayout', () => {
     expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
   });
 
-  it('con sesión muestra los 8 enlaces y el botón de cerrar sesión', async () => {
+  it('con sesión muestra los 8 enlaces y el botón de cerrar sesión, cada uno con su icono (H5, spec 007)', async () => {
     mockLoggedIn();
     renderLayout();
 
@@ -92,10 +92,14 @@ describe('AppLayout', () => {
       'Tu perfil',
       'Dispositivos y sesiones',
     ]) {
-      expect(screen.getByRole('link', { name })).toBeInTheDocument();
+      const link = screen.getByRole('link', { name });
+      expect(link).toBeInTheDocument();
+      expect(link.querySelector('svg')).toBeInTheDocument();
     }
     expect(nav).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
+    const logoutButton = screen.getByRole('button', { name: 'Cerrar sesión' });
+    expect(logoutButton).toBeInTheDocument();
+    expect(logoutButton.querySelector('svg')).toBeInTheDocument();
   });
 
   it('marca como activo solo el enlace de la ruta actual, incluido "Inicio" solo en la home', async () => {
