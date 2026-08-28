@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { AppLayout } from './components/AppLayout';
+import { MovementsLayout } from './components/MovementsLayout';
 import { HomePage } from './pages/HomePage';
 import { RegisterPage } from './pages/RegisterPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
@@ -12,7 +13,9 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SessionsPage } from './pages/SessionsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { CategoriesPage } from './pages/CategoriesPage';
-import { MovementsPage } from './pages/MovementsPage';
+import { MovementsListPage } from './pages/MovementsListPage';
+import { MovementsSummaryPage } from './pages/MovementsSummaryPage';
+import { RegisterMovementPage } from './pages/RegisterMovementPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ImportPage } from './pages/ImportPage';
 import { GoalsPage } from './pages/GoalsPage';
@@ -27,7 +30,14 @@ function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/categories" element={<CategoriesPage />} />
-            <Route path="/movements" element={<MovementsPage />} />
+            {/* Spec 006 (páginas de movimientos): "Ingresos y gastos" pasa
+                a ser 3 sub-páginas con su propia sub-navegación, plan.md §1. */}
+            <Route path="/movements" element={<MovementsLayout />}>
+              <Route index element={<MovementsListPage />} />
+              <Route path="summary" element={<MovementsSummaryPage />} />
+              <Route path="register" element={<RegisterMovementPage />} />
+              <Route path="register/:id" element={<RegisterMovementPage />} />
+            </Route>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/goals" element={<GoalsPage />} />

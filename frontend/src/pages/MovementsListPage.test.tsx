@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MovementsPage } from './MovementsPage';
+import { MovementsListPage } from './MovementsListPage';
 import { AuthProvider } from '../auth/AuthContext';
 import * as authApi from '../api/auth';
 import * as usersApi from '../api/users';
@@ -106,15 +106,7 @@ const INCOME_RESULT: ListTransactionsResult = {
   },
 };
 
-const INCOME_EMPTY_RESULT: ListTransactionsResult = {
-  items: [],
-  page: 1,
-  limit: 20,
-  totalItems: 0,
-  summary: { total: '0.00', averagePerMonth: null, byCategory: [], bySubcategory: [] },
-};
-
-describe('MovementsPage', () => {
+describe('MovementsListPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue({
@@ -132,8 +124,11 @@ describe('MovementsPage', () => {
   function renderPage() {
     return render(
       <AuthProvider>
-        <MemoryRouter>
-          <MovementsPage />
+        <MemoryRouter initialEntries={['/movements']}>
+          <Routes>
+            <Route path="/movements" element={<MovementsListPage />} />
+            <Route path="/movements/register/:id" element={<h1>Página de registro (destino de la navegación)</h1>} />
+          </Routes>
         </MemoryRouter>
       </AuthProvider>,
     );
@@ -158,7 +153,7 @@ describe('MovementsPage', () => {
     expect(listTransactionsSpy).not.toHaveBeenCalled();
   });
 
-  it('con sesión activa, lista los gastos por defecto junto con el resumen', async () => {
+  it('con sesión activa, lista los gastos por defecto (sin resumen, eso vive en MovementsSummaryPage)', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     mockCategoriesApi();
     vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(EXPENSE_RESULT);
@@ -166,24 +161,17 @@ describe('MovementsPage', () => {
     renderPage();
 
     expect(await screen.findByText('Depósito gasolina')).toBeInTheDocument();
-    expect(screen.getByText(/Total: 45\.00/)).toBeInTheDocument();
-    expect(screen.getByText(/Media mensual: 45\.00/)).toBeInTheDocument();
-    expect(screen.getByText('Transporte: 45.00')).toBeInTheDocument();
-    // Desglose por subcategoría (H2 criterio 4), aparte del desglose por categoría.
-    expect(screen.getByRole('heading', { name: 'Por subcategoría' })).toBeInTheDocument();
-    expect(screen.getByText('Gasolina: 45.00')).toBeInTheDocument();
-    // Datos del movimiento: subcategoría (en el propio listado, no en el resumen), comercio y tipo de pago.
-    expect(screen.getByText(/Gasolina/, { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText(/Repsol/)).toBeInTheDocument();
     expect(screen.getByText(/Tarjeta/, { selector: 'span' })).toBeInTheDocument();
+    expect(screen.queryByText(/Total:/)).not.toBeInTheDocument();
   });
 
   it('cambia el selector a ingresos y recarga el listado filtrado por ese tipo', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     mockCategoriesApi();
-    const listSpy = vi.spyOn(transactionsApi, 'listTransactions').mockImplementation(async (filters = {}) =>
-      filters.type === 'INCOME' ? INCOME_RESULT : EXPENSE_RESULT,
-    );
+    const listSpy = vi
+      .spyOn(transactionsApi, 'listTransactions')
+      .mockImplementation(async (filters = {}) => (filters.type === 'INCOME' ? INCOME_RESULT : EXPENSE_RESULT));
 
     renderPage();
     await screen.findByText('Depósito gasolina');
@@ -192,125 +180,19 @@ describe('MovementsPage', () => {
 
     expect(await screen.findByText('Nómina agosto')).toBeInTheDocument();
     await waitFor(() => expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'INCOME' })));
-    expect(screen.getByText(/Total: 2000\.00/)).toBeInTheDocument();
   });
 
-  it('crea un ingreso nuevo y aparece en la lista', async () => {
-    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
-    mockCategoriesApi();
-    let incomeListCalls = 0;
-    vi.spyOn(transactionsApi, 'listTransactions').mockImplementation(async (filters = {}) => {
-      if (filters.type !== 'INCOME') return EXPENSE_EMPTY_RESULT;
-      incomeListCalls += 1;
-      return incomeListCalls === 1 ? INCOME_EMPTY_RESULT : INCOME_RESULT;
-    });
-    const createSpy = vi.spyOn(transactionsApi, 'createTransaction').mockResolvedValue(INCOME_TX);
-
-    renderPage();
-    await screen.findByText('No hay movimientos con estos filtros.');
-
-    await userEvent.click(screen.getByRole('radio', { name: 'Ingresos' }));
-
-    const categorySelect = screen.getByLabelText('Categoría', { selector: '#categoryId' });
-    await waitFor(() => expect(within(categorySelect).getByText('Nómina')).toBeInTheDocument());
-    await userEvent.selectOptions(categorySelect, 'cat-income-1');
-    await userEvent.type(screen.getByLabelText('Concepto'), 'Nómina agosto');
-    await userEvent.type(screen.getByLabelText('Importe'), '2000.00');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }));
-
-    await waitFor(() =>
-      expect(createSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'INCOME',
-          categoryId: 'cat-income-1',
-          concept: 'Nómina agosto',
-          amount: '2000.00',
-          subcategoryId: undefined,
-          merchant: undefined,
-          paymentMethod: undefined,
-        }),
-      ),
-    );
-    expect(await screen.findByText('Nómina agosto')).toBeInTheDocument();
-  });
-
-  it('crea un gasto con subcategoría, comercio y tipo de pago', async () => {
-    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
-    mockCategoriesApi();
-    vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(EXPENSE_EMPTY_RESULT);
-    const createSpy = vi.spyOn(transactionsApi, 'createTransaction').mockResolvedValue(EXPENSE_TX);
-
-    renderPage();
-    await screen.findByText('No hay movimientos con estos filtros.');
-
-    const categorySelect = screen.getByLabelText('Categoría', { selector: '#categoryId' });
-    await waitFor(() => expect(within(categorySelect).getByText('Transporte')).toBeInTheDocument());
-    await userEvent.selectOptions(categorySelect, 'cat-expense-1');
-
-    const subcategorySelect = await screen.findByLabelText('Subcategoría (opcional)');
-    await userEvent.selectOptions(subcategorySelect, 'cat-expense-2');
-
-    await userEvent.type(screen.getByLabelText('Concepto'), 'Depósito gasolina');
-    await userEvent.type(screen.getByLabelText('Comercio (opcional)'), 'Repsol');
-    await userEvent.type(screen.getByLabelText('Importe'), '45.00');
-    await userEvent.selectOptions(screen.getByLabelText('Tipo de pago (opcional)'), 'CARD');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }));
-
-    await waitFor(() =>
-      expect(createSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'EXPENSE',
-          categoryId: 'cat-expense-1',
-          subcategoryId: 'cat-expense-2',
-          concept: 'Depósito gasolina',
-          merchant: 'Repsol',
-          amount: '45.00',
-          paymentMethod: 'CARD',
-        }),
-      ),
-    );
-  });
-
-  it('edita un movimiento existente', async () => {
+  it('"Editar" navega a /movements/register/:id, no abre nada inline', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     mockCategoriesApi();
     vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(EXPENSE_RESULT);
-    const updateSpy = vi.spyOn(transactionsApi, 'updateTransaction').mockResolvedValue({
-      ...EXPENSE_TX,
-      concept: 'Depósito gasolina (editado)',
-    });
 
     renderPage();
     await screen.findByText('Depósito gasolina');
 
     await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
 
-    expect(await screen.findByRole('heading', { name: 'Editar movimiento' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Importe')).toHaveValue('45.00');
-
-    const conceptInput = screen.getByLabelText('Concepto');
-    await userEvent.clear(conceptInput);
-    await userEvent.type(conceptInput, 'Depósito gasolina (editado)');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
-
-    await waitFor(() =>
-      expect(updateSpy).toHaveBeenCalledWith(
-        'tx-1',
-        expect.objectContaining({
-          concept: 'Depósito gasolina (editado)',
-          categoryId: 'cat-expense-1',
-          subcategoryId: 'cat-expense-2',
-          merchant: 'Repsol',
-          amount: '45.00',
-          paymentMethod: 'CARD',
-        }),
-      ),
-    );
-    // Tras guardar, vuelve al modo de creación.
-    expect(await screen.findByRole('heading', { name: 'Registrar gasto' })).toBeInTheDocument();
+    expect(await screen.findByText('Página de registro (destino de la navegación)')).toBeInTheDocument();
   });
 
   it('elimina un movimiento y lo quita de la lista', async () => {
@@ -340,9 +222,7 @@ describe('MovementsPage', () => {
     await userEvent.type(screen.getByLabelText('Hasta'), '2026-08-31');
 
     await waitFor(() =>
-      expect(listSpy).toHaveBeenLastCalledWith(
-        expect.objectContaining({ type: 'EXPENSE', dateFrom: '2026-08-01', dateTo: '2026-08-31' }),
-      ),
+      expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'EXPENSE', dateFrom: '2026-08-01', dateTo: '2026-08-31' })),
     );
   });
 });
