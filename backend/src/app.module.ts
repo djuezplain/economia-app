@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module.js';
 import { CategoriesModule } from './categories/categories.module.js';
 import { TransactionsModule } from './transactions/transactions.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { ImportModule } from './import/import.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { DashboardModule } from './dashboard/dashboard.module.js';
     CategoriesModule,
     TransactionsModule,
     DashboardModule,
+    ImportModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

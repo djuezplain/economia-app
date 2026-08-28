@@ -215,6 +215,26 @@ export function mapPaymentMethod(raw: string): PaymentMethod | null {
   return PAYMENT_METHOD_MAP[normalizeText(raw)] ?? null;
 }
 
+/**
+ * H2 criterio 1 (spec.md §2): índice de categorías ya existentes del
+ * usuario, listo para comparar contra el `categoryName` ya normalizado de
+ * una fila validada (`ValidatedIncomeRow`/`ValidatedExpenseRow`). Función
+ * pura — quien llama es responsable de pasar solo las categorías del tipo
+ * (INCOME/EXPENSE) y usuario correctos; esta función no lo comprueba, para
+ * no acoplar `import.parsing.ts` a la forma exacta de la fila de la base
+ * de datos, solo a que tenga `name`. Si hubiera nombres duplicados tras
+ * normalizar (no debería, pero un usuario podría haber creado dos
+ * categorías que solo difieren en tildes), gana la primera.
+ */
+export function normalizedCategoryMap<T extends { name: string }>(categories: T[]): Map<string, T> {
+  const map = new Map<string, T>();
+  for (const category of categories) {
+    const key = normalizeCategoryName(category.name);
+    if (!map.has(key)) map.set(key, category);
+  }
+  return map;
+}
+
 // --- Coerción de celdas (plan.md §4, §6) ----------------------------------
 
 /**

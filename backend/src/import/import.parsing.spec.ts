@@ -4,6 +4,7 @@ import {
   InvalidWorkbookError,
   mapPaymentMethod,
   normalizeCategoryName,
+  normalizedCategoryMap,
   parseAmount,
   parseDate,
   parseExcelWorkbook,
@@ -369,6 +370,27 @@ describe('import.parsing', () => {
     it('importe 0 o negativo invalida la fila', () => {
       expect(validateExpenseRow(expenseRow({ valor: 0 })).valid).toBe(false);
       expect(validateExpenseRow(expenseRow({ valor: -1 })).valid).toBe(false);
+    });
+  });
+
+  describe('normalizedCategoryMap', () => {
+    it('indexa por nombre normalizado', () => {
+      const map = normalizedCategoryMap([
+        { id: '1', name: 'Comida' },
+        { id: '2', name: 'Lotería' },
+      ]);
+      expect(map.get('comida')?.id).toBe('1');
+      expect(map.get(normalizeCategoryName('loteria'))?.id).toBe('2');
+      expect(map.get('inexistente')).toBeUndefined();
+    });
+
+    it('con nombres duplicados tras normalizar, gana el primero', () => {
+      const map = normalizedCategoryMap([
+        { id: '1', name: 'Comida' },
+        { id: '2', name: 'Comida ' },
+      ]);
+      expect(map.size).toBe(1);
+      expect(map.get('comida')?.id).toBe('1');
     });
   });
 });

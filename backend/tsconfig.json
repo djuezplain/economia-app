@@ -17,6 +17,11 @@
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false,
-    "types": ["vitest/globals", "node"]
+    // "multer" añadido en spec 003 (T2.1): sin él, `@types/multer` no
+    // aumenta el namespace global `Express` con `Express.Multer.File`
+    // (el `types` explícito de este proyecto ya excluía la inclusión
+    // automática de ambient types de "types") y `ImportController` no
+    // podría tipar el fichero subido.
+    "types": ["vitest/globals", "node", "multer"]
   }
 }
