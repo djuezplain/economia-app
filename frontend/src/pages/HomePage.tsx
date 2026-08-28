@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 
 export function HomePage() {
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
 
   return (
     <main>
@@ -23,16 +23,10 @@ export function HomePage() {
               Todavía no has verificado tu email. <Link to="/resend-verification">Reenviar el enlace</Link>
             </p>
           )}
-          <p>
-            {user ? `Sesión iniciada como ${user.name}.` : 'Sesión iniciada.'}{' '}
-            <Link to="/profile">Tu perfil</Link> · <Link to="/sessions">Dispositivos y sesiones</Link> ·{' '}
-            <Link to="/categories">Categorías</Link> · <Link to="/movements">Ingresos y gastos</Link> ·{' '}
-            <Link to="/dashboard">Dashboard</Link> · <Link to="/import">Importar Excel</Link> ·{' '}
-            <Link to="/goals">Objetivos y presupuestos</Link> ·{' '}
-            <button type="button" onClick={() => void logout()}>
-              Cerrar sesión
-            </button>
-          </p>
+          {/* Spec 005 (navegación), H2 criterio 1: el listado de enlaces a
+              secciones y el botón de cerrar sesión se retiran de aquí — ya
+              viven en el menú lateral (`AppLayout`), siempre presente. */}
+          <p>{user ? `Sesión iniciada como ${user.name}.` : 'Sesión iniciada.'}</p>
         </>
       )}
 

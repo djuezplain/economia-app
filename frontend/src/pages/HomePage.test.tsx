@@ -44,20 +44,15 @@ describe('HomePage', () => {
     expect(screen.getByRole('link', { name: 'Iniciar sesión' })).toBeInTheDocument();
   });
 
-  it('con sesión activa muestra el nombre del usuario y un botón de cerrar sesión', async () => {
+  it('con sesión activa muestra el nombre del usuario (spec 005: el botón de cerrar sesión ya vive en AppLayout, no aquí)', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
 
     renderHome();
 
-    expect(await screen.findByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Iniciar sesión' })).not.toBeInTheDocument();
-    // Coincidencia por regex, no por string exacto: el <p> intercala el
-    // saludo con los <Link>/<button> y los separadores " · ", así que el
-    // texto propio del nodo (lo único que compara `getByText` por defecto)
-    // nunca es exactamente "Sesión iniciada como Ana." aunque lo parezca en
-    // el volcado del DOM (mismo patrón que ya se usa en SessionsPage.test.tsx).
     expect(await screen.findByText(/Sesión iniciada como Ana\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cerrar sesión' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Iniciar sesión' })).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 

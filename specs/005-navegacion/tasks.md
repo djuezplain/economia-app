@@ -11,8 +11,8 @@
 
 ## Grupo 2 — `HomePage` deja de ser el único punto de navegación (H2)
 
-- [ ] **T2.1** — `HomePage.tsx`: se retira el `<p>` con la lista de enlaces a secciones y el botón "Cerrar sesión" (ya viven en `AppLayout` desde T1.1). Se conservan el saludo, el aviso `role="alert"` de cuenta sin verificar, y los enlaces "Crear cuenta"/"Iniciar sesión" para quien no tiene sesión (H2 criterio 2, sin cambios).
-  *Verificación:* `HomePage.test.tsx` actualizado — el test "con sesión activa muestra el nombre del usuario y un botón de cerrar sesión" deja de buscar el botón "Cerrar sesión" dentro de `HomePage` (ese botón ya no vive ahí; se prueba en `AppLayout.test.tsx` desde T1.1); el resto de tests de `HomePage.test.tsx` (título, aviso de verificación, enlaces sin sesión) no cambian y siguen en verde. Prueba manual/visual de que, con sesión iniciada, `HomePage` ya no muestra un listado de enlaces duplicado junto al menú lateral. Suite completa del frontend en verde; lint y build limpios.
+- [x] **T2.1** — `HomePage.tsx`: se retira el `<p>` con la lista de enlaces a secciones y el botón "Cerrar sesión" (ya viven en `AppLayout` desde T1.1). Se conservan el saludo, el aviso `role="alert"` de cuenta sin verificar, y los enlaces "Crear cuenta"/"Iniciar sesión" para quien no tiene sesión (H2 criterio 2, sin cambios).
+  *Verificación:* `HomePage.test.tsx` actualizado — el test "con sesión activa..." ya no busca el botón "Cerrar sesión" dentro de `HomePage` (comprueba explícitamente que ya NO está ahí; se prueba en `AppLayout.test.tsx` desde T1.1) y elimina la comprobación redundante que quedó al simplificar el `<p>` (ya no intercala texto con enlaces, así que `getByText` con regex dejó de ser necesario dos veces). El resto de tests de `HomePage.test.tsx` (título, aviso de verificación, enlaces sin sesión) no cambian y siguen en verde. Suite completa del frontend en verde tras el cambio: 85/85 tests, 16 ficheros. Lint y build limpios.
 
 ## Grupo 3 — Cierre de la spec
 
