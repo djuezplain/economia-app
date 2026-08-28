@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { monthlyEvolution, resolveDaysForMonth, savingsAmount, savingsPercent } from './dashboard.calculations.js';
+import {
+  currentMonthIso,
+  daysInMonth,
+  daysInYear,
+  monthlyEvolution,
+  resolveDaysForMonth,
+  resolveDaysForYear,
+  savingsAmount,
+  savingsPercent,
+} from './dashboard.calculations.js';
 
 describe('dashboard.calculations', () => {
   describe('savingsAmount', () => {
@@ -43,6 +52,52 @@ describe('dashboard.calculations', () => {
       const now = new Date('2026-08-28T10:00:00.000Z');
       // Febrero de 2024 (bisiesto) tiene 29 días.
       expect(resolveDaysForMonth('2024-02', now)).toBe(29);
+    });
+  });
+
+  describe('currentMonthIso', () => {
+    it('formatea el mes de `now` como YYYY-MM', () => {
+      expect(currentMonthIso(new Date('2026-08-28T10:00:00.000Z'))).toBe('2026-08');
+      expect(currentMonthIso(new Date('2026-01-05T10:00:00.000Z'))).toBe('2026-01');
+    });
+  });
+
+  describe('daysInMonth', () => {
+    it('días totales de un mes, sin depender de `now`', () => {
+      expect(daysInMonth('2026-07')).toBe(31);
+      expect(daysInMonth('2026-02')).toBe(28);
+      expect(daysInMonth('2024-02')).toBe(29); // bisiesto
+    });
+  });
+
+  describe('daysInYear', () => {
+    it('366 en un año bisiesto, 365 en uno normal', () => {
+      expect(daysInYear(2024)).toBe(366);
+      expect(daysInYear(2026)).toBe(365);
+    });
+
+    it('respeta la regla gregoriana completa (2100 no es bisiesto)', () => {
+      expect(daysInYear(2100)).toBe(365);
+      expect(daysInYear(2000)).toBe(366); // múltiplo de 400, sí es bisiesto
+    });
+  });
+
+  describe('resolveDaysForYear', () => {
+    it('año en curso: día del año transcurrido (1-indexado)', () => {
+      const now = new Date('2026-08-28T10:00:00.000Z');
+      // 31(ene)+28(feb)+31(mar)+30(abr)+31(may)+30(jun)+31(jul)+28(ago) = 240
+      expect(resolveDaysForYear(2026, now)).toBe(240);
+    });
+
+    it('el 1 de enero cuenta como día 1, no día 0', () => {
+      const now = new Date('2026-01-01T10:00:00.000Z');
+      expect(resolveDaysForYear(2026, now)).toBe(1);
+    });
+
+    it('año ya cerrado: días totales de ese año', () => {
+      const now = new Date('2026-08-28T10:00:00.000Z');
+      expect(resolveDaysForYear(2025, now)).toBe(365);
+      expect(resolveDaysForYear(2024, now)).toBe(366); // bisiesto
     });
   });
 

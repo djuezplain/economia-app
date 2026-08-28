@@ -34,6 +34,24 @@ export function savingsPercent(income: string, expense: string): string | null {
 }
 
 /**
+ * `'YYYY-MM'` del mes de `now`. Vivía como función privada dentro de
+ * `dashboard.service.ts` (spec 002); se exporta aquí, junto al resto de
+ * "matemática de periodos", porque spec 004 (`GoalsProgressService`)
+ * también necesita saber si un mes consultado es "el actual" para decidir
+ * si calcula una proyección de cierre de periodo (plan.md §4) — sin
+ * duplicar este cálculo en el módulo nuevo.
+ */
+export function currentMonthIso(now: Date): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Días totales de un mes (`'YYYY-MM'`), independientemente de `now`. */
+export function daysInMonth(month: string): number {
+  const [year, monthNum] = month.split('-').map(Number);
+  return new Date(year, monthNum, 0).getDate();
+}
+
+/**
  * Días a usar en las medias diarias de un mes (plan.md §4): si `month`
  * coincide con el mes de `now`, los días transcurridos (1..hoy) — dividir
  * por el mes completo infravaloraría la media mientras el mes no ha
@@ -43,10 +61,32 @@ export function savingsPercent(income: string, expense: string): string | null {
  * sistema.
  */
 export function resolveDaysForMonth(month: string, now: Date): number {
-  const [year, monthNum] = month.split('-').map(Number);
-  const nowMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  if (month === nowMonth) return now.getDate();
-  return new Date(year, monthNum, 0).getDate();
+  if (month === currentMonthIso(now)) return now.getDate();
+  return daysInMonth(month);
+}
+
+/**
+ * Días totales de un año (spec 004, plan.md §4: la proyección de un
+ * objetivo de ahorro anual necesita esto igual que la de uno mensual
+ * necesita `daysInMonth`). Bisiesto correcto (regla gregoriana completa,
+ * no solo "múltiplo de 4" — 2100 no sería bisiesto, aunque no afecta a
+ * ningún año realista de esta app).
+ */
+export function daysInYear(year: number): number {
+  const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  return isLeap ? 366 : 365;
+}
+
+/**
+ * Mismo criterio que `resolveDaysForMonth`, pero para el año: si `year` es
+ * el año de `now`, el día del año transcurrido (1-indexado, 1 de enero =
+ * 1); si no, los días totales de ese año.
+ */
+export function resolveDaysForYear(year: number, now: Date): number {
+  if (year !== now.getFullYear()) return daysInYear(year);
+  const startOfYear = Date.UTC(year, 0, 1);
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((today - startOfYear) / 86_400_000) + 1;
 }
 
 /**

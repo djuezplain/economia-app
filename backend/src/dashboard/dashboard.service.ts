@@ -4,7 +4,13 @@ import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { transactions } from '../db/schema/index.js';
 import { average, groupByCategory, sumByType } from '../transactions/transactions.calculations.js';
-import { monthlyEvolution, resolveDaysForMonth, savingsAmount, savingsPercent } from './dashboard.calculations.js';
+import {
+  currentMonthIso,
+  monthlyEvolution,
+  resolveDaysForMonth,
+  savingsAmount,
+  savingsPercent,
+} from './dashboard.calculations.js';
 import type { MonthlyEvolutionEntry } from './dashboard.calculations.js';
 
 export interface MonthSummary {
@@ -21,10 +27,6 @@ export interface YearSummary {
   year: number;
   months: MonthlyEvolutionEntry[];
   totals: { income: string; expense: string; savings: string; savingsPercent: string | null };
-}
-
-function currentMonthIso(now: Date): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function monthRange(month: string): { start: string; end: string } {
