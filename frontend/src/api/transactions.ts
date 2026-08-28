@@ -73,6 +73,13 @@ export function listTransactions(filters: ListTransactionsFilters = {}): Promise
   return api.get<ListTransactionsResult>(`/transactions${buildQuery(filters)}`);
 }
 
+// Spec 006 (páginas de movimientos), plan.md §3: necesario para que
+// "Registrar" en modo edición cargue el movimiento a partir del `:id` de la
+// URL, sea cual sea la forma en que se llegó a esa página (recarga incluida).
+export function getTransaction(id: string): Promise<Transaction> {
+  return api.get<Transaction>(`/transactions/${id}`);
+}
+
 export function createTransaction(input: CreateTransactionInput): Promise<Transaction> {
   return api.post<Transaction>('/transactions', input);
 }
