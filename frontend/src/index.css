@@ -145,6 +145,32 @@ p {
   min-width: 0;
 }
 
+/* Spec 007 (mejoras visuales), plan.md §2. Único componente del proyecto
+   con className propio (ver justificación en ProgressBar.tsx) — se instancia
+   varias veces en la misma página, a diferencia de los elementos con `id`. */
+.progress-bar {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.progress-bar-overflow {
+  display: inline-block;
+  margin-inline-start: 6px;
+  font-size: 13px;
+  color: var(--status-red);
+  font-weight: 600;
+}
+
 code,
 .counter {
   font-family: var(--mono);

@@ -8,12 +8,12 @@
 
 ## Grupo 1 — H1: cálculo de color, sin tocar el backend
 
-- [ ] **T1.1** — `frontend/src/pages/goals-shared.ts` (nuevo): tipo `VisualLevel`, función `resolveVisualLevel(progressPercent, alertThresholdPercent)` y las dos rampas `BUDGET_RAMP`/`SAVINGS_RAMP` (`plan.md` §1). `frontend/src/index.css`: tokens `--status-green`/`--status-amber`/`--status-orange`/`--status-red` (+ variantes de modo oscuro).
+- [x] **T1.1** — `frontend/src/pages/goals-shared.ts` (nuevo): tipo `VisualLevel`, función `resolveVisualLevel(progressPercent, alertThresholdPercent)` y las dos rampas `BUDGET_RAMP`/`SAVINGS_RAMP` (`plan.md` §1). `frontend/src/index.css`: tokens `--status-green`/`--status-amber`/`--status-orange`/`--status-red` (+ variantes de modo oscuro).
   *Verificación (planeada, `goals-shared.test.ts`):* `resolveVisualLevel` en los 4 umbrales exactos (justo por debajo/igual/por encima del 90% del umbral de aviso, del umbral, y del 100%), con `progressPercent: null` → `'ok'`. `BUDGET_RAMP`/`SAVINGS_RAMP` cubren los 4 `VisualLevel` cada una, y son literalmente inversas entre sí (test explícito: `BUDGET_RAMP.over === SAVINGS_RAMP.ok`, etc., para que una futura edición de una rampa no rompa la otra en silencio).
 
 ## Grupo 2 — H3: componente `ProgressBar`
 
-- [ ] **T2.1** — `frontend/src/components/ProgressBar.tsx` (nuevo, `plan.md` §2): `role="progressbar"`, `aria-valuenow`/`aria-valuemin`/`aria-valuemax`, color según `direction`/`level`, indicador de exceso cuando `percent > 100`. CSS de `.progress-bar`/`.progress-bar-fill`/`.progress-bar-overflow` en `index.css` (primer uso de `className` del proyecto, documentado en `plan.md` §2 — no se repite fuera de este componente).
+- [x] **T2.1** — `frontend/src/components/ProgressBar.tsx` (nuevo, `plan.md` §2): `role="progressbar"`, `aria-valuenow`/`aria-valuemin`/`aria-valuemax`, color según `direction`/`level`, indicador de exceso cuando `percent > 100`. CSS de `.progress-bar`/`.progress-bar-fill`/`.progress-bar-overflow` en `index.css` (primer uso de `className` del proyecto, documentado en `plan.md` §2 — no se repite fuera de este componente).
   *Verificación (planeada, `ProgressBar.test.tsx`):* atributos ARIA correctos con distintos `percent`; `percent === null` se muestra vacía (`aria-valuenow="0"`) sin lanzar error; `percent === 150` muestra la etiqueta de exceso y el relleno no supera el 100% de ancho (comprobado vía `style.width`); `direction="budget"` con `level="over"` usa el color rojo (`--status-red`) y `direction="savings"` con `level="over"` usa el verde (`--status-green`) — mismo `level`, colores opuestos.
 
 ## Grupo 3 — H1 + H3: integración en `GoalsPage`
