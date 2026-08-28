@@ -28,7 +28,7 @@
 
 ## Grupo 5 — H4: espaciado y agrupación (solo CSS)
 
-- [ ] **T5.1** — `frontend/src/index.css`: reglas de `plan.md` §4 (`main form` como bloque con borde/padding, espaciado entre `div` de campo, cabecera de tabla distinguida, filas con más aire, `<li>` de listas dentro de `main` con separador). Ningún fichero `.tsx` se modifica en esta tarea.
+- [x] **T5.1** — `frontend/src/index.css`: reglas de `plan.md` §4 (`main form` como bloque con borde/padding, espaciado entre `div` de campo, cabecera de tabla distinguida, filas con más aire, `<li>` de listas dentro de `main` con separador). Ningún fichero `.tsx` se modifica en esta tarea.
   *Verificación (planeada):* no hay tests automáticos de CSS en este proyecto (documentado en `plan.md` §6) — se verifica manualmente con capturas de antes/después de al menos: `RegisterMovementPage` (formulario), `GoalsPage` (formularios + tabla de presupuestos), `MovementsListPage` (listado). Se confirma además que la suite completa de tests sigue en verde sin ningún cambio (ninguna tarea de este grupo toca comportamiento ni marcado semántico).
 
 ## Grupo 6 — H5: iconos de `lucide-react` en el menú lateral

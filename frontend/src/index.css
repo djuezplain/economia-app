@@ -145,6 +145,51 @@ p {
   min-width: 0;
 }
 
+/* Spec 007 (mejoras visuales), plan.md §4 (H4). Espaciado y agrupación de
+   formularios/tablas/listados resuelto entero por selectores de
+   descendencia dentro de `main` — sin tocar ningún componente ni introducir
+   clases nuevas, mismo criterio de "sin className" que el resto de la app
+   (fuera de `.progress-bar`, ver más abajo). */
+main form {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+  text-align: start;
+}
+
+main form > div {
+  margin-bottom: 14px;
+}
+main form > div:last-of-type {
+  margin-bottom: 0;
+}
+
+main table {
+  border-collapse: collapse;
+  width: 100%;
+}
+main table th,
+main table td {
+  padding: 10px 12px;
+  text-align: start;
+}
+main table thead th {
+  background: var(--code-bg);
+  border-bottom: 2px solid var(--border);
+}
+main table tbody tr:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+main ul li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+main ul li:last-child {
+  border-bottom: none;
+}
+
 /* Spec 007 (mejoras visuales), plan.md §2. Único componente del proyecto
    con className propio (ver justificación en ProgressBar.tsx) — se instancia
    varias veces en la misma página, a diferencia de los elementos con `id`. */
