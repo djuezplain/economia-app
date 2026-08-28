@@ -26,7 +26,7 @@ export function HomePage() {
           <p>
             {user ? `Sesión iniciada como ${user.name}.` : 'Sesión iniciada.'}{' '}
             <Link to="/profile">Tu perfil</Link> · <Link to="/sessions">Dispositivos y sesiones</Link> ·{' '}
-            <Link to="/categories">Categorías</Link> ·{' '}
+            <Link to="/categories">Categorías</Link> · <Link to="/movements">Ingresos y gastos</Link> ·{' '}
             <button type="button" onClick={() => void logout()}>
               Cerrar sesión
             </button>

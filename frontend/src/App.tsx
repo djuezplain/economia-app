@@ -11,6 +11,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SessionsPage } from './pages/SessionsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { CategoriesPage } from './pages/CategoriesPage';
+import { MovementsPage } from './pages/MovementsPage';
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
           <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/categories" element={<CategoriesPage />} />
+          <Route path="/movements" element={<MovementsPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
