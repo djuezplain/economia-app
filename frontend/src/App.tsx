@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
+import { AppLayout } from './components/AppLayout';
 import { HomePage } from './pages/HomePage';
 import { RegisterPage } from './pages/RegisterPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
@@ -21,7 +22,19 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          {/* Spec 005 (navegación): las 8 páginas autenticadas comparten el
+              menú lateral de `AppLayout` como ruta de layout (plan.md §1). */}
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/categories" element={<CategoriesPage />} />
+            <Route path="/movements" element={<MovementsPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/import" element={<ImportPage />} />
+            <Route path="/goals" element={<GoalsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/sessions" element={<SessionsPage />} />
+          </Route>
+
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/resend-verification" element={<ResendVerificationPage />} />
@@ -29,13 +42,6 @@ function App() {
           <Route path="/oauth-callback" element={<OAuthCallbackPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/sessions" element={<SessionsPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/categories" element={<CategoriesPage />} />
-          <Route path="/movements" element={<MovementsPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/import" element={<ImportPage />} />
-          <Route path="/goals" element={<GoalsPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

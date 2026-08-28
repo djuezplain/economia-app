@@ -95,6 +95,42 @@ p {
   margin: 0;
 }
 
+/* Spec 005 (navegación), plan.md §6. Único CSS de `AppLayout`: por `id`,
+   igual que `#root`/`#social` — el proyecto no usa `className` en ninguna
+   página, así que no se introduce esa convención solo para el menú. */
+#app-shell {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  text-align: left;
+}
+
+#app-sidebar {
+  flex-shrink: 0;
+  padding: 16px;
+  border-inline-end: 1px solid var(--border);
+}
+
+#app-sidebar ul {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+#app-sidebar li {
+  margin: 8px 0;
+}
+
+#app-sidebar a[aria-current='page'] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+#app-content {
+  flex: 1;
+  min-width: 0;
+}
+
 code,
 .counter {
   font-family: var(--mono);
