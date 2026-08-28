@@ -1,0 +1,41 @@
+# Tasks 002 — Ingresos, gastos y dashboard mensual
+
+**Estado:** Listo para implementar
+**Fase:** 3 de 4 (Spec ✅ → Plan ✅ → Tasks → Implementación)
+**Regla:** una tarea = un commit enfocado (Conventional Commits). No se marca `[x]` una tarea sin que su verificación pase.
+
+## Grupo 1 — H3 Categorías (incluye el esquema base de toda la spec)
+
+- [x] **T1.1** — Backend: esquema Drizzle (`categories`, `transactions`, enums `movement_type`/`payment_method` de `plan.md` §1) + migración.
+  *Verificación:* `npx drizzle-kit generate` + `npx drizzle-kit migrate` aplican sin error contra Postgres (`economia_dev` y `economia_test`); `\dt` muestra las 2 tablas nuevas junto a las 5 de la spec 001. Lint y suite unitaria del backend en verde tras el cambio (12/12; no afecta a ningún test existente). ✅ hecho.
+- [ ] **T1.2** — Backend: `GET/POST/PATCH/DELETE /categories` (`CategoriesService`/`CategoriesController`, `@UseGuards(AuthGuard, RequireActiveUserGuard)`).
+  *Verificación (spec H3, criterios 2 y 3):* tests e2e — crear categoría propia; crear subcategoría bajo una categoría de gasto propia; rechazo (400) de subcategoría bajo otra subcategoría o bajo una categoría de ingreso; renombrar; borrar una categoría sin uso; borrar (409) una categoría con movimientos asociados o con subcategorías propias — sin borrar nada; aislamiento — no se puede ver, editar ni borrar una categoría de otro usuario (404); cuenta `PENDING_VERIFICATION` → 403 en cualquier ruta de `/categories` (cierra H2 criterio 3 de la spec 001).
+- [ ] **T1.3** — Backend: semillas de categorías por defecto al registrarse (`spec.md` §4) — integración con `AuthService.register` (import directo de `CategoriesModule` en `AuthModule`, mismo patrón que `MailModule`/`AuditModule`).
+  *Verificación (H3 criterio 1):* test e2e — un registro nuevo deja creadas las 10 categorías de ingreso y las 12 de gasto de la semilla, marcadas `isDefault: true`.
+- [ ] **T1.4** — Frontend: página de gestión de categorías (listar por tipo, crear, renombrar, eliminar con el error 409 mostrado de forma clara).
+  *Verificación:* tests con Testing Library + lint/build en verde en ambos paquetes.
+
+## Grupo 2 — H1/H2 Movimientos (ingresos y gastos)
+
+- [ ] **T2.1** — Backend: `POST/GET/PATCH/DELETE /transactions` (`TransactionsService`/`TransactionsController`, mismo guard que categorías). `GET /transactions` devuelve la lista paginada y filtrada junto con un resumen (`sumByType`/`average` de `plan.md` §4) del conjunto filtrado, para H1/H2 criterio 4.
+  *Verificación (spec H1 criterios 1-4, H2 criterios 1-4):* tests e2e — crear ingreso/gasto válido (mes/año derivados de la fecha, no enviados por el cliente); editar y eliminar un movimiento propio; listar con cada filtro (rango de fechas, categoría, subcategoría, comercio, texto libre en concepto); el resumen del listado filtrado coincide con la suma real. Casos límite de `plan.md` §6: `categoryId`/`subcategoryId` de otro usuario → 404; `INCOME` con `subcategoryId`/`merchant`/`paymentMethod` → 400; `EXPENSE` con subcategoría que no es hija de la categoría indicada, o de tipo `INCOME` → 400; `dateFrom` posterior a `dateTo` → 400. Aislamiento: un usuario nunca ve/edita/borra movimientos de otro. Cuenta `PENDING_VERIFICATION` → 403.
+- [ ] **T2.2** — Backend: actualizar `GET /users/me/export` (H8, spec 001) para incluir los ingresos, gastos y categorías reales del usuario, sustituyendo el placeholder `economicData`.
+  *Nota:* esto se avisó a Diego durante la revisión de `spec.md` como algo que pasaría "de forma natural" en cuanto existieran estas tablas, pero no llegó a quedar anotado como tarea en `plan.md` — hueco encontrado al desglosar las tareas, no un cambio de alcance; se corrige aquí en vez de dejarlo pendiente en silencio.
+  *Verificación:* test e2e — el JSON exportado de un usuario con movimientos reales los incluye completos (sin depender de otro usuario); un usuario sin movimientos sigue exportando un `economicData` vacío pero ya no con forma de placeholder explicativo.
+- [ ] **T2.3** — Frontend: páginas de ingresos y gastos (formulario crear/editar, listado con filtros y resumen, borrar), enlazadas desde `HomePage`.
+  *Verificación:* tests con Testing Library + lint/build en verde en ambos paquetes.
+
+## Grupo 3 — H4/H5 Dashboard
+
+- [ ] **T3.1** — Backend: funciones puras de cálculo (`dashboard/dashboard.calculations.ts` de `plan.md` §4) + `GET /dashboard/month` y `GET /dashboard/year`.
+  *Verificación:* tests unitarios de cada función — `savingsPercent` con ingresos > 0, = 0 (devuelve `null`) y con gasto > ingreso (ahorro negativo); `average` sobre un mes en curso (divide por días transcurridos) frente a un mes cerrado (divide por el mes completo); `groupByCategory` y `monthlyEvolution` con datos de varias categorías/meses. Tests e2e de ambos endpoints, incluyendo un mes sin ningún movimiento (todo a 0, respuesta 200, no 404).
+- [ ] **T3.2** — Frontend: página de Dashboard — resumen del mes (totales, ahorro, % ahorro, medias diarias), desglose de gastos por categoría (gráfico, Recharts) y vista anual con evolución mensual, enlazada desde `HomePage`.
+  *Verificación:* tests con Testing Library + lint/build en verde en ambos paquetes.
+
+## Grupo 4 — Cierre de la spec
+
+- [ ] **T4.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1–H5) y marcar cada criterio de aceptación como cubierto por al menos un test automático, igual que se hizo al cerrar la spec 001.
+  *Verificación:* el propio checklist relleno, añadido al final de este fichero.
+
+---
+**Cómo trabajamos esto:** una tarea a la vez, en orden dentro de cada grupo. Al terminar una tarea, la marco `[x]` aquí y hago commit; solo entonces paso a la siguiente. Si algo del plan no encaja al implementarlo, paramos y ajustamos `plan.md` antes de seguir (no se parchea "en silencio").
