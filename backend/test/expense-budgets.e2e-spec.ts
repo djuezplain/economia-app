@@ -196,6 +196,18 @@ describe('Presupuestos de gasto (e2e) — spec 004 H2', () => {
         .expect(404);
     });
 
+    it('H2 criterio 2: acepta targetType PERCENT válido (<= 100)', async () => {
+      const user = await createUser('percent-valido@example.com');
+      const token = await login(user.email);
+      const res = await request(app.getHttpServer())
+        .post('/expense-budgets')
+        .set('Authorization', auth(token))
+        .send({ targetType: 'PERCENT', targetValue: '30.00', alertThresholdPercent: '80.00' })
+        .expect(201);
+
+      expect(res.body).toMatchObject({ targetType: 'PERCENT', targetValue: '30.00', categoryId: null });
+    });
+
     it('targetType PERCENT con targetValue > 100 → 400', async () => {
       const user = await createUser('percent-excesivo@example.com');
       const token = await login(user.email);

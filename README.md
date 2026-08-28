@@ -55,5 +55,6 @@ npm run test
 - [x] Spec 001 (Auth) — aprobada, implementada y **cerrada** (checklist de cierre en `specs/001-auth/tasks.md`)
 - [x] Spec 002 (Movimientos, categorías y dashboard) — aprobada, implementada y **cerrada** (checklist de cierre en `specs/002-movimientos-dashboard/tasks.md`): categorías (H3), ingresos y gastos (H1/H2) con desglose por categoría y subcategoría, dashboard mensual y anual (H4/H5)
 - [x] Spec 003 (Importación del histórico desde el Excel "2026") — aprobada, implementada y **cerrada** (checklist de cierre en `specs/003-importacion-excel/tasks.md`): vista previa y confirmación de la importación (H1), reconocimiento de categorías y tipos de pago del Excel (H2), página `/import`
+- [x] Spec 004 (Objetivos de ahorro y presupuestos de gasto) — aprobada, implementada y **cerrada** (checklist de cierre en `specs/004-objetivos-presupuestos/tasks.md`): objetivo de ahorro mensual/anual (H1), presupuestos de gasto global y por categoría (H2), progreso real con proyección de cierre de periodo (H3), aviso visual con umbral configurable por objetivo/presupuesto (H4), página `/goals`
 
-Progreso detallado y checklist tarea a tarea de cada spec cerrada: `specs/001-auth/tasks.md`, `specs/002-movimientos-dashboard/tasks.md`, `specs/003-importacion-excel/tasks.md`.
+Progreso detallado y checklist tarea a tarea de cada spec cerrada: `specs/001-auth/tasks.md`, `specs/002-movimientos-dashboard/tasks.md`, `specs/003-importacion-excel/tasks.md`, `specs/004-objetivos-presupuestos/tasks.md`.

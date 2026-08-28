@@ -169,6 +169,24 @@ describe('GoalsPage', () => {
     expect(within(rows[0]).getByText('300.00 de 250.00 (120.00%) · superado')).toBeInTheDocument();
   });
 
+  it('H4 criterio 2: traduce NEAR_THRESHOLD y BELOW_THRESHOLD a la etiqueta correcta según el tipo', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([FOOD_CATEGORY]);
+    vi.spyOn(savingsGoalsApi, 'listSavingsGoals').mockResolvedValue([MONTHLY_GOAL]);
+    vi.spyOn(expenseBudgetsApi, 'listExpenseBudgets').mockResolvedValue([FOOD_BUDGET]);
+    const progress = monthProgressWithGoal();
+    progress.savingsGoal = { ...progress.savingsGoal!, status: 'NEAR_THRESHOLD' };
+    progress.expenseBudgets = [{ ...progress.expenseBudgets[0], status: 'BELOW_THRESHOLD' }];
+    vi.spyOn(goalsProgressApi, 'getMonthProgress').mockResolvedValue(progress);
+    vi.spyOn(goalsProgressApi, 'getYearProgress').mockResolvedValue(EMPTY_YEAR_PROGRESS);
+
+    renderPage();
+
+    expect(await screen.findByText('Estado: cerca de conseguirlo')).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: 'Tus presupuestos de gasto' });
+    expect(within(table).getByText(/dentro de lo previsto/)).toBeInTheDocument();
+  });
+
   it('crea un objetivo de ahorro mensual desde el formulario', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([]);

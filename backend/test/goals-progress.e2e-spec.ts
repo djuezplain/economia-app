@@ -220,6 +220,102 @@ describe('Progreso de objetivos y presupuestos (e2e) — spec 004 H3/H4', () => 
       });
     });
 
+    it('H2 criterio 2 / plan.md §4: un presupuesto PERCENT calcula su importe objetivo sobre los ingresos reales del mes', async () => {
+      const user = await createUser('presupuesto-percent@example.com');
+      const income = await createCategory(user.id, 'INCOME', 'Nómina');
+      const food = await createCategory(user.id, 'EXPENSE', 'Comida');
+      await db.insert(transactions).values([
+        { userId: user.id, type: 'INCOME', date: `${CLOSED_MONTH}-01`, categoryId: income.id, concept: 'Nómina', amount: '2000.00' },
+        { userId: user.id, type: 'EXPENSE', date: `${CLOSED_MONTH}-05`, categoryId: food.id, concept: 'Súper', amount: '150.00' },
+      ]);
+      // Presupuesto: 10% de los ingresos → 200.00.
+      await db.insert(expenseBudgets).values({
+        userId: user.id,
+        categoryId: food.id,
+        targetType: 'PERCENT',
+        targetValue: '10.00',
+        alertThresholdPercent: '80.00',
+      });
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .get(`/goals-progress/month?month=${CLOSED_MONTH}`)
+        .set('Authorization', auth(token))
+        .expect(200);
+
+      expect(res.body.expenseBudgets[0]).toMatchObject({ actualAmount: '150.00', targetAmount: '200.00', progressPercent: '75.00' });
+    });
+
+    it('§4: un presupuesto PERCENT con ingresos = 0 en el mes → targetAmount/progressPercent null, sin dividir por cero', async () => {
+      const user = await createUser('presupuesto-percent-sin-ingresos@example.com');
+      const food = await createCategory(user.id, 'EXPENSE', 'Comida');
+      await db.insert(transactions).values({
+        userId: user.id,
+        type: 'EXPENSE',
+        date: `${CLOSED_MONTH}-05`,
+        categoryId: food.id,
+        concept: 'Súper',
+        amount: '100.00',
+      });
+      await db.insert(expenseBudgets).values({
+        userId: user.id,
+        categoryId: food.id,
+        targetType: 'PERCENT',
+        targetValue: '10.00',
+        alertThresholdPercent: '80.00',
+      });
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .get(`/goals-progress/month?month=${CLOSED_MONTH}`)
+        .set('Authorization', auth(token))
+        .expect(200);
+
+      expect(res.body.expenseBudgets[0]).toMatchObject({ targetAmount: null, progressPercent: null, status: 'BELOW_THRESHOLD' });
+    });
+
+    it('H1 criterio 2 / H2 criterio 3: el mismo objetivo y presupuesto, sin volver a crearlos, aplican a distintos meses con su propio real de cada uno', async () => {
+      const user = await createUser('mismo-objetivo-varios-meses@example.com');
+      const income = await createCategory(user.id, 'INCOME', 'Nómina');
+      const food = await createCategory(user.id, 'EXPENSE', 'Comida');
+      const OTHER_CLOSED_MONTH = '2026-07';
+      await db.insert(transactions).values([
+        { userId: user.id, type: 'INCOME', date: `${CLOSED_MONTH}-01`, categoryId: income.id, concept: 'Nómina junio', amount: '2000.00' },
+        { userId: user.id, type: 'EXPENSE', date: `${CLOSED_MONTH}-05`, categoryId: food.id, concept: 'Súper junio', amount: '100.00' },
+        { userId: user.id, type: 'INCOME', date: `${OTHER_CLOSED_MONTH}-01`, categoryId: income.id, concept: 'Nómina julio', amount: '2000.00' },
+        { userId: user.id, type: 'EXPENSE', date: `${OTHER_CLOSED_MONTH}-05`, categoryId: food.id, concept: 'Súper julio', amount: '300.00' },
+      ]);
+      const [goal] = await db
+        .insert(savingsGoals)
+        .values({ userId: user.id, period: 'MONTHLY', targetType: 'AMOUNT', targetValue: '500.00', alertThresholdPercent: '80.00' })
+        .returning();
+      const [budget] = await db
+        .insert(expenseBudgets)
+        .values({ userId: user.id, categoryId: food.id, targetType: 'AMOUNT', targetValue: '250.00', alertThresholdPercent: '80.00' })
+        .returning();
+      const token = await login(user.email);
+
+      const juneRes = await request(app.getHttpServer())
+        .get(`/goals-progress/month?month=${CLOSED_MONTH}`)
+        .set('Authorization', auth(token))
+        .expect(200);
+      const julyRes = await request(app.getHttpServer())
+        .get(`/goals-progress/month?month=${OTHER_CLOSED_MONTH}`)
+        .set('Authorization', auth(token))
+        .expect(200);
+
+      // Mismo objetivo/presupuesto (mismo id) en los dos meses, sin haberlo vuelto a crear; el "real" cambia con cada mes.
+      expect(juneRes.body.savingsGoal.id).toBe(goal.id);
+      expect(julyRes.body.savingsGoal.id).toBe(goal.id);
+      expect(juneRes.body.savingsGoal.actualAmount).toBe('1900.00'); // 2000 - 100
+      expect(julyRes.body.savingsGoal.actualAmount).toBe('1700.00'); // 2000 - 300
+
+      expect(juneRes.body.expenseBudgets[0].id).toBe(budget.id);
+      expect(julyRes.body.expenseBudgets[0].id).toBe(budget.id);
+      expect(juneRes.body.expenseBudgets[0].actualAmount).toBe('100.00');
+      expect(julyRes.body.expenseBudgets[0].actualAmount).toBe('300.00');
+    });
+
     it('umbrales de aviso: 79% BELOW_THRESHOLD, 85% NEAR_THRESHOLD, 105% AT_OR_ABOVE_TARGET (umbral 80)', async () => {
       const user = await createUser('umbrales@example.com');
       const catBelow = await createCategory(user.id, 'EXPENSE', 'Bajo umbral');
@@ -246,6 +342,31 @@ describe('Progreso de objetivos y presupuestos (e2e) — spec 004 H3/H4', () => 
       expect(byCategory(catBelow.id).status).toBe('BELOW_THRESHOLD');
       expect(byCategory(catNear.id).status).toBe('NEAR_THRESHOLD');
       expect(byCategory(catOver.id).status).toBe('AT_OR_ABOVE_TARGET');
+    });
+
+    it('H4 criterio 1: el umbral de aviso es independiente por presupuesto — el mismo 85% de consumo da estados distintos con umbrales distintos', async () => {
+      const user = await createUser('umbral-independiente@example.com');
+      const catLowThreshold = await createCategory(user.id, 'EXPENSE', 'Umbral bajo');
+      const catHighThreshold = await createCategory(user.id, 'EXPENSE', 'Umbral alto');
+      await db.insert(transactions).values([
+        { userId: user.id, type: 'EXPENSE', date: `${CLOSED_MONTH}-05`, categoryId: catLowThreshold.id, concept: 'A', amount: '85.00' },
+        { userId: user.id, type: 'EXPENSE', date: `${CLOSED_MONTH}-05`, categoryId: catHighThreshold.id, concept: 'B', amount: '85.00' },
+      ]);
+      await db.insert(expenseBudgets).values([
+        { userId: user.id, categoryId: catLowThreshold.id, targetType: 'AMOUNT', targetValue: '100.00', alertThresholdPercent: '50.00' },
+        { userId: user.id, categoryId: catHighThreshold.id, targetType: 'AMOUNT', targetValue: '100.00', alertThresholdPercent: '90.00' },
+      ]);
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .get(`/goals-progress/month?month=${CLOSED_MONTH}`)
+        .set('Authorization', auth(token))
+        .expect(200);
+
+      const byCategory = (id: string) => res.body.expenseBudgets.find((b: { categoryId: string }) => b.categoryId === id);
+      // Mismo 85% de progreso en ambos, pero el umbral de cada uno decide el estado — no hay un umbral global compartido.
+      expect(byCategory(catLowThreshold.id).status).toBe('NEAR_THRESHOLD'); // 85% >= umbral 50%
+      expect(byCategory(catHighThreshold.id).status).toBe('BELOW_THRESHOLD'); // 85% < umbral 90%
     });
 
     it('el mes en curso calcula una proyección de cierre por extrapolación (no null)', async () => {

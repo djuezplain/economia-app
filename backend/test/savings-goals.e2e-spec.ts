@@ -184,6 +184,27 @@ describe('Objetivos de ahorro (e2e) — spec 004 H1', () => {
         .send({ targetValue: '999.00' })
         .expect(404);
     });
+
+    it('H1 criterio 3: editar el objetivo mensual no afecta al anual, y viceversa', async () => {
+      const user = await createUser('independencia@example.com');
+      const [monthly, annual] = await db
+        .insert(savingsGoals)
+        .values([
+          { userId: user.id, period: 'MONTHLY', targetType: 'AMOUNT', targetValue: '500.00', alertThresholdPercent: '80.00' },
+          { userId: user.id, period: 'ANNUAL', targetType: 'AMOUNT', targetValue: '6000.00', alertThresholdPercent: '80.00' },
+        ])
+        .returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .patch(`/savings-goals/${monthly.id}`)
+        .set('Authorization', auth(token))
+        .send({ targetValue: '700.00' })
+        .expect(200);
+
+      const stillAnnual = await db.query.savingsGoals.findFirst({ where: (g, { eq }) => eq(g.id, annual.id) });
+      expect(stillAnnual?.targetValue).toBe('6000.00'); // sin cambios, editar el mensual no lo toca.
+    });
   });
 
   describe('DELETE /savings-goals/:id', () => {
