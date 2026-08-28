@@ -8,6 +8,7 @@ import { envValidationSchema } from './config/env.validation.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { CategoriesModule } from './categories/categories.module.js';
+import { TransactionsModule } from './transactions/transactions.module.js';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { CategoriesModule } from './categories/categories.module.js';
     AuthModule,
     UsersModule,
     CategoriesModule,
+    TransactionsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

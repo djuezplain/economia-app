@@ -1,0 +1,370 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import type { App } from 'supertest/types';
+import * as argon2 from 'argon2';
+import cookieParser from 'cookie-parser';
+import { AppModule } from '../src/app.module.js';
+import { DB } from '../src/db/db.module.js';
+import type { Database } from '../src/db/db.module.js';
+import { categories, transactions, users } from '../src/db/schema/index.js';
+
+describe('Movimientos (e2e) — spec 002 H1/H2', () => {
+  let app: INestApplication<App>;
+  let db: Database;
+
+  const PASSWORD = 'Contraseña-Segura-123';
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    await app.init();
+
+    db = moduleFixture.get<Database>(DB);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(async () => {
+    await db.delete(transactions);
+    await db.delete(categories);
+    await db.delete(users);
+  });
+
+  async function createUser(email: string, status: 'ACTIVE' | 'PENDING_VERIFICATION' = 'ACTIVE') {
+    const passwordHash = await argon2.hash(PASSWORD, { type: argon2.argon2id });
+    const [user] = await db.insert(users).values({ email, passwordHash, name: 'Usuario', status }).returning();
+    return user;
+  }
+
+  async function login(email: string) {
+    const res = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email, password: PASSWORD })
+      .expect(200);
+    return res.body.accessToken as string;
+  }
+
+  function auth(token: string) {
+    return `Bearer ${token}`;
+  }
+
+  async function createCategory(userId: string, type: 'INCOME' | 'EXPENSE', name: string, parentId?: string) {
+    const [category] = await db
+      .insert(categories)
+      .values({ userId, type, name, parentId: parentId ?? null })
+      .returning();
+    return category;
+  }
+
+  describe('POST /transactions', () => {
+    it('sin autenticar, responde 401', async () => {
+      await request(app.getHttpServer()).post('/transactions').send({}).expect(401);
+    });
+
+    it('con la cuenta sin verificar, responde 403', async () => {
+      const user = await createUser('sin-verificar@example.com', 'PENDING_VERIFICATION');
+      const category = await createCategory(user.id, 'INCOME', 'Nómina');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send({ type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'Nómina agosto', amount: '2000.00' })
+        .expect(403);
+    });
+
+    it('crea un ingreso válido, con mes/año derivados de la fecha', async () => {
+      const user = await createUser('crear-ingreso@example.com');
+      const category = await createCategory(user.id, 'INCOME', 'Nómina');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send({ type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'Nómina agosto', amount: '2000.00' })
+        .expect(201);
+
+      expect(res.body).toMatchObject({
+        type: 'INCOME',
+        date: '2026-08-01',
+        categoryId: category.id,
+        concept: 'Nómina agosto',
+        amount: '2000.00',
+        merchant: null,
+        subcategoryId: null,
+        paymentMethod: null,
+      });
+    });
+
+    it('crea un gasto válido con subcategoría, comercio y tipo de pago', async () => {
+      const user = await createUser('crear-gasto@example.com');
+      const parent = await createCategory(user.id, 'EXPENSE', 'Transporte');
+      const child = await createCategory(user.id, 'EXPENSE', 'Gasolina', parent.id);
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send({
+          type: 'EXPENSE',
+          date: '2026-08-05',
+          categoryId: parent.id,
+          subcategoryId: child.id,
+          concept: 'Depósito lleno',
+          merchant: 'Repsol',
+          amount: '65.30',
+          paymentMethod: 'CARD',
+        })
+        .expect(201);
+
+      expect(res.body).toMatchObject({
+        subcategoryId: child.id,
+        merchant: 'Repsol',
+        paymentMethod: 'CARD',
+        amount: '65.30',
+      });
+    });
+
+    it('rechaza (400) un ingreso con campos exclusivos de gasto', async () => {
+      const user = await createUser('ingreso-con-gasto@example.com');
+      const category = await createCategory(user.id, 'INCOME', 'Nómina');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send({ type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'x', amount: '10.00', merchant: 'No debería aceptarse' })
+        .expect(400);
+    });
+
+    it('rechaza (400) una subcategoría que no es hija de la categoría indicada', async () => {
+      const user = await createUser('subcategoria-no-hija@example.com');
+      const parent = await createCategory(user.id, 'EXPENSE', 'Transporte');
+      const otherParent = await createCategory(user.id, 'EXPENSE', 'Comida');
+      const child = await createCategory(user.id, 'EXPENSE', 'Restaurantes', otherParent.id);
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send({ type: 'EXPENSE', date: '2026-08-01', categoryId: parent.id, subcategoryId: child.id, concept: 'x', amount: '10.00' })
+        .expect(400);
+    });
+
+    it('rechaza (400) una subcategoría de tipo INCOME en un gasto', async () => {
+      const user = await createUser('subcategoria-income@example.com');
+      const parent = await createCategory(user.id, 'EXPENSE', 'Transporte');
+      const incomeCategory = await createCategory(user.id, 'INCOME', 'Nómina');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send({ type: 'EXPENSE', date: '2026-08-01', categoryId: parent.id, subcategoryId: incomeCategory.id, concept: 'x', amount: '10.00' })
+        .expect(400);
+    });
+
+    it('una categoría de otro usuario se trata como no encontrada (404)', async () => {
+      const owner = await createUser('categoria-ajena-dueno@example.com');
+      const attacker = await createUser('categoria-ajena-atacante@example.com');
+      const ownerCategory = await createCategory(owner.id, 'INCOME', 'Categoría del dueño');
+      const attackerToken = await login(attacker.email);
+
+      await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(attackerToken))
+        .send({ type: 'INCOME', date: '2026-08-01', categoryId: ownerCategory.id, concept: 'x', amount: '10.00' })
+        .expect(404);
+    });
+
+    it('rechaza (400) una categoría cuyo tipo no coincide con el del movimiento', async () => {
+      const user = await createUser('tipo-no-coincide@example.com');
+      const expenseCategory = await createCategory(user.id, 'EXPENSE', 'Comida');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send({ type: 'INCOME', date: '2026-08-01', categoryId: expenseCategory.id, concept: 'x', amount: '10.00' })
+        .expect(400);
+    });
+  });
+
+  describe('GET /transactions', () => {
+    it('lista solo los movimientos propios, filtra por cada criterio y calcula el resumen sobre el total filtrado', async () => {
+      const owner = await createUser('listar-dueno@example.com');
+      const other = await createUser('listar-otro@example.com');
+      const income = await createCategory(owner.id, 'INCOME', 'Nómina');
+      const expenseParent = await createCategory(owner.id, 'EXPENSE', 'Transporte');
+      const expenseChild = await createCategory(owner.id, 'EXPENSE', 'Gasolina', expenseParent.id);
+      const otherIncome = await createCategory(other.id, 'INCOME', 'Categoría ajena');
+
+      await db.insert(transactions).values([
+        { userId: owner.id, type: 'INCOME', date: '2026-08-01', categoryId: income.id, concept: 'Nómina agosto', amount: '2000.00' },
+        {
+          userId: owner.id,
+          type: 'EXPENSE',
+          date: '2026-08-05',
+          categoryId: expenseParent.id,
+          subcategoryId: expenseChild.id,
+          concept: 'Depósito',
+          merchant: 'Repsol',
+          amount: '65.30',
+        },
+        { userId: owner.id, type: 'EXPENSE', date: '2026-07-10', categoryId: expenseParent.id, concept: 'Bus mensual', amount: '40.00' },
+        { userId: other.id, type: 'INCOME', date: '2026-08-01', categoryId: otherIncome.id, concept: 'Ajeno', amount: '999.00' },
+      ]);
+
+      const token = await login(owner.email);
+
+      const all = await request(app.getHttpServer()).get('/transactions').set('Authorization', auth(token)).expect(200);
+      expect(all.body.items).toHaveLength(3);
+      expect(all.body.totalItems).toBe(3);
+      expect(all.body.summary.total).toBe('2105.30');
+      // Los movimientos propios caen en dos meses distintos (2026-07 y 2026-08).
+      expect(all.body.summary.averagePerMonth).toBe('1052.65');
+
+      const onlyIncome = await request(app.getHttpServer())
+        .get('/transactions?type=INCOME')
+        .set('Authorization', auth(token))
+        .expect(200);
+      expect(onlyIncome.body.items).toHaveLength(1);
+      expect(onlyIncome.body.summary.total).toBe('2000.00');
+
+      const byDateRange = await request(app.getHttpServer())
+        .get('/transactions?dateFrom=2026-08-01&dateTo=2026-08-31')
+        .set('Authorization', auth(token))
+        .expect(200);
+      expect(byDateRange.body.items).toHaveLength(2);
+
+      const byCategory = await request(app.getHttpServer())
+        .get(`/transactions?categoryId=${expenseParent.id}`)
+        .set('Authorization', auth(token))
+        .expect(200);
+      expect(byCategory.body.items).toHaveLength(2);
+
+      const bySubcategory = await request(app.getHttpServer())
+        .get(`/transactions?subcategoryId=${expenseChild.id}`)
+        .set('Authorization', auth(token))
+        .expect(200);
+      expect(bySubcategory.body.items).toHaveLength(1);
+
+      const byMerchant = await request(app.getHttpServer())
+        .get('/transactions?merchant=repsol')
+        .set('Authorization', auth(token))
+        .expect(200);
+      expect(byMerchant.body.items).toHaveLength(1);
+
+      const byText = await request(app.getHttpServer())
+        .get('/transactions?q=nómina')
+        .set('Authorization', auth(token))
+        .expect(200);
+      expect(byText.body.items).toHaveLength(1);
+    });
+
+    it('rechaza (400) un rango de fechas inválido (dateFrom posterior a dateTo)', async () => {
+      const user = await createUser('rango-invalido@example.com');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .get('/transactions?dateFrom=2026-08-31&dateTo=2026-08-01')
+        .set('Authorization', auth(token))
+        .expect(400);
+    });
+
+    it('un mes/conjunto vacío devuelve 200 con todo a 0, no un error', async () => {
+      const user = await createUser('conjunto-vacio@example.com');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer()).get('/transactions').set('Authorization', auth(token)).expect(200);
+      expect(res.body.items).toEqual([]);
+      expect(res.body.summary.total).toBe('0.00');
+      expect(res.body.summary.averagePerMonth).toBeNull();
+    });
+  });
+
+  describe('PATCH /transactions/:id', () => {
+    it('edita parcialmente un movimiento propio', async () => {
+      const user = await createUser('editar@example.com');
+      const category = await createCategory(user.id, 'INCOME', 'Nómina');
+      const [transaction] = await db
+        .insert(transactions)
+        .values({ userId: user.id, type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'Original', amount: '100.00' })
+        .returning();
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/transactions/${transaction.id}`)
+        .set('Authorization', auth(token))
+        .send({ amount: '150.00' })
+        .expect(200);
+
+      expect(res.body.amount).toBe('150.00');
+      expect(res.body.concept).toBe('Original');
+    });
+
+    it('no se puede editar un movimiento de otro usuario (404)', async () => {
+      const owner = await createUser('editar-dueno@example.com');
+      const attacker = await createUser('editar-atacante@example.com');
+      const category = await createCategory(owner.id, 'INCOME', 'Nómina');
+      const [transaction] = await db
+        .insert(transactions)
+        .values({ userId: owner.id, type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'x', amount: '10.00' })
+        .returning();
+      const attackerToken = await login(attacker.email);
+
+      await request(app.getHttpServer())
+        .patch(`/transactions/${transaction.id}`)
+        .set('Authorization', auth(attackerToken))
+        .send({ amount: '999.00' })
+        .expect(404);
+    });
+  });
+
+  describe('DELETE /transactions/:id', () => {
+    it('borra un movimiento propio', async () => {
+      const user = await createUser('borrar@example.com');
+      const category = await createCategory(user.id, 'INCOME', 'Nómina');
+      const [transaction] = await db
+        .insert(transactions)
+        .values({ userId: user.id, type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'x', amount: '10.00' })
+        .returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .delete(`/transactions/${transaction.id}`)
+        .set('Authorization', auth(token))
+        .expect(204);
+
+      const stillThere = await db.query.transactions.findFirst({ where: (t, { eq }) => eq(t.id, transaction.id) });
+      expect(stillThere).toBeUndefined();
+    });
+
+    it('no se puede borrar un movimiento de otro usuario (404)', async () => {
+      const owner = await createUser('borrar-dueno@example.com');
+      const attacker = await createUser('borrar-atacante@example.com');
+      const category = await createCategory(owner.id, 'INCOME', 'Nómina');
+      const [transaction] = await db
+        .insert(transactions)
+        .values({ userId: owner.id, type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'x', amount: '10.00' })
+        .returning();
+      const attackerToken = await login(attacker.email);
+
+      await request(app.getHttpServer())
+        .delete(`/transactions/${transaction.id}`)
+        .set('Authorization', auth(attackerToken))
+        .expect(404);
+
+      const stillThere = await db.query.transactions.findFirst({ where: (t, { eq }) => eq(t.id, transaction.id) });
+      expect(stillThere).toBeDefined();
+    });
+  });
+});
