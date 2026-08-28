@@ -1,6 +1,15 @@
 import { Decimal } from 'decimal.js';
-import { Workbook } from 'exceljs';
-import type { Worksheet } from 'exceljs';
+// `exceljs` es un módulo CommonJS que solo expone `module.exports = ExcelJS`
+// (sin asignar propiedades individuales), así que Node no puede sintetizar
+// `Workbook` como export nombrado bajo ESM nativo: `import { Workbook } from
+// 'exceljs'` type-checka bien (los .d.ts sí declaran exports nombrados) y
+// funciona bajo Vitest (que transpila/bundlea), pero revienta en tiempo de
+// ejecución con `node dist/main.js` (`npm run start:dev`/`start:prod`) —
+// bug real, no solo de tipos, encontrado al arrancar el servidor de verdad
+// por primera vez. Import por defecto + acceso a la propiedad, como sugiere
+// el propio error de Node.
+import ExcelJS from 'exceljs';
+import type { Workbook, Worksheet } from 'exceljs';
 import type { PaymentMethod } from '../db/schema/transactions.schema.js';
 
 /**
@@ -89,7 +98,7 @@ export interface ParsedWorkbook {
  * que no tiene la forma esperada.
  */
 export async function parseExcelWorkbook(buffer: Buffer): Promise<ParsedWorkbook> {
-  const workbook = new Workbook();
+  const workbook = new ExcelJS.Workbook();
   // `exceljs` declara `load(buffer: Buffer, ...)` contra una versión de
   // `@types/node` anterior a que `Buffer` pasara a ser genérico
   // (`Buffer<ArrayBufferLike>`) — desajuste de tipos entre librerías, no un
