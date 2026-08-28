@@ -12,6 +12,7 @@ import { SessionsPage } from './pages/SessionsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { MovementsPage } from './pages/MovementsPage';
+import { DashboardPage } from './pages/DashboardPage';
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/movements" element={<MovementsPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
