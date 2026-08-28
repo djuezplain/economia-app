@@ -14,6 +14,7 @@ import { CategoriesPage } from './pages/CategoriesPage';
 import { MovementsPage } from './pages/MovementsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ImportPage } from './pages/ImportPage';
+import { GoalsPage } from './pages/GoalsPage';
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
           <Route path="/movements" element={<MovementsPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/import" element={<ImportPage />} />
+          <Route path="/goals" element={<GoalsPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

@@ -28,8 +28,8 @@
 
 ## Grupo 4 — Frontend
 
-- [ ] **T4.1** — Frontend: página `/goals` (enlazada desde `HomePage`) — objetivo de ahorro (crear/editar mensual y anual, progreso del periodo en curso con selector de mes/año) y presupuestos de gasto (global + por categoría: crear, editar, borrar, progreso del mes en curso).
-  *Verificación:* tests con Testing Library + lint/build en verde en ambos paquetes.
+- [x] **T4.1** — Frontend: página `/goals` (enlazada desde `HomePage`) — objetivo de ahorro (crear/editar mensual y anual, progreso del periodo en curso con selector de mes/año) y presupuestos de gasto (global + por categoría: crear, editar, borrar, progreso del mes en curso). `api/savings-goals.ts`, `api/expense-budgets.ts`, `api/goals-progress.ts` nuevos, espejo de los tipos del backend. HTML semántico plano sin gráficos (plan.md §7): progreso en `<ul>` de texto, presupuestos en `<table>`. Estado de progreso (`resolveProgressStatus`, neutral en el backend) traducido a dos vocabularios distintos en el cliente: "cumplido"/"cerca de conseguirlo" para el objetivo de ahorro, "superado"/"cerca del límite" para un presupuesto (H4 criterio 2).
+  *Verificación:* `GoalsPage.test.tsx` (9 tests, Testing Library) — sin sesión no llama a ninguna API; sin objetivos/presupuestos muestra los mensajes de "todavía no tienes nada"; progreso real de un objetivo mensual y de un presupuesto de categoría; crear un objetivo mensual desde el formulario; editar un presupuesto existente desde la tabla; eliminar un presupuesto; crear un presupuesto de categoría desde "Añadir presupuesto"; con un presupuesto global ya existente, la opción "global" desaparece del desplegable (evita un 409 predecible desde la UI); error de carga mostrado. Lint y build en verde en ambos paquetes (frontend: 78/78 tests, 15 ficheros; backend sin cambios, 97/97 unitarios).
 
 ## Grupo 5 — Cierre de la spec
 
