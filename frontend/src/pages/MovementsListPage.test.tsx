@@ -166,6 +166,19 @@ describe('MovementsListPage', () => {
     expect(screen.queryByText(/Total:/)).not.toBeInTheDocument();
   });
 
+  it('no muestra el resumen ni el formulario de registro a la vez (H1 criterio 2)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+    vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(EXPENSE_RESULT);
+
+    renderPage();
+    await screen.findByText('Depósito gasolina');
+
+    expect(screen.queryByText(/Total:/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Concepto')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar' })).not.toBeInTheDocument();
+  });
+
   it('cambia el selector a ingresos y recarga el listado filtrado por ese tipo', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     mockCategoriesApi();

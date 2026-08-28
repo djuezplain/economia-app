@@ -182,7 +182,7 @@ describe('RegisterMovementPage', () => {
     );
   });
 
-  it('con :id (edición), carga el movimiento con getTransaction, rellena el formulario y oculta el selector de tipo', async () => {
+  it('con :id (edición), carga el movimiento con getTransaction y rellena el formulario campo a campo (H3 criterio 1), y oculta el selector de tipo', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     mockCategoriesApi();
     const getSpy = vi.spyOn(transactionsApi, 'getTransaction').mockResolvedValue(EXPENSE_TX);
@@ -191,9 +191,28 @@ describe('RegisterMovementPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Editar movimiento' })).toBeInTheDocument();
     expect(getSpy).toHaveBeenCalledWith('tx-1');
+    // Los 7 campos del movimiento, no solo concepto/importe — "mismo campo a
+    // campo" (spec.md H3 criterio 1).
     await waitFor(() => expect(screen.getByLabelText('Concepto')).toHaveValue('Depósito gasolina'));
+    expect(screen.getByLabelText('Fecha')).toHaveValue('2026-08-01');
+    await waitFor(() => expect(screen.getByLabelText('Categoría', { selector: '#categoryId' })).toHaveValue('cat-expense-1'));
+    expect(await screen.findByLabelText('Subcategoría (opcional)')).toHaveValue('cat-expense-2');
+    expect(screen.getByLabelText('Comercio (opcional)')).toHaveValue('Repsol');
     expect(screen.getByLabelText('Importe')).toHaveValue('45.00');
+    expect(screen.getByLabelText('Tipo de pago (opcional)')).toHaveValue('CARD');
     expect(screen.queryByRole('radiogroup', { name: 'Tipo de movimiento' })).not.toBeInTheDocument();
+  });
+
+  it('no muestra el resumen ni el listado de movimientos, solo el formulario (H1 criterio 3)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+
+    renderPage('/movements/register');
+    await screen.findByRole('heading', { name: 'Registrar gasto' });
+
+    expect(screen.queryByText(/Total:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Movimientos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 
   it('edición: guardar llama a updateTransaction y navega a /movements', async () => {

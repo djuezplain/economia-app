@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { MovementsLayout } from './MovementsLayout';
@@ -57,5 +58,15 @@ describe('MovementsLayout', () => {
 
     expect(screen.getByText('Formulario de edición')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Registrar' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('desde el modo edición, pulsar "Movimientos" en la sub-navegación vuelve al listado (H3 criterio 2)', async () => {
+    const user = userEvent.setup();
+    renderLayout('/movements/register/tx-1');
+    await screen.findByText('Formulario de edición');
+
+    await user.click(screen.getByRole('link', { name: 'Movimientos' }));
+
+    expect(await screen.findByText('Listado de movimientos')).toBeInTheDocument();
   });
 });

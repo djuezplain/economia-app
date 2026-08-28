@@ -126,6 +126,20 @@ describe('MovementsSummaryPage', () => {
     expect(screen.getByText('Gasolina: 45.00')).toBeInTheDocument();
   });
 
+  it('no muestra el listado detallado de movimientos ni el formulario de registro (H1 criterio 1)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+    vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(EXPENSE_RESULT);
+
+    renderPage();
+    await screen.findByText(/Total: 45\.00/);
+
+    expect(screen.queryByRole('heading', { name: 'Movimientos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Concepto')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar' })).not.toBeInTheDocument();
+  });
+
   it('no muestra ningún filtro (fechas, categoría, comercio, búsqueda) — eso vive en MovementsListPage', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     mockCategoriesApi();

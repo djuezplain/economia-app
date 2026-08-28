@@ -29,8 +29,34 @@
 
 ## Grupo 4 — Cierre de la spec
 
-- [ ] **T4.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1-H3) y marcar cada criterio de aceptación como cubierto por al menos un test automático, igual que en el cierre de las specs 001-004.
+- [x] **T4.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1-H3) y marcar cada criterio de aceptación como cubierto por al menos un test automático, igual que en el cierre de las specs 001-005.
   *Verificación:* el propio checklist relleno, añadido al final de este fichero.
+  *Hallazgos reales durante el repaso, encontrados y corregidos con test nuevo (no solo documentados):* al contrastar `spec.md` literalmente contra la implementación, aparecieron 4 huecos de cobertura sobre comportamiento que ya era correcto pero no estaba probado explícitamente (ningún hueco real de producto): (1) H1 criterios 1-3 ("sin el listado/formulario/resumen a la vez") solo se probaban indirectamente (p. ej. "sin Total:" en `MovementsListPage`) — añadidas comprobaciones explícitas de ausencia de listado/formulario en `MovementsSummaryPage.test.tsx`, `MovementsListPage.test.tsx` y `RegisterMovementPage.test.tsx`. (2) H3 criterio 1 ("mismo campo a campo") solo comprobaba concepto e importe al cargar una edición — ampliado para comprobar los 7 campos (fecha, categoría, subcategoría, comercio, importe, tipo de pago) en `RegisterMovementPage.test.tsx`. (3) H2/H3 ("moverse por la sub-navegación") solo comprobaba qué pestaña queda marcada como activa según la URL, nunca que pulsar una pestaña navegara de verdad — añadido un test en `MovementsLayout.test.tsx` que pulsa "Movimientos" desde el modo edición y comprueba que se llega al listado (H3 criterio 2, "directamente por la sub-navegación"). Ninguno de los 3 cambia comportamiento, solo prueban código que ya era correcto. Suite tras el cierre: 116/116 tests frontend (21 ficheros); lint y build limpios.
 
 ---
 **Cómo trabajamos esto:** una tarea a la vez, en orden dentro de cada grupo. Al terminar una tarea, la marco `[x]` aquí y hago commit; solo entonces paso a la siguiente. Si algo del plan no encaja al implementarlo, paramos y ajustamos `plan.md` antes de seguir (no se parchea "en silencio").
+
+---
+
+## Checklist de cierre — spec 006 (T4.1)
+
+Repaso de `spec.md` historia por historia. `[x]` = cubierto por al menos un test automático (se cita el fichero), o garantizado por construcción/por un test de otra spec (se explica por qué).
+
+### H1 — Tres páginas, una por tarea
+
+- [x] Criterio 1 (Resumen: total, media, desglose, sin listado ni formulario): `MovementsSummaryPage.test.tsx` — "con sesión activa, muestra el total, la media..." y "no muestra el listado detallado de movimientos ni el formulario de registro" (añadido en este cierre).
+- [x] Criterio 2 (Movimientos: filtros + listado con editar/eliminar, sin resumen ni formulario): `MovementsListPage.test.tsx` — filtros, listado, editar (navega), eliminar; "no muestra el resumen ni el formulario de registro a la vez" (añadido en este cierre).
+- [x] Criterio 3 (Registrar: solo el formulario, sin resumen ni listado): `RegisterMovementPage.test.tsx` — formulario de alta y edición; "no muestra el resumen ni el listado de movimientos" (añadido en este cierre).
+- [x] Criterio 4 (cada página con su propio selector, independiente, siempre empieza en Gastos): cada fichero de test de las 3 páginas usa `type` por defecto `EXPENSE` sin ninguna interacción previa (implícito en todos los tests que no tocan el selector); la independencia entre páginas está garantizada por construcción — cada página es una instancia de componente separada con su propio `useState`, no hay ningún estado compartido entre ellas en el código (`plan.md` §4), a diferencia de si compartieran un store o el `type` viniera de la URL.
+
+### H2 — Sub-navegación propia
+
+- [x] Criterio 1 (el menú lateral de spec 005 mantiene un único enlace "Ingresos y gastos"): `AppLayout.test.tsx` (spec 005) — "con sesión muestra los 8 enlaces..." sigue comprobando exactamente un enlace "Ingresos y gastos" entre los 8, sin cambios; `AppLayout.tsx` no se ha tocado en ningún commit de esta spec (verificado por el propio historial de commits).
+- [x] Criterio 2 (sub-navegación con enlaces a las otras dos, visible siempre): `MovementsLayout.test.tsx` — "muestra las 3 pestañas en cualquier sub-página"; los tests de activación por ruta (`/movements`, `/summary`, `/register`, `/register/:id`) confirman además que los 3 enlaces están presentes en las 4 rutas, no solo en una.
+- [x] Criterio 3 (sub-página activa distinguible visualmente): `MovementsLayout.test.tsx` — 4 tests de `aria-current="page"` según la ruta.
+
+### H3 — Editar sigue siendo posible
+
+- [x] Criterio 1 (Editar navega a Registrar con el formulario relleno, campo a campo): `MovementsListPage.test.tsx` — "'Editar' navega a /movements/register/:id"; `RegisterMovementPage.test.tsx` — "con :id (edición)... rellena el formulario campo a campo" (ampliado en este cierre a los 7 campos, no solo concepto/importe).
+- [x] Criterio 2 (desde Registrar en edición se puede volver a Movimientos — guardar, cancelar, o sub-navegación): `RegisterMovementPage.test.tsx` — guardar navega a `/movements`; "Cancelar edición" navega a `/movements`; `MovementsLayout.test.tsx` — "desde el modo edición, pulsar 'Movimientos'... vuelve al listado" (añadido en este cierre).
+- [x] Criterio 3 (Registrar en edición se distingue de Registrar en alta por el título): `RegisterMovementPage.test.tsx` — título "Registrar gasto" en alta, "Editar movimiento" en edición (y el selector de tipo, oculto solo en edición, refuerza la distinción).
