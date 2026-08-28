@@ -8,10 +8,12 @@ import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
 import { categories, transactions, users } from '../src/db/schema/index.js';
+import { RateLimitGuard } from '../src/common/rate-limit.guard.js';
 
 describe('Movimientos (e2e) — spec 002 H1/H2', () => {
   let app: INestApplication<App>;
   let db: Database;
+  let rateLimitGuard: RateLimitGuard;
 
   const PASSWORD = 'Contraseña-Segura-123';
 
@@ -26,6 +28,7 @@ describe('Movimientos (e2e) — spec 002 H1/H2', () => {
     await app.init();
 
     db = moduleFixture.get<Database>(DB);
+    rateLimitGuard = moduleFixture.get<RateLimitGuard>(RateLimitGuard);
   });
 
   afterAll(async () => {
@@ -36,6 +39,12 @@ describe('Movimientos (e2e) — spec 002 H1/H2', () => {
     await db.delete(transactions);
     await db.delete(categories);
     await db.delete(users);
+    // Este fichero ya hace más de 20 `login()` (el límite real de
+    // `POST /auth/login`, 20 cada 15 min) — sin resetear el bucket en
+    // memoria del guard entre tests, los últimos de la suite empezarían a
+    // fallar con 429 sin que su propio test hiciera nada mal (ver comentario
+    // de `RateLimitGuard.resetForTests`).
+    rateLimitGuard.resetForTests();
   });
 
   async function createUser(email: string, status: 'ACTIVE' | 'PENDING_VERIFICATION' = 'ACTIVE') {
@@ -326,6 +335,81 @@ describe('Movimientos (e2e) — spec 002 H1/H2', () => {
       expect(res.body.summary.averagePerMonth).toBeNull();
       expect(res.body.summary.byCategory).toEqual([]);
       expect(res.body.summary.bySubcategory).toEqual([]);
+    });
+  });
+
+  describe('GET /transactions/:id', () => {
+    it('sin autenticar, responde 401', async () => {
+      await request(app.getHttpServer()).get('/transactions/00000000-0000-0000-0000-000000000000').expect(401);
+    });
+
+    it('con la cuenta sin verificar, responde 403', async () => {
+      const user = await createUser('consultar-sin-verificar@example.com', 'PENDING_VERIFICATION');
+      const category = await createCategory(user.id, 'INCOME', 'Nómina');
+      const [transaction] = await db
+        .insert(transactions)
+        .values({ userId: user.id, type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'x', amount: '10.00' })
+        .returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .get(`/transactions/${transaction.id}`)
+        .set('Authorization', auth(token))
+        .expect(403);
+    });
+
+    it('devuelve un movimiento propio con sus datos completos', async () => {
+      const user = await createUser('consultar-propio@example.com');
+      const category = await createCategory(user.id, 'EXPENSE', 'Ocio');
+      const [transaction] = await db
+        .insert(transactions)
+        .values({
+          userId: user.id,
+          type: 'EXPENSE',
+          date: '2026-08-01',
+          categoryId: category.id,
+          concept: 'Cine',
+          merchant: 'Cines Ejemplo',
+          amount: '12.50',
+        })
+        .returning();
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .get(`/transactions/${transaction.id}`)
+        .set('Authorization', auth(token))
+        .expect(200);
+
+      expect(res.body.id).toBe(transaction.id);
+      expect(res.body.concept).toBe('Cine');
+      expect(res.body.merchant).toBe('Cines Ejemplo');
+      expect(res.body.amount).toBe('12.50');
+    });
+
+    it('un movimiento de otro usuario se trata como no encontrado (404)', async () => {
+      const owner = await createUser('consultar-dueno@example.com');
+      const attacker = await createUser('consultar-atacante@example.com');
+      const category = await createCategory(owner.id, 'INCOME', 'Nómina');
+      const [transaction] = await db
+        .insert(transactions)
+        .values({ userId: owner.id, type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'x', amount: '10.00' })
+        .returning();
+      const attackerToken = await login(attacker.email);
+
+      await request(app.getHttpServer())
+        .get(`/transactions/${transaction.id}`)
+        .set('Authorization', auth(attackerToken))
+        .expect(404);
+    });
+
+    it('un id inexistente responde 404', async () => {
+      const user = await createUser('consultar-inexistente@example.com');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .get('/transactions/00000000-0000-0000-0000-000000000000')
+        .set('Authorization', auth(token))
+        .expect(404);
     });
   });
 

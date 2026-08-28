@@ -38,6 +38,12 @@ export class TransactionsController {
     return this.transactions.list(req.user.id, query);
   }
 
+  /** Spec 006 (páginas de movimientos), `plan.md` §3. */
+  @Get(':id')
+  findOne(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }) {
+    return this.transactions.findOne(req.user.id, id);
+  }
+
   @Patch(':id')
   update(
     @Param('id', new ParseUUIDPipe()) id: string,

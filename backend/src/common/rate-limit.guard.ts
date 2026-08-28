@@ -63,4 +63,19 @@ export class RateLimitGuard implements CanActivate {
     bucket.count += 1;
     return true;
   }
+
+  /**
+   * Solo para tests e2e. El bucket es un `Map` en memoria compartido por
+   * TODAS las peticiones a una misma ruta+IP durante la vida de la app de
+   * Nest — en un fichero de test grande (varias decenas de `login()` en la
+   * misma `describe`, todas contra la misma IP de `supertest`), eso puede
+   * agotar el límite real (`/auth/login`, 20 cada 15 min) sin que ningún
+   * test individual haga nada mal; encontrado al añadir tests nuevos a
+   * `transactions.e2e-spec.ts` (spec 006, T1.1) que hicieron que ese
+   * fichero pasara de 18 a 23 logins. No se toca desde ningún código de
+   * producción — nunca se llama fuera de un `beforeEach` de test.
+   */
+  resetForTests(): void {
+    this.buckets.clear();
+  }
 }

@@ -105,6 +105,16 @@ export class TransactionsService {
   }
 
   /**
+   * Spec 006 (páginas de movimientos), `plan.md` §3: necesario para que
+   * "Registrar" en modo edición pueda cargar el movimiento a partir del
+   * `:id` de la URL (antes no hacía falta, `MovementsPage` ya tenía el
+   * objeto completo en memoria desde el listado).
+   */
+  async findOne(userId: string, id: string): Promise<Transaction> {
+    return this.findOwnOrThrow(userId, id);
+  }
+
+  /**
    * `type` no es editable (ver `UpdateTransactionDto`) — se usa el `type`
    * ya guardado del movimiento para revalidar la combinación de campos si
    * se cambia `categoryId`/`subcategoryId`.

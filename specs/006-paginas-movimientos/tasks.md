@@ -1,0 +1,36 @@
+# Tasks 006 — Separar "Ingresos y gastos" en páginas independientes
+
+**Estado:** Listo para implementar
+**Fase:** 3 de 4 (Spec ✅ → Plan ✅ → Tasks → Implementación)
+**Regla:** una tarea = un commit enfocado (Conventional Commits). No se marca `[x]` una tarea sin que su verificación pase.
+
+**Nota de coordinación con spec 005 (no es una tarea, es contexto para cuando se implemente):** `plan.md` §2 describe `MovementsLayout` como si ya viviera "dentro de `AppLayout`", pero spec 005 (menú lateral) todavía no ha pasado de `plan.md` — no se ha implementado. Esto no bloquea esta spec: `MovementsLayout` se añade como el elemento de la ruta `/movements` tal como está hoy en `App.tsx` (sea cual sea su padre en ese momento). Si spec 005 se implementa después, sus propias tareas ya se encargan de anidar todas las rutas (incluida `/movements`) bajo `AppLayout` — no hace falta ninguna tarea especial aquí para ese caso, ni tampoco si spec 005 se implementa antes.
+
+## Grupo 1 — Backend: consultar un movimiento por id
+
+- [x] **T1.1** — `GET /transactions/:id` (`TransactionsController`/`TransactionsService`, mismo guard `@UseGuards(AuthGuard, RequireActiveUserGuard)` que el resto de `/transactions`). Reutiliza el helper interno (`findOwnOrThrow`) que ya usan `update`/`remove` para comprobar propiedad (`plan.md` §3).
+  *Verificación (e2e, ampliando `test/transactions.e2e-spec.ts`, 5 tests nuevos):* devuelve el movimiento propio con sus datos completos; movimiento ajeno → 404 (sin filtrar si existe o no, mismo criterio que el resto del servicio); id inexistente → 404; sin autenticar → 401; cuenta `PENDING_VERIFICATION` → 403. Suite completa del backend en verde: 97/97 unitarios + 188/188 e2e (18 ficheros); lint y build limpios.
+  *Hallazgo real durante la verificación, encontrado y corregido (no una deviación de `plan.md`, sino de infraestructura de test):* al añadir los 5 tests nuevos, `transactions.e2e-spec.ts` pasó de 18 a 23 llamadas a `login()` dentro del mismo fichero — por encima del límite real de `POST /auth/login` (`@RateLimit({ limit: 20, windowMs: 15 * 60 * 1000 })`, defensa en profundidad de spec 001 H4). Como `RateLimitGuard` mantiene sus contadores en memoria por ruta+IP durante toda la vida de la app de test (una sola instancia para todo el fichero), los últimos tests del fichero (las pruebas de `DELETE /transactions/:id`, sin relación alguna con este cambio) empezaron a fallar con 429 — no un fallo de este endpoint, sino del propio fichero de test acercándose a un límite compartido que ya tenía poco margen (`goals-progress.e2e-spec.ts` ya usa 17 de 20). Corregido con un método `RateLimitGuard.resetForTests()` (documentado como exclusivo de tests, nunca invocado desde código de producción) llamado en el `beforeEach` de `transactions.e2e-spec.ts` junto a la limpieza de tablas ya existente — soluciona la causa (el límite compartido entre tests que no deberían interferir entre sí) en vez de recortar tests para quedar por debajo de 20 a corto plazo, que habría vuelto a romperse en cuanto este fichero (el más grande de la suite, y el que va a seguir creciendo con el resto de spec 006) sumara más tests.
+
+## Grupo 2 — Frontend: código compartido
+
+- [ ] **T2.1** — `frontend/src/api/transactions.ts`: nueva función `getTransaction(id)`. `frontend/src/hooks/useCategoriesForType.ts` (hook nuevo, extrae el `useEffect` de carga de categorías que hoy vive dentro de `MovementsPage`, sin compartir estado entre instancias — `plan.md` §4). `frontend/src/pages/movements-shared.ts` (nuevo): `categoryName`, `PAYMENT_METHOD_LABELS`, `todayIso`, `emptyForm`, movidos tal cual desde `MovementsPage.tsx`, sin cambiar su comportamiento.
+  *Verificación:* `useCategoriesForType.test.tsx` (Testing Library, vía un componente de prueba mínimo) — carga las categorías del tipo indicado, se recarga si el tipo cambia, dos instancias del hook mantienen listas independientes (no comparten estado). `movements-shared.spec.ts` — `categoryName`/`emptyForm`/`todayIso` con los mismos casos que ya cubría implícitamente `MovementsPage.test.tsx`. Lint y build del frontend en verde; `MovementsPage.tsx` todavía no se toca (sigue usando su propio código, no el nuevo) — este grupo solo añade código nuevo sin usarlo aún, para poder revisar cada pieza de forma aislada antes del grupo 3.
+
+## Grupo 3 — Frontend: las 3 páginas nuevas y su sub-navegación
+
+- [ ] **T3.1** — `frontend/src/components/MovementsLayout.tsx` (nuevo, `plan.md` §2: sub-navegación con `NavLink`, `aria-current="page"` automático). Tres páginas nuevas (`MovementsListPage.tsx`, `MovementsSummaryPage.tsx`, `RegisterMovementPage.tsx`), cada una usando `useCategoriesForType`/`movements-shared.ts` del grupo 2. `RegisterMovementPage` decide alta/edición con `useParams().id`; si hay `id`, llama a `getTransaction(id)` al montar. `App.tsx`: la ruta `/movements` pasa a `<Route path="/movements" element={<MovementsLayout />}>` con las sub-rutas de `plan.md` §1 (`index`, `summary`, `register`, `register/:id`). Se retira `MovementsPage.tsx` y `MovementsPage.test.tsx` (sustituidos por las 3 páginas nuevas y sus tests).
+  *Verificación (Testing Library, un fichero de test por página nueva más `MovementsLayout.test.tsx`):*
+  - `MovementsListPage.test.tsx`: filtros y listado (migrado de los tests ya existentes de `MovementsPage.test.tsx` que cubrían esta parte); "Editar" navega a `/movements/register/:id` (no abre nada inline); eliminar.
+  - `MovementsSummaryPage.test.tsx`: sin filtros en la UI; total/media/desglose por categoría y subcategoría del tipo seleccionado, sobre todo el histórico (`plan.md` §5).
+  - `RegisterMovementPage.test.tsx`: sin `id` en la URL → formulario vacío, título "Registrar gasto"/"Registrar ingreso"; con `id` → llama a `getTransaction`, rellena el formulario, título "Editar movimiento"; `id` de un movimiento ajeno/inexistente → mensaje de error (404 de la API); guardar (alta y edición) navega a `/movements`; "Cancelar edición" también.
+  - `MovementsLayout.test.tsx`: los 3 enlaces de la sub-navegación están presentes en las 3 páginas; el enlace activo tiene `aria-current="page"` en `/movements`, `/movements/summary`, `/movements/register` y también en `/movements/register/:id` (activa "Registrar" sin `end`, `plan.md` §2).
+  Suite completa del frontend en verde (todos los ficheros, incluidos los de otras specs, sin regresiones); lint y build limpios en ambos paquetes.
+
+## Grupo 4 — Cierre de la spec
+
+- [ ] **T4.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1-H3) y marcar cada criterio de aceptación como cubierto por al menos un test automático, igual que en el cierre de las specs 001-004.
+  *Verificación:* el propio checklist relleno, añadido al final de este fichero.
+
+---
+**Cómo trabajamos esto:** una tarea a la vez, en orden dentro de cada grupo. Al terminar una tarea, la marco `[x]` aquí y hago commit; solo entonces paso a la siguiente. Si algo del plan no encaja al implementarlo, paramos y ajustamos `plan.md` antes de seguir (no se parchea "en silencio").
