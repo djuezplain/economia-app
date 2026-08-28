@@ -356,7 +356,7 @@ export class AuthService {
     });
 
     // H5 criterio 2: tras el reset, todas las sesiones activas anteriores se cierran.
-    await this.sessions.revokeAllForUser(token.userId);
+    await this.sessions.revokeAllForUser(token.userId, 'PASSWORD_RESET');
 
     return { message: 'Contraseña restablecida correctamente.' };
   }

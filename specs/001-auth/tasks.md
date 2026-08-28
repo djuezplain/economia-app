@@ -73,10 +73,12 @@
 
 ## Grupo 6 — H6 Gestión de sesiones activas
 
-- [ ] **T6.1** — Backend: `GET /users/me/sessions` y `DELETE /users/me/sessions/:id` (solo sobre sesiones propias).
-  *Verificación:* intentar borrar el id de una sesión de otro usuario devuelve 404 (no 403, para no confirmar que existe).
-- [ ] **T6.2** — Frontend: página "Dispositivos y sesiones" con botón de cierre remoto.
-  *Verificación:* prueba manual con dos navegadores/sesiones simultáneas.
+- [x] **T6.1** — Backend: `GET /users/me/sessions` y `DELETE /users/me/sessions/:id` (solo sobre sesiones propias).
+  *Verificación (`test/users-sessions.e2e-spec.ts`, 7 tests):* listado devuelve solo las sesiones activas del propio usuario, sin `refreshTokenHash`; una sesión cerrada (logout) desaparece de la lista; `DELETE` revoca una sesión propia sin afectar a otras del mismo usuario; `DELETE` sobre una sesión de otro usuario → 404, no 403 (no confirma que exista); id inexistente → 404; id con formato inválido → 400 (`ParseUUIDPipe`). Suite completa del backend en verde tras el cambio: 46/46 e2e + 8/8 unitarios (incluyendo el test de robo de `auth-login.e2e-spec.ts` del grupo 3, que sigue detectando el robo real correctamente). ✅ hecho.
+  *Bug encontrado y corregido (ver `constitution.md` §3, "Grupo 6"):* la detección de robo de refresh tokens del grupo 3 revocaba **todas** las sesiones del usuario ante cualquier reutilización de un token ya revocado — pero grupo 6 introduce formas legítimas de que un token quede revocado (cerrar una sesión concreta, logout) que no son señal de robo. Se añadió una columna `revoked_reason` (`ROTATED | LOGOUT | USER_REVOKED | PASSWORD_RESET | REUSE_DETECTED`) y ahora solo se trata como robo la reutilización de un token cuyo motivo de revocación fue `ROTATED` (sustituido por una rotación posterior). Verificado tanto con un test e2e dedicado como manualmente con dos sesiones reales contra el servidor en marcha (curl): cerrar la sesión de un dispositivo ya no afecta a los demás.
+  *Desviación de diseño (documentada, no parcheada en silencio):* se implementó y luego se **retiró** un campo `isCurrent` que debía marcar la sesión desde la que se hace la consulta — no se puede calcular de forma fiable porque la cookie de refresh tiene `path: '/auth'` (grupo 3, minimización de superficie CSRF) y por tanto nunca llega a `/users/me/sessions` en un navegador real (esto no lo detecta `supertest`, que no simula el `path` de las cookies). Arreglarlo bien requeriría meter el id de sesión en el JWT de acceso — cambio de arquitectura que se deja anotado como mejora futura en vez de mezclarlo a medias en este grupo. Ver `constitution.md`.
+- [x] **T6.2** — Frontend: página "Dispositivos y sesiones" (`SessionsPage`) con botón de cierre remoto por sesión, enlazada desde `HomePage`.
+  *Verificación:* 5 tests con Testing Library (`SessionsPage.test.tsx`) + prueba manual con dos "dispositivos" simultáneos (dos logins reales contra el backend en marcha, dos cookies de refresh distintas): revocar uno desde el otro lo deja sin poder refrescar (401) sin tocar al que no se tocó (200). Lint/build en verde en ambos paquetes. ✅ hecho.
 
 ## Grupo 7 — H7 Perfil
 

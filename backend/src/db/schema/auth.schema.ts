@@ -22,6 +22,18 @@ export const emailTokenTypeEnum = pgEnum('email_token_type', [
   'VERIFY_EMAIL',
   'RESET_PASSWORD',
 ]);
+// Por qué se revocó una sesión (grupo 6, H6): distingue una rotación normal
+// de refresh token (`ROTATED`) de un cierre de sesión legítimo iniciado por
+// el propio usuario (`LOGOUT`, `USER_REVOKED`, `PASSWORD_RESET`). Solo la
+// reutilización de una sesión marcada `ROTATED` es señal real de robo — ver
+// `SessionsService.rotate()` y la nota de implementación en constitution.md.
+export const sessionRevokedReasonEnum = pgEnum('session_revoked_reason', [
+  'ROTATED',
+  'LOGOUT',
+  'USER_REVOKED',
+  'PASSWORD_RESET',
+  'REUSE_DETECTED',
+]);
 
 // --- Tables (ver specs/001-auth/plan.md §1) ------------------------------
 
@@ -70,6 +82,7 @@ export const sessions = pgTable('sessions', {
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokedReason: sessionRevokedReasonEnum('revoked_reason'),
 });
 
 export const emailTokens = pgTable('email_tokens', {

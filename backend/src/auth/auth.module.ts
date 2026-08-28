@@ -30,7 +30,13 @@ import { ACCESS_TOKEN_TTL } from './session-cookie.js';
   providers: [AuthService, SessionsService, AuthGuard, GoogleStrategy, GoogleConfiguredGuard],
   // SessionsService y AuthGuard se exportan porque los reutilizarán "mis
   // sesiones" (grupo 6) y cualquier módulo con rutas protegidas (perfil,
-  // grupo 7; exportar/eliminar cuenta, grupo 8).
-  exports: [SessionsService, AuthGuard],
+  // grupo 7; exportar/eliminar cuenta, grupo 8). JwtModule también se
+  // reexporta: `AuthGuard` depende de `JwtService`, y sin reexportar el
+  // módulo que lo provee, Nest no puede resolver esa dependencia al
+  // instanciar `AuthGuard` desde un módulo distinto (p. ej. `UsersModule`)
+  // que solo importa `AuthModule` — un guard referenciado por clase se
+  // resuelve en el injector del módulo que lo consume, no solo del que lo
+  // declaró originalmente.
+  exports: [SessionsService, AuthGuard, JwtModule],
 })
 export class AuthModule {}
