@@ -18,7 +18,7 @@
 
 ## Grupo 3 — H1 + H3: integración en `GoalsPage`
 
-- [ ] **T3.1** — `GoalsPage.tsx`: `GoalProgressSummary` añade un `<ProgressBar direction="savings" .../>` antes del `<ul>` existente (sin tocar el `<ul>`). La tabla de presupuestos añade una columna nueva "Progreso visual" con `<ProgressBar direction="budget" .../>`, dejando la columna existente "Progreso del mes" (`budgetProgressCellText`) intacta (`plan.md` §2).
+- [x] **T3.1** — `GoalsPage.tsx`: `GoalProgressSummary` añade un `<ProgressBar direction="savings" .../>` antes del `<ul>` existente (sin tocar el `<ul>`). La tabla de presupuestos añade una columna nueva "Progreso visual" con `<ProgressBar direction="budget" .../>`, dejando la columna existente "Progreso del mes" (`budgetProgressCellText`) intacta (`plan.md` §2).
   *Verificación (planeada, ampliando `GoalsPage.test.tsx`):* la columna "Progreso del mes" sigue devolviendo exactamente el mismo texto que hoy (regresión de los tests ya existentes, sin tocarlos) — confirma que no se ha roto nada de spec 004. Nuevo test: un presupuesto al 120% muestra su `ProgressBar` en rojo (`over`, dirección `budget`); un objetivo de ahorro mensual cumplido (`AT_OR_ABOVE_TARGET`) muestra su `ProgressBar` en verde (dirección `savings`) — mismo dato de entrada que ya prueba `savingsStatusLabel`, verificando que texto y color no puedan desincronizarse (ambos leen el mismo `status`/`progressPercent`).
 
 ## Grupo 4 — H2: único añadido (aviso de año sin movimientos)

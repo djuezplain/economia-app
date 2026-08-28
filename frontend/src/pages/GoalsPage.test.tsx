@@ -169,6 +169,24 @@ describe('GoalsPage', () => {
     expect(within(rows[0]).getByText('300.00 de 250.00 (120.00%) · superado')).toBeInTheDocument();
   });
 
+  it('H1/H3 (spec 007): un presupuesto superado se pinta en rojo y un objetivo de ahorro superado en verde (mismo dato, direcciones opuestas)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([FOOD_CATEGORY]);
+    vi.spyOn(savingsGoalsApi, 'listSavingsGoals').mockResolvedValue([MONTHLY_GOAL]);
+    vi.spyOn(expenseBudgetsApi, 'listExpenseBudgets').mockResolvedValue([FOOD_BUDGET]);
+    vi.spyOn(goalsProgressApi, 'getMonthProgress').mockResolvedValue(monthProgressWithGoal());
+    vi.spyOn(goalsProgressApi, 'getYearProgress').mockResolvedValue(EMPTY_YEAR_PROGRESS);
+
+    renderPage();
+    await screen.findByText('Real: 1700.00');
+
+    const savingsBar = screen.getByRole('progressbar', { name: /Objetivo de ahorro/ });
+    expect(savingsBar.querySelector('.progress-bar-fill')).toHaveStyle({ background: 'var(--status-green)' });
+
+    const budgetBar = screen.getByRole('progressbar', { name: /^Comida:/ });
+    expect(budgetBar.querySelector('.progress-bar-fill')).toHaveStyle({ background: 'var(--status-red)' });
+  });
+
   it('H4 criterio 2: traduce NEAR_THRESHOLD y BELOW_THRESHOLD a la etiqueta correcta según el tipo', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([FOOD_CATEGORY]);

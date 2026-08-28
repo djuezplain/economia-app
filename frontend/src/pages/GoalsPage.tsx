@@ -11,6 +11,8 @@ import type { ExpenseBudget } from '../api/expense-budgets';
 import { getMonthProgress, getYearProgress } from '../api/goals-progress';
 import type { BudgetProgress, GoalProgress, MonthProgress, ProgressStatus, YearProgress } from '../api/goals-progress';
 import { ApiError } from '../api/client';
+import { ProgressBar } from '../components/ProgressBar';
+import { resolveVisualLevel } from './goals-shared';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -114,17 +116,33 @@ function GoalFormFields({
   );
 }
 
-/** H3/H4: progreso de un objetivo/presupuesto en texto plano (sin barra de progreso, plan.md §7). */
+/**
+ * H3 (spec 007): barra de progreso visual, además del texto/porcentaje que
+ * ya mostraba esta sección desde spec 004 (el `<ul>` no cambia). Siempre
+ * `direction="savings"` — este componente solo se usa para el objetivo de
+ * ahorro (mensual/anual); los presupuestos tienen su propia celda en la
+ * tabla de abajo (`plan.md` §2).
+ */
 function GoalProgressSummary({ progress, statusLabel }: { progress: GoalProgress; statusLabel: (status: ProgressStatus) => string }) {
+  const level = resolveVisualLevel(progress.progressPercent, progress.alertThresholdPercent);
+  const percentLabel = progress.progressPercent === null ? 'sin datos' : `${progress.progressPercent}%`;
   return (
-    <ul>
-      <li>Importe objetivo: {progress.targetAmount ?? 'sin datos (sin ingresos en este periodo)'}</li>
-      <li>Real: {progress.actualAmount}</li>
-      <li>Desviación: {progress.deviation ?? 'sin datos'}</li>
-      <li>% alcanzado: {progress.progressPercent === null ? 'sin datos' : `${progress.progressPercent}%`}</li>
-      <li>Proyección de cierre del periodo: {progress.projectedAmount ?? 'sin proyección (periodo cerrado o sin datos)'}</li>
-      <li>Estado: {statusLabel(progress.status)}</li>
-    </ul>
+    <>
+      <ProgressBar
+        percent={progress.progressPercent === null ? null : parseFloat(progress.progressPercent)}
+        level={level}
+        direction="savings"
+        label={`Objetivo de ahorro: ${percentLabel} — ${statusLabel(progress.status)}`}
+      />
+      <ul>
+        <li>Importe objetivo: {progress.targetAmount ?? 'sin datos (sin ingresos en este periodo)'}</li>
+        <li>Real: {progress.actualAmount}</li>
+        <li>Desviación: {progress.deviation ?? 'sin datos'}</li>
+        <li>% alcanzado: {percentLabel}</li>
+        <li>Proyección de cierre del periodo: {progress.projectedAmount ?? 'sin proyección (periodo cerrado o sin datos)'}</li>
+        <li>Estado: {statusLabel(progress.status)}</li>
+      </ul>
+    </>
   );
 }
 
@@ -139,10 +157,11 @@ function budgetProgressCellText(progress: BudgetProgress | null | undefined): st
  * H1-H4 (spec 004). Una sola página: objetivo de ahorro (mensual + anual,
  * cada uno con su progreso del periodo en curso o consultado) y
  * presupuestos de gasto (global + por categoría, progreso del mes
- * consultado). Mismo criterio del resto de la app: HTML semántico plano,
- * sin gráficos ni componente de "barra de progreso" (plan.md §7) — el
- * progreso se expresa en texto/tabla. Nombres de categoría resueltos en el
- * cliente contra `/categories`, igual que `DashboardPage`.
+ * consultado). Mismo criterio del resto de la app: HTML semántico plano.
+ * Nombres de categoría resueltos en el cliente contra `/categories`, igual
+ * que `DashboardPage`. Progreso mostrado en texto/tabla (spec 004) más una
+ * barra de progreso con código de color de 4 niveles (spec 007, H1/H3,
+ * componente `ProgressBar` — ver `goals-shared.ts` para la lógica de color).
  */
 export function GoalsPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -471,6 +490,7 @@ export function GoalsPage() {
                 <th scope="col">Objetivo</th>
                 <th scope="col">Umbral de aviso</th>
                 <th scope="col">Progreso del mes</th>
+                <th scope="col">Progreso visual</th>
                 <th scope="col">Acciones</th>
               </tr>
             </thead>
@@ -486,7 +506,7 @@ export function GoalsPage() {
                   return (
                     <tr key={budget.id}>
                       <td>{categoryName}</td>
-                      <td colSpan={5}>
+                      <td colSpan={6}>
                         <form onSubmit={handleEditBudget} aria-label={`Editar presupuesto: ${categoryName}`} noValidate>
                           <GoalFormFields idPrefix={`budget-${budget.id}`} form={editingBudgetForm} onChange={setEditingBudgetForm} />
                           {editBudgetError && <p role="alert">{editBudgetError}</p>}
@@ -509,6 +529,14 @@ export function GoalsPage() {
                     <td>{budget.targetValue}</td>
                     <td>{budget.alertThresholdPercent}%</td>
                     <td>{budgetProgressCellText(progress)}</td>
+                    <td>
+                      <ProgressBar
+                        percent={progress?.progressPercent == null ? null : parseFloat(progress.progressPercent)}
+                        level={progress ? resolveVisualLevel(progress.progressPercent, progress.alertThresholdPercent) : 'ok'}
+                        direction="budget"
+                        label={`${categoryName}: ${budgetProgressCellText(progress)}`}
+                      />
+                    </td>
                     <td>
                       <button type="button" onClick={() => startEditBudget(budget)}>
                         Editar
