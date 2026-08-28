@@ -13,6 +13,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { MovementsPage } from './pages/MovementsPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { ImportPage } from './pages/ImportPage';
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/movements" element={<MovementsPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/import" element={<ImportPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

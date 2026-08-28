@@ -36,11 +36,17 @@ async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
   const { skipAuthRetry, ...fetchInit } = init;
   const token = getToken();
 
+  // spec 003 (T3.1, importación de Excel): si el cuerpo es un `FormData`
+  // (subida de fichero, `api.postForm`), no se fuerza `Content-Type:
+  // application/json` — el navegador debe poner su propio
+  // `multipart/form-data; boundary=...`, que no se puede escribir a mano.
+  const isFormData = fetchInit.body instanceof FormData;
+
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...fetchInit,
     credentials: 'include', // necesario para la cookie httpOnly del refresh token
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...fetchInit.headers,
     },
@@ -73,4 +79,7 @@ export const api = {
     request<T>(path, { ...init, method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string, body?: unknown, init?: RequestOptions) =>
     request<T>(path, { ...init, method: 'DELETE', body: body ? JSON.stringify(body) : undefined }),
+  /** spec 003 (T3.1): sube un fichero (`multipart/form-data`), sin serializar el cuerpo a JSON. */
+  postForm: <T>(path: string, formData: FormData, init?: RequestOptions) =>
+    request<T>(path, { ...init, method: 'POST', body: formData }),
 };

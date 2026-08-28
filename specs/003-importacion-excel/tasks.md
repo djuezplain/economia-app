@@ -21,8 +21,9 @@
 
 ## Grupo 3 — Frontend
 
-- [ ] **T3.1** — Frontend: página de importación (`/import`, enlazada desde `HomePage`) — seleccionar fichero, validar (vista previa con categorías nuevas y filas inválidas), confirmar (mismo fichero ya seleccionado, sin volver a pedirlo), resultado final con enlaces a `/movements` y `/dashboard`.
-  *Verificación:* tests con Testing Library + lint/build en verde en ambos paquetes.
+- [x] **T3.1** — Frontend: página de importación (`/import`, enlazada desde `HomePage`) — seleccionar fichero, validar (vista previa con categorías nuevas y filas inválidas), confirmar (mismo fichero ya seleccionado, sin volver a pedirlo), resultado final con enlaces a `/movements` y `/dashboard`.
+  *Verificación:* `ImportPage.test.tsx` (8 tests con Testing Library): sin sesión no llama a la API; botón "Validar" deshabilitado sin fichero; vista previa muestra el resumen, las categorías nuevas y las filas con problemas sin haber llamado a confirmar; sin problemas no se muestran esas secciones; un 400 del backend (hoja no encontrada) se muestra tal cual; confirmar reutiliza el mismo `File` ya seleccionado (sin volver a pedirlo) y muestra el resultado final con enlaces a `/movements`/`/dashboard`; un fallo al confirmar mantiene la vista previa para reintentar; elegir un fichero nuevo descarta la vista previa anterior. `npm run lint`, `npm run build` y `npm run test` (69, todo el frontend) en verde.
+  *Desviación menor, documentada:* `api/client.ts` forzaba siempre `Content-Type: application/json` — con un `FormData` (subida de fichero) eso rompe el `multipart/form-data; boundary=...` que el navegador debe generar. Se añade `api.postForm` y se deja de forzar ese header cuando el cuerpo es `FormData`; no cambia ningún endpoint JSON existente.
 
 ## Grupo 4 — Cierre de la spec
 

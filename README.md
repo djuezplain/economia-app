@@ -54,6 +54,6 @@ npm run test
 - [x] Constitution del proyecto (stack, principios)
 - [x] Spec 001 (Auth) — aprobada, implementada y **cerrada** (checklist de cierre en `specs/001-auth/tasks.md`)
 - [x] Spec 002 (Movimientos, categorías y dashboard) — aprobada, implementada y **cerrada** (checklist de cierre en `specs/002-movimientos-dashboard/tasks.md`): categorías (H3), ingresos y gastos (H1/H2) con desglose por categoría y subcategoría, dashboard mensual y anual (H4/H5)
-- [~] Spec 003 (Importación del histórico desde el Excel "2026") — spec.md y plan.md **aprobados**, en implementación (grupo 1 de 4 en curso); ver `specs/003-importacion-excel/tasks.md`
+- [~] Spec 003 (Importación del histórico desde el Excel "2026") — en implementación (grupos 1-3 de 4 completados: parseo/validación, endpoints, página `/import`); falta el checklist de cierre; ver `specs/003-importacion-excel/tasks.md`
 
 Progreso detallado y checklist tarea a tarea de cada spec cerrada: `specs/001-auth/tasks.md`, `specs/002-movimientos-dashboard/tasks.md`.
