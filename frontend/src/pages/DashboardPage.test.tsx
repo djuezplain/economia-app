@@ -79,6 +79,20 @@ function buildYearSummary(): YearSummary {
   };
 }
 
+function buildEmptyYearSummary(): YearSummary {
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    month: `2026-${String(i + 1).padStart(2, '0')}`,
+    income: '0.00',
+    expense: '0.00',
+    savings: '0.00',
+  }));
+  return {
+    year: 2026,
+    months,
+    totals: { income: '0.00', expense: '0.00', savings: '0.00', savingsPercent: null },
+  };
+}
+
 describe('DashboardPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -172,6 +186,31 @@ describe('DashboardPage', () => {
     expect(rows).toHaveLength(12);
     expect(within(rows[0]).getByText('2026-01')).toBeInTheDocument();
     expect(within(rows[0]).getByText('2000.00')).toBeInTheDocument();
+  });
+
+  it('H2 criterio 4 (spec 007): año sin ingresos ni gastos muestra el aviso, sin dejar de mostrar el gráfico ni la tabla', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
+    vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
+    vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildEmptyYearSummary());
+
+    renderPage();
+
+    expect(await screen.findByText(/Sin movimientos registrados en/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Evolución mensual' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Evolución mensual (tabla)' })).toBeInTheDocument();
+  });
+
+  it('año con datos no muestra el aviso de año vacío (sin falso positivo)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
+    vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
+    vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
+
+    renderPage();
+
+    await screen.findByText('Ingresos totales: 4100.00');
+    expect(screen.queryByText(/Sin movimientos registrados en/)).not.toBeInTheDocument();
   });
 
   it('cambia el mes seleccionado y vuelve a pedir el resumen de ese mes', async () => {

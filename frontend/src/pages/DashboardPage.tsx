@@ -58,6 +58,11 @@ function formatPercent(value: string | null): string {
  * — no es un requisito literal ("p. ej."), y con hasta 12+ categorías un
  * circular deja de leerse bien. Evolución mensual (H5 criterio 1): línea
  * con 3 series (ingresos/gastos/ahorro), un único eje (nunca doble eje).
+ *
+ * Spec 007 (mejoras visuales), H2 criterio 4 / plan.md §0 y §3: estos
+ * gráficos ya existían antes de spec 007 (la spec asumía erróneamente que
+ * Recharts no se usaba todavía). Único añadido de esa spec aquí: un aviso
+ * explícito cuando el año consultado no tiene ingresos ni gastos.
  */
 export function DashboardPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -235,6 +240,9 @@ export function DashboardPage() {
             </ul>
 
             <h3>Evolución mensual</h3>
+            {yearSummary.totals.income === '0.00' && yearSummary.totals.expense === '0.00' && (
+              <p>Sin movimientos registrados en {year}.</p>
+            )}
             <div style={{ width: '100%', height: 320 }}>
               <ResponsiveContainer>
                 <LineChart data={yearSummary.months} margin={{ left: 8 }}>

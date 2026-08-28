@@ -23,7 +23,7 @@
 
 ## Grupo 4 — H2: único añadido (aviso de año sin movimientos)
 
-- [ ] **T4.1** — `DashboardPage.tsx`: cuando `yearSummary.totals.income === '0.00' && yearSummary.totals.expense === '0.00'`, muestra `<p>Sin movimientos registrados en {year}.</p>` antes del gráfico de evolución mensual (`plan.md` §3). Sin cambios en `MonthSummary`/`YearSummary` ni en el backend.
+- [x] **T4.1** — `DashboardPage.tsx`: cuando `yearSummary.totals.income === '0.00' && yearSummary.totals.expense === '0.00'`, muestra `<p>Sin movimientos registrados en {year}.</p>` antes del gráfico de evolución mensual (`plan.md` §3). Sin cambios en `MonthSummary`/`YearSummary` ni en el backend.
   *Verificación (planeada, ampliando `DashboardPage.test.tsx`):* año con `income`/`expense` totales en `0.00` muestra el aviso nuevo; año con datos reales no lo muestra (evita falso positivo); el gráfico y la tabla de evolución mensual se siguen mostrando en ambos casos (no se sustituyen, criterio 3 de H2).
 
 ## Grupo 5 — H4: espaciado y agrupación (solo CSS)
