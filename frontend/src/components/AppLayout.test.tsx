@@ -111,21 +111,37 @@ describe('AppLayout', () => {
     expect(screen.getByRole('link', { name: 'Inicio' })).not.toHaveAttribute('aria-current');
   });
 
-  it('el botón de plegar oculta los enlaces y el de cerrar sesión, y se puede desplegar de nuevo', async () => {
+  it('el botón de plegar oculta el texto de los enlaces y del botón de cerrar sesión, que siguen siendo accesibles por su icono (H5 criterio 2, spec 007), y se puede desplegar de nuevo', async () => {
     mockLoggedIn();
     const user = userEvent.setup();
     renderLayout();
 
-    await screen.findByRole('link', { name: 'Inicio' });
+    const inicioLink = await screen.findByRole('link', { name: 'Inicio' });
+    // Antes de plegar: sin `aria-label` (el nombre accesible viene del
+    // texto visible) y sin la clase `sr-only` en el texto.
+    expect(inicioLink).not.toHaveAttribute('aria-label');
+    expect(inicioLink.querySelector('span')).not.toHaveClass('sr-only');
+
     await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
 
-    expect(screen.queryByRole('link', { name: 'Inicio' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cerrar sesión' })).not.toBeInTheDocument();
+    // Plegado: el enlace sigue siendo accesible por el mismo nombre (ahora
+    // vía `aria-label`), pero su texto visible queda oculto (`sr-only`) —
+    // ya no desaparece del todo, a diferencia del comportamiento anterior
+    // de spec 005.
+    const collapsedInicioLink = screen.getByRole('link', { name: 'Inicio' });
+    expect(collapsedInicioLink.querySelector('span')).toHaveClass('sr-only');
+    expect(collapsedInicioLink.querySelector('svg')).toBeInTheDocument();
+
+    const logoutButton = screen.getByRole('button', { name: 'Cerrar sesión' });
+    expect(logoutButton.querySelector('span')).toHaveClass('sr-only');
+    expect(logoutButton.querySelector('svg')).toBeInTheDocument();
 
     const toggle = screen.getByRole('button', { name: 'Mostrar menú' });
     await user.click(toggle);
 
-    expect(await screen.findByRole('link', { name: 'Inicio' })).toBeInTheDocument();
+    const expandedInicioLink = await screen.findByRole('link', { name: 'Inicio' });
+    expect(expandedInicioLink).not.toHaveAttribute('aria-label');
+    expect(expandedInicioLink.querySelector('span')).not.toHaveClass('sr-only');
   });
 
   it('conserva el estado plegado al navegar entre rutas hijas (AppLayout no se desmonta)', async () => {
@@ -137,14 +153,14 @@ describe('AppLayout', () => {
     await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
     expect(screen.getByRole('button', { name: 'Mostrar menú' })).toBeInTheDocument();
 
-    // Navega con un enlace ajeno al menú lateral (que está oculto mientras
-    // el menú está plegado) — si `AppLayout` se desmontara al cambiar de
-    // ruta, volvería a su estado por defecto (desplegado).
+    // Navega con un enlace ajeno al menú lateral — si `AppLayout` se
+    // desmontara al cambiar de ruta, volvería a su estado por defecto
+    // (desplegado, con el texto de "Categorías" visible de nuevo).
     await user.click(screen.getByRole('link', { name: 'Ir a categorías (test)' }));
 
     expect(await screen.findByText('Contenido de categorías')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mostrar menú' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Categorías' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Categorías' }).querySelector('span')).toHaveClass('sr-only');
   });
 
   it('pulsar "Cerrar sesión" llama a logout', async () => {

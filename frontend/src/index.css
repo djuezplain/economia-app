@@ -216,6 +216,22 @@ main ul li:last-child {
   font-weight: 600;
 }
 
+/* Spec 007 (mejoras visuales), plan.md §5. Segundo y último uso de
+   className del proyecto (junto a `.progress-bar`): oculta visualmente el
+   texto de un enlace del menú lateral cuando está plegado, sin quitarlo del
+   árbol de accesibilidad — patrón estándar "visually hidden". */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 code,
 .counter {
   font-family: var(--mono);

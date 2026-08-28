@@ -36,6 +36,13 @@ export function AppLayout() {
   // parpadeo) ni cuando no la hay — mismo criterio que ya usaba `HomePage`.
   const showSidebar = !isLoading && isAuthenticated;
 
+  // H5 criterio 2 (spec 007): con el menú plegado, el `<ul>` ya no se oculta
+  // por completo (antes sí, spec 005) — cada icono sigue siendo visible y
+  // accesible. `aria-label`/`title` solo se fijan estando plegado: así el
+  // nombre accesible en modo desplegado sigue siendo exactamente el mismo
+  // de siempre (el texto visible), sin ningún cambio de comportamiento ahí.
+  const collapsedLabel = (label: string) => (isCollapsed ? { 'aria-label': label, title: label } : {});
+
   return (
     <div id="app-shell">
       {showSidebar && (
@@ -43,22 +50,21 @@ export function AppLayout() {
           <button type="button" onClick={() => setIsCollapsed((collapsed) => !collapsed)} aria-expanded={!isCollapsed}>
             {isCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
           </button>
-          {!isCollapsed && (
-            <ul>
-              {NAV_ITEMS.map(({ to, end, label, Icon }) => (
-                <li key={to}>
-                  <NavLink to={to} end={end}>
-                    <Icon aria-hidden="true" size={18} /> {label}
-                  </NavLink>
-                </li>
-              ))}
-              <li>
-                <button type="button" onClick={() => void logout()}>
-                  <LogOut aria-hidden="true" size={18} /> Cerrar sesión
-                </button>
+          <ul>
+            {NAV_ITEMS.map(({ to, end, label, Icon }) => (
+              <li key={to}>
+                <NavLink to={to} end={end} {...collapsedLabel(label)}>
+                  <Icon aria-hidden="true" size={18} /> <span className={isCollapsed ? 'sr-only' : undefined}>{label}</span>
+                </NavLink>
               </li>
-            </ul>
-          )}
+            ))}
+            <li>
+              <button type="button" onClick={() => void logout()} {...collapsedLabel('Cerrar sesión')}>
+                <LogOut aria-hidden="true" size={18} />{' '}
+                <span className={isCollapsed ? 'sr-only' : undefined}>Cerrar sesión</span>
+              </button>
+            </li>
+          </ul>
         </nav>
       )}
       <div id="app-content">
