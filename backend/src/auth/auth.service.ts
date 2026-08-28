@@ -14,6 +14,7 @@ import { SessionsService } from './sessions.service.js';
 import type { DeviceInfo } from './sessions.service.js';
 import type { GoogleProfile } from './google/google.strategy.js';
 import { AuditLogService } from '../audit/audit-log.service.js';
+import { CategoriesService } from '../categories/categories.service.js';
 
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_PASSWORD_TTL_MS = 60 * 60 * 1000; // H5 (spec 001), criterio 1: 1 hora
@@ -47,6 +48,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly sessions: SessionsService,
     private readonly auditLog: AuditLogService,
+    private readonly categories: CategoriesService,
   ) {}
 
   /**
@@ -79,6 +81,10 @@ export class AuthService {
       .returning();
 
     await this.sendVerificationEmail(user.id, user.email, user.name);
+
+    // H3 (spec 002), criterio 1: categorías iniciales listas desde el
+    // primer momento, sin que el usuario tenga que crearlas.
+    await this.categories.seedDefaults(user.id);
 
     return this.genericResponse();
   }

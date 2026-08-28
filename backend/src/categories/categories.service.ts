@@ -10,6 +10,37 @@ import type { UpdateCategoryDto } from './dto/update-category.dto.js';
 export type Category = typeof categories.$inferSelect;
 type MovementType = Category['type'];
 
+// H3 (spec 002), criterio 1 / `spec.md` §4: semilla de categorías iniciales,
+// editable por el usuario (no fija) — se crean automáticamente al
+// registrarse, no son compartidas/globales entre usuarios.
+const DEFAULT_INCOME_CATEGORIES = [
+  'Nómina',
+  'Dividendo',
+  'Intereses',
+  'Acciones (venta)',
+  'Cashback',
+  'Descuentos',
+  'Lotería',
+  'Regalo',
+  'Dietas',
+  'Otros',
+];
+
+const DEFAULT_EXPENSE_CATEGORIES = [
+  'Comida',
+  'Transporte',
+  'Salud',
+  'Vivienda/Alquiler',
+  'Coche',
+  'Ropa',
+  'Suscripciones',
+  'Utilities',
+  'Ocio/Caprichos',
+  'Apuestas',
+  'Asociaciones',
+  'Varios',
+];
+
 /**
  * H3 (spec 002). Igual que el resto de servicios de datos económicos
  * (`plan.md` §3): ningún método acepta una consulta sin `userId` explícito —
@@ -86,6 +117,19 @@ export class CategoriesService {
       }
       throw err;
     }
+  }
+
+  /**
+   * H3 criterio 1: se llama desde `AuthService.register` (spec 002, T1.3)
+   * justo después de crear el usuario, sin semilla de subcategorías (el
+   * usuario puede añadirlas si quiere) — sin límite de profundidad de
+   * semilla, ninguna categoría por defecto tiene `parentId`.
+   */
+  async seedDefaults(userId: string): Promise<void> {
+    await this.db.insert(categories).values([
+      ...DEFAULT_INCOME_CATEGORIES.map((name) => ({ userId, type: 'INCOME' as const, name, isDefault: true })),
+      ...DEFAULT_EXPENSE_CATEGORIES.map((name) => ({ userId, type: 'EXPENSE' as const, name, isDefault: true })),
+    ]);
   }
 
   private async findOwn(userId: string, id: string): Promise<Category | undefined> {

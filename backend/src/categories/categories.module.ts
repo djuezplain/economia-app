@@ -1,16 +1,18 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '../auth/auth.module.js';
+import { AuthGuardModule } from '../auth/guards/auth-guard.module.js';
 import { CategoriesController } from './categories.controller.js';
 import { CategoriesService } from './categories.service.js';
 
 /**
- * `AuthModule` se importa directamente por `AuthGuard` (mismo patrón que
- * `UsersModule`, spec 001) — `CategoriesService` se exporta para que otros
- * módulos puedan usarlo (T1.3: sembrar categorías por defecto al
- * registrarse).
+ * Importa `AuthGuardModule` (no `AuthModule`) por `AuthGuard`: `AuthModule`
+ * necesita `CategoriesService` para sembrar categorías al registrarse
+ * (T1.3), así que si `CategoriesModule` importara `AuthModule` de vuelta se
+ * cerraría un ciclo — ver el comentario de `AuthGuardModule` para el
+ * porqué completo. `CategoriesService` se exporta para que `AuthModule` lo
+ * use.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthGuardModule],
   controllers: [CategoriesController],
   providers: [CategoriesService],
   exports: [CategoriesService],

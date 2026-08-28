@@ -235,6 +235,29 @@ describe('Categorías (e2e) — spec 002 H3', () => {
     });
   });
 
+  describe('Semillas al registrarse (H3 criterio 1)', () => {
+    it('un registro nuevo deja creadas las categorías por defecto de ingreso y gasto', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ email: 'nueva-cuenta@example.com', password: PASSWORD, name: 'Nueva Cuenta' })
+        .expect(200);
+
+      const user = await db.query.users.findFirst({ where: (u, { eq }) => eq(u.email, 'nueva-cuenta@example.com') });
+      expect(user).toBeDefined();
+
+      const seeded = await db.query.categories.findMany({ where: (c, { eq }) => eq(c.userId, user!.id) });
+      const income = seeded.filter((c) => c.type === 'INCOME');
+      const expense = seeded.filter((c) => c.type === 'EXPENSE');
+
+      expect(income).toHaveLength(10);
+      expect(expense).toHaveLength(12);
+      expect(seeded.every((c) => c.isDefault)).toBe(true);
+      expect(seeded.every((c) => c.parentId === null)).toBe(true);
+      expect(income.map((c) => c.name)).toContain('Nómina');
+      expect(expense.map((c) => c.name)).toContain('Comida');
+    });
+  });
+
   describe('DELETE /categories/:id', () => {
     it('borra una categoría propia sin uso', async () => {
       const user = await createUser('borrar@example.com');
