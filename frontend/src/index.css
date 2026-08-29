@@ -1,12 +1,17 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
+  /* Spec 008 (rediseño "Broadsheet"), plan.md §1. Paleta cálida (fondo y
+     texto) y acento azul-verdoso apagado, aproximados por inspección visual
+     del mockup del canvas de Diseño (no se pudo leer su CSS real, ver
+     spec.md §5) — a ajustar con Diego si algo no encaja en la app real. */
+  --text: #6c6a66;
+  --text-h: #1c1a17;
+  --bg: #f2f0ec;
+  --border: #e2ded7;
+  --code-bg: #eae7e1;
+  --accent: #3b6e86;
+  --accent-bg: rgba(59, 110, 134, 0.1);
+  --accent-border: rgba(59, 110, 134, 0.5);
+  --card-bg: #e9e6e1;
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -21,7 +26,9 @@
   --status-red: #d64545;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* Spec 008, plan.md §1. Pila serif de sistema (sin cargar una tipografía
+     web nueva) para los titulares, distinta de --sans desde esta spec. */
+  --heading: Georgia, 'Times New Roman', Times, serif;
   --mono: ui-monospace, Consolas, monospace;
 
   font: 18px/145% var(--sans);
@@ -41,14 +48,18 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
+    /* Spec 008, plan.md §1. El mockup no tiene variante oscura — se deriva
+       con el mismo criterio que ya usaba este bloque (invertir luminosidad,
+       mantener el matiz del nuevo acento). */
+    --text: #a8a49c;
+    --text-h: #f0eee9;
+    --bg: #1a1917;
+    --border: #35322c;
+    --code-bg: #232019;
+    --accent: #7fb3c9;
+    --accent-bg: rgba(127, 179, 201, 0.15);
+    --accent-border: rgba(127, 179, 201, 0.5);
+    --card-bg: #26241f;
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
@@ -83,7 +94,8 @@ body {
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 500;
+  /* Spec 008, plan.md §1: 700 (antes 500) — peso "serif negrita" del mockup. */
+  font-weight: 700;
   color: var(--text-h);
 }
 
