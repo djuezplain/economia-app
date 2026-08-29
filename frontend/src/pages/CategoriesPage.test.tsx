@@ -8,7 +8,28 @@ import * as authApi from '../api/auth';
 import * as usersApi from '../api/users';
 import * as categoriesApi from '../api/categories';
 import type { Category } from '../api/categories';
+import * as transactionsApi from '../api/transactions';
+import type { ListTransactionsResult } from '../api/transactions';
 import { ApiError } from '../api/client';
+import { formatCurrency } from './home-shared';
+
+// Mismo motivo que `HomePage.test.tsx`: `Intl.NumberFormat` usa un espacio
+// de no separación (U+00A0) que `getByText` normaliza en el DOM pero no en
+// el string de comparación.
+function eur(amount: string): string {
+  return formatCurrency(amount).replace(/ /g, ' ');
+}
+
+// Spec 010 (rediseño editorial), T4. Un mes sin gastos (el caso por
+// defecto de la mayoría de tests, que no ejercitan las tarjetas de gasto)
+// para que `listTransactions` no falle por falta de mock.
+const EMPTY_MONTH_RESULT: ListTransactionsResult = {
+  items: [],
+  page: 1,
+  limit: 200,
+  totalItems: 0,
+  summary: { total: '0.00', averagePerMonth: null, byCategory: [], bySubcategory: [] },
+};
 
 const INCOME_CATEGORY: Category = {
   id: 'cat-income-1',
@@ -53,6 +74,7 @@ describe('CategoriesPage', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       hasPassword: true,
     });
+    vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(EMPTY_MONTH_RESULT);
   });
 
   function renderPage() {
@@ -155,5 +177,69 @@ describe('CategoriesPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('tiene movimientos o subcategorías asociadas');
     // La categoría sigue en la lista: el borrado falló y no se optimiza de forma optimista.
     expect(screen.getByText('Nómina')).toBeInTheDocument();
+  });
+
+  it('con gastos este mes, la tarjeta de la categoría muestra nº de movimientos, importe y % del gasto total', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([EXPENSE_PARENT]);
+    vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue({
+      items: [
+        {
+          id: 't1',
+          userId: 'user-1',
+          type: 'EXPENSE',
+          date: '2026-08-05',
+          categoryId: 'cat-expense-1',
+          subcategoryId: null,
+          concept: 'Gasolina',
+          merchant: null,
+          amount: '30.00',
+          paymentMethod: null,
+          createdAt: '2026-08-05T00:00:00.000Z',
+          updatedAt: '2026-08-05T00:00:00.000Z',
+        },
+        {
+          id: 't2',
+          userId: 'user-1',
+          type: 'EXPENSE',
+          date: '2026-08-10',
+          categoryId: 'cat-expense-1',
+          subcategoryId: null,
+          concept: 'Peaje',
+          merchant: null,
+          amount: '20.00',
+          paymentMethod: null,
+          createdAt: '2026-08-10T00:00:00.000Z',
+          updatedAt: '2026-08-10T00:00:00.000Z',
+        },
+      ],
+      page: 1,
+      limit: 200,
+      totalItems: 2,
+      summary: {
+        total: '50.00',
+        averagePerMonth: '50.00',
+        byCategory: [{ categoryId: 'cat-expense-1', total: '50.00' }],
+        bySubcategory: [],
+      },
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('2 movimientos')).toBeInTheDocument();
+    expect(screen.getByText(eur('50.00'))).toBeInTheDocument();
+    expect(screen.getByText('100%')).toBeInTheDocument();
+  });
+
+  it('sin gastos este mes, la tarjeta de la categoría muestra ceros en vez de ocultarse', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([EXPENSE_PARENT]);
+    // `EMPTY_MONTH_RESULT` ya está montado por `beforeEach`.
+
+    renderPage();
+
+    expect(await screen.findByText('0 movimientos')).toBeInTheDocument();
+    expect(screen.getByText(eur('0.00'))).toBeInTheDocument();
+    expect(screen.getByText('0%')).toBeInTheDocument();
   });
 });
