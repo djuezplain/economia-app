@@ -186,4 +186,71 @@ describe('AppLayout', () => {
 
     await waitFor(() => expect(authApi.logout).toHaveBeenCalled());
   });
+
+  describe('menú superpuesto en móvil (spec 009, H1)', () => {
+    it('empieza cerrado y se abre/cierra con el botón dedicado, sin afectar al plegado de escritorio', async () => {
+      mockLoggedIn();
+      const user = userEvent.setup();
+      renderLayout();
+
+      await screen.findByRole('link', { name: 'Inicio' });
+      const toggle = screen.getByRole('button', { name: 'Abrir menú' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.getByRole('navigation', { name: 'Navegación principal' })).toHaveAttribute('data-mobile-open', 'false');
+
+      await user.click(toggle);
+
+      expect(screen.getByRole('button', { name: 'Cerrar menú' })).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('navigation', { name: 'Navegación principal' })).toHaveAttribute('data-mobile-open', 'true');
+      // El botón de plegado de escritorio sigue funcionando igual, sin
+      // interferir con el estado del menú móvil.
+      expect(screen.getByRole('button', { name: 'Ocultar menú' })).toBeInTheDocument();
+    });
+
+    it('se cierra al hacer clic en el fondo (backdrop)', async () => {
+      mockLoggedIn();
+      const user = userEvent.setup();
+      const { container } = renderLayout();
+
+      await screen.findByRole('link', { name: 'Inicio' });
+      await user.click(screen.getByRole('button', { name: 'Abrir menú' }));
+      expect(screen.getByRole('button', { name: 'Cerrar menú' })).toBeInTheDocument();
+
+      const backdrop = container.querySelector('#app-sidebar-backdrop');
+      expect(backdrop).toBeInTheDocument();
+      await user.click(backdrop as Element);
+
+      expect(screen.getByRole('button', { name: 'Abrir menú' })).toBeInTheDocument();
+      expect(container.querySelector('#app-sidebar-backdrop')).not.toBeInTheDocument();
+    });
+
+    it('se cierra al pulsar Escape', async () => {
+      mockLoggedIn();
+      const user = userEvent.setup();
+      renderLayout();
+
+      await screen.findByRole('link', { name: 'Inicio' });
+      await user.click(screen.getByRole('button', { name: 'Abrir menú' }));
+      expect(screen.getByRole('button', { name: 'Cerrar menú' })).toBeInTheDocument();
+
+      await user.keyboard('{Escape}');
+
+      expect(screen.getByRole('button', { name: 'Abrir menú' })).toBeInTheDocument();
+    });
+
+    it('se cierra al pulsar un enlace de navegación', async () => {
+      mockLoggedIn();
+      const user = userEvent.setup();
+      renderLayout();
+
+      await screen.findByRole('link', { name: 'Inicio' });
+      await user.click(screen.getByRole('button', { name: 'Abrir menú' }));
+      expect(screen.getByRole('button', { name: 'Cerrar menú' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('link', { name: 'Categorías' }));
+
+      await screen.findByText('Contenido de categorías');
+      expect(screen.getByRole('button', { name: 'Abrir menú' })).toBeInTheDocument();
+    });
+  });
 });

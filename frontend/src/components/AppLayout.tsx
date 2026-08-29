@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 
@@ -31,10 +31,52 @@ const NAV_ITEMS = [
 export function AppLayout() {
   const { isAuthenticated, isLoading, logout } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  // Spec 009 (adaptación a móvil), plan.md §1. Estado independiente de
+  // `isCollapsed`: en escritorio el menú se pliega a una franja estrecha
+  // pero sigue presente; en móvil (por debajo de 768px, CSS) está oculto
+  // del todo o abierto como panel superpuesto — son dos conceptos
+  // distintos, no un mismo booleano reutilizado.
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const toggleButtonRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  // Evita que el `useEffect` de foco actúe en el montaje inicial (cuando
+  // `isMobileMenuOpen` ya vale `false` de por sí, sin que nadie haya
+  // cerrado nada) — solo debe mover el foco en una transición real.
+  const isFirstRender = useRef(true);
 
   // H1 criterio 4: sin menú mientras no se sabe si hay sesión (evita
   // parpadeo) ni cuando no la hay — mismo criterio que ya usaba `HomePage`.
   const showSidebar = !isLoading && isAuthenticated;
+
+  function closeMobileMenu() {
+    setIsMobileMenuOpen(false);
+  }
+
+  // Spec 009, plan.md §1.4. Foco ligero (sin trap completo, fuera de
+  // alcance de esta spec): al abrir, el primer enlace del panel; al
+  // cerrar, de vuelta al botón que lo abrió.
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (isMobileMenuOpen) {
+      sidebarRef.current?.querySelector('a')?.focus();
+    } else {
+      toggleButtonRef.current?.focus();
+    }
+  }, [isMobileMenuOpen]);
+
+  // Spec 009, plan.md §1.4. Escape cierra el menú móvil, solo mientras está
+  // abierto (listener añadido/quitado con el propio estado).
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') closeMobileMenu();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileMenuOpen]);
 
   // H5 criterio 2 (spec 007): con el menú plegado, el `<ul>` ya no se oculta
   // por completo (antes sí, spec 005) — cada icono sigue siendo visible y
@@ -45,8 +87,25 @@ export function AppLayout() {
 
   return (
     <div id="app-shell">
+      {/* Spec 009, plan.md §1.2. Fuera de `#app-sidebar` a propósito: debe
+          seguir siendo alcanzable aunque el panel esté oculto fuera de
+          pantalla en móvil. Oculto por CSS en escritorio (`display: none`
+          fuera del media query de móvil). */}
       {showSidebar && (
-        <nav id="app-sidebar" aria-label="Navegación principal">
+        <button
+          type="button"
+          id="app-mobile-menu-toggle"
+          ref={toggleButtonRef}
+          aria-expanded={isMobileMenuOpen}
+          aria-controls="app-sidebar"
+          onClick={() => setIsMobileMenuOpen((open) => !open)}
+        >
+          {isMobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
+        </button>
+      )}
+      {isMobileMenuOpen && <div id="app-sidebar-backdrop" onClick={closeMobileMenu} />}
+      {showSidebar && (
+        <nav id="app-sidebar" aria-label="Navegación principal" ref={sidebarRef} data-mobile-open={isMobileMenuOpen}>
           {/* Spec 008 (rediseño Broadsheet), plan.md §4 (H4). Siempre visible,
               plegado o no — a diferencia del texto de los enlaces, no depende
               de `isCollapsed`. */}
@@ -57,13 +116,20 @@ export function AppLayout() {
           <ul>
             {NAV_ITEMS.map(({ to, end, label }) => (
               <li key={to}>
-                <NavLink to={to} end={end} {...collapsedLabel(label)}>
+                <NavLink to={to} end={end} onClick={closeMobileMenu} {...collapsedLabel(label)}>
                   <span className="dot" aria-hidden="true" /> <span className={isCollapsed ? 'sr-only' : undefined}>{label}</span>
                 </NavLink>
               </li>
             ))}
             <li>
-              <button type="button" onClick={() => void logout()} {...collapsedLabel('Cerrar sesión')}>
+              <button
+                type="button"
+                onClick={() => {
+                  closeMobileMenu();
+                  void logout();
+                }}
+                {...collapsedLabel('Cerrar sesión')}
+              >
                 <span className="dot" aria-hidden="true" />{' '}
                 <span className={isCollapsed ? 'sr-only' : undefined}>Cerrar sesión</span>
               </button>

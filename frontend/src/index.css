@@ -215,6 +215,58 @@ p {
   padding: 32px 40px;
 }
 
+/* Spec 009 (adaptación a móvil), plan.md §1. Botón de apertura del menú
+   superpuesto — oculto en escritorio, visible solo por debajo del
+   breakpoint de móvil (regla de abajo). */
+#app-mobile-menu-toggle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  #app-mobile-menu-toggle {
+    display: inline-flex;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 30;
+  }
+
+  /* El botón de plegar/desplegar de escritorio no aplica en móvil: el
+     panel está oculto del todo o abierto a un ancho legible, sin estado
+     intermedio "colapsado". Seleccionado por posición (único `<button>`
+     hijo directo, antes de la lista), sin clase nueva. */
+  #app-sidebar > button {
+    display: none;
+  }
+
+  #app-sidebar {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 25;
+    width: min(280px, 82vw);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    background: var(--bg);
+    overflow-y: auto;
+  }
+  #app-sidebar[data-mobile-open='true'] {
+    transform: translateX(0);
+  }
+
+  #app-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 20;
+  }
+
+  /* Deja hueco para el botón de apertura, fijo en la esquina. */
+  #app-content {
+    padding: 72px 20px 20px;
+  }
+}
+
 /* Spec 007 (mejoras visuales), plan.md §4 (H4). Espaciado y agrupación de
    formularios/tablas/listados resuelto entero por selectores de
    descendencia dentro de `main` — sin tocar ningún componente ni introducir
