@@ -728,6 +728,20 @@ main ul li:last-child {
   border-radius: var(--radius-md);
   background: var(--card-bg);
 }
+/* Spec 010 (rediseño editorial), plan.md §4.7 (Tu perfil) y §4.6 (editar
+   presupuesto en línea, T8): la regla global `main form` (spec 007) da a
+   cualquier `<form>` su propio borde/relleno/margen — pensada para
+   formularios sueltos (login, "Añadir presupuesto"...). Cuando el `<form>`
+   vive dentro de una `.card` (el handoff pone los campos directamente en la
+   tarjeta, sin caja propia) ese borde/relleno duplica el de la tarjeta y
+   crea una "caja dentro de otra caja" — se anula aquí, no en cada
+   formulario.  */
+.card form {
+  border: none;
+  padding: 0;
+  margin: 0;
+  max-width: none;
+}
 /* Spec 010 (rediseño editorial), plan.md §4.3/§4.8. Modificador para
    tarjetas horizontales (una fila de Movimientos, una sesión) en vez de la
    columna por defecto — mismo `.card`, solo cambia el eje. */
