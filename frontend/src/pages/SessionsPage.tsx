@@ -93,23 +93,40 @@ export function SessionsPage() {
       {sessions !== null && sessions.length === 0 && <p>No tienes ninguna sesión activa.</p>}
 
       {sessions !== null && sessions.length > 0 && (
-        // Spec 009 (adaptación a móvil), plan.md §3.4 (H3). Datos del
-        // dispositivo y acción en 2 <div> (posición, sin clase nueva) para
-        // poder apilarlos en bloque bajo el breakpoint de móvil; el
-        // user-agent es la cadena con más riesgo de desbordar (puede no
-        // tener espacios en tramos largos), de ahí el `overflow-wrap`
-        // explícito en su bloque (además de la red de seguridad genérica
-        // de `main` en H2).
+        // Spec 010 (rediseño editorial), plan.md §4.8: cada sesión pasa de
+        // `<li>` suelto a `.card.card-row` (mismo patrón que Movimientos,
+        // T5) — 2 <div> (datos del dispositivo / acción), que ya venían de
+        // spec 009 §3.4 para apilarse en móvil, ahora sobre la nueva
+        // estructura. Sin etiqueta "Esta sesión": `constitution.md` (T6.2,
+        // spec 001) documenta que `isCurrent` no puede identificarse de
+        // forma fiable en un navegador real (la cookie de refresh tiene
+        // `path: '/auth'`) — sigue vigente (no hay `isCurrent` en
+        // `api/sessions.ts` ni en el backend), así que el handoff no se
+        // implementa en este punto para no inventar un dato que la app no
+        // puede calcular.
         <ul id="sessions-list">
           {sessions.map((session) => (
-            <li key={session.id}>
+            <li className="card card-row" key={session.id}>
               <div>
-                <span>{session.userAgent ?? 'Dispositivo desconocido'}</span>
-                {session.ipAddress && <span> · {session.ipAddress}</span>}
-                <span> · última actividad: {formatDateTime(session.lastUsedAt)}</span>
+                <strong>{session.userAgent ?? 'Dispositivo desconocido'}</strong>
+                <p className="card-meta">
+                  {[session.ipAddress, `última actividad: ${formatDateTime(session.lastUsedAt)}`]
+                    .filter((part): part is string => Boolean(part))
+                    .map((part, i) => (
+                      <span key={`${i}-${part}`}>
+                        {i > 0 && ' · '}
+                        {part}
+                      </span>
+                    ))}
+                </p>
               </div>
               <div>
-                <button type="button" disabled={revokingId === session.id} onClick={() => void handleRevoke(session.id)}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={revokingId === session.id}
+                  onClick={() => void handleRevoke(session.id)}
+                >
                   {revokingId === session.id ? 'Cerrando…' : 'Cerrar sesión'}
                 </button>
               </div>

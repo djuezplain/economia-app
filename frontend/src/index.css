@@ -751,6 +751,15 @@ main ul li:last-child {
   justify-content: space-between;
   gap: var(--space-3);
 }
+/* Spec 010 (rediseño editorial), plan.md §4.8: en Dispositivos y sesiones
+   el primer bloque (user-agent, sin espacios largos que cortar en algunos
+   tramos) puede ser mucho más largo que la acción — sin esto, el flex por
+   defecto (`flex-shrink:1` en ambos) encoge también el botón hasta partir
+   su propio texto en dos líneas. Se acota al último hijo (la acción),
+   dejando que sea el primer bloque el que ceda espacio. */
+.card-row > *:last-child {
+  flex-shrink: 0;
+}
 .card-kicker {
   font-size: 10px;
   letter-spacing: 0.1em;
@@ -987,6 +996,26 @@ main ul li:last-child {
   max-width: 640px;
 }
 #goals-budget-list li {
+  border-bottom: none;
+}
+
+/* Spec 010 (rediseño editorial), plan.md §4.8. Cada sesión pasa de `<li>`
+   suelto a `.card.card-row` — mismo criterio de reinicio de lista que
+   Movimientos/Objetivos. La regla de apilado en móvil (`#sessions-list li`
+   a 768px, spec 009 §3.4) no cambia de sitio ni de selector: como es un
+   selector por id sigue ganando sobre `.card-row` y apila en columna igual
+   que antes, así que no hace falta tocarla aquí (se revisa igualmente en
+   T11 junto con el resto de listados). */
+#sessions-list {
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 680px;
+}
+#sessions-list li {
   border-bottom: none;
 }
 
