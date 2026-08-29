@@ -75,12 +75,11 @@
   }
 }
 
+/* Spec 008 (rediseño Broadsheet), plan.md §2: se quita el ancho fijo
+   (1126px), el centrado y el marco (border-inline) — el menú lateral y el
+   contenido pasan a ocupar el ancho completo de la ventana, como en el
+   mockup. */
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
   min-height: 100svh;
   display: flex;
   flex-direction: column;
@@ -131,10 +130,13 @@ p {
   text-align: left;
 }
 
+/* Spec 008, plan.md §2: se quita el borde vertical (el mockup separa el
+   menú del contenido solo con espacio, sin línea divisoria) y se fija un
+   ancho propio ahora que #root ya no acota el ancho total. */
 #app-sidebar {
   flex-shrink: 0;
-  padding: 16px;
-  border-inline-end: 1px solid var(--border);
+  width: 220px;
+  padding: 24px 20px;
 }
 
 #app-sidebar ul {
@@ -155,6 +157,10 @@ p {
 #app-content {
   flex: 1;
   min-width: 0;
+  /* Spec 008, plan.md §2: antes el contenido no tenía relleno propio (se
+     apoyaba en el margen de #root); con el layout a ancho completo necesita
+     el suyo. */
+  padding: 32px 40px;
 }
 
 /* Spec 007 (mejoras visuales), plan.md §4 (H4). Espaciado y agrupación de
@@ -168,6 +174,10 @@ main form {
   padding: 16px;
   margin: 16px 0;
   text-align: start;
+  /* Spec 008, plan.md §2 (H2 criterio 2): con el layout a ancho completo,
+     el formulario no se estira a todo el ancho disponible — se acota su
+     ancho de lectura, no el del contenedor general. */
+  max-width: 640px;
 }
 
 main form > div {
