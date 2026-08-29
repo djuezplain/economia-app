@@ -6,6 +6,7 @@ import { deleteTransaction, listTransactions } from '../api/transactions';
 import type { MovementType } from '../api/transactions';
 import { ApiError } from '../api/client';
 import { categoryName, PAYMENT_METHOD_LABELS } from './movements-shared';
+import { formatCurrency } from './home-shared';
 
 /**
  * Spec 006 (páginas de movimientos), H1 criterio 2. Filtros + listado con
@@ -107,8 +108,8 @@ export function MovementsListPage() {
     <main>
       <h1>Movimientos</h1>
 
-      <div role="radiogroup" aria-label="Tipo de movimiento">
-        <label>
+      <div className="seg" role="radiogroup" aria-label="Tipo de movimiento">
+        <label className="seg-opt">
           <input
             type="radio"
             name="movement-type"
@@ -120,8 +121,8 @@ export function MovementsListPage() {
             }}
           />
           Gastos
-        </label>{' '}
-        <label>
+        </label>
+        <label className="seg-opt">
           <input
             type="radio"
             name="movement-type"
@@ -134,40 +135,60 @@ export function MovementsListPage() {
           />
           Ingresos
         </label>
-      </div>
+      </div>{' '}
+      {/* Spec 010 (rediseño editorial), plan.md §4.3. Enlaza a la pestaña
+          "Registrar" ya existente (`MovementsLayout`) — no crea un
+          formulario inline nuevo, las pestañas de abajo se conservan
+          igual (H5 criterio 3). */}
+      <Link to="/movements/register" className="btn btn-primary">
+        + Añadir movimiento
+      </Link>
 
       {categoriesError && <p role="alert">{categoriesError}</p>}
 
       <section>
         <h2>Filtros</h2>
-        <div>
-          <label htmlFor="dateFrom">Desde</label>
-          <input id="dateFrom" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="dateTo">Hasta</label>
-          <input id="dateTo" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="filterCategoryId">Categoría</label>
-          <select id="filterCategoryId" value={filterCategoryId} onChange={(e) => setFilterCategoryId(e.target.value)}>
-            <option value="">Todas</option>
-            {topLevelCategories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {type === 'EXPENSE' && (
-          <div>
-            <label htmlFor="merchantFilter">Comercio</label>
-            <input id="merchantFilter" type="text" value={merchantFilter} onChange={(e) => setMerchantFilter(e.target.value)} />
+        <div id="movements-filters">
+          <div className="field">
+            <label htmlFor="dateFrom">Desde</label>
+            <input id="dateFrom" type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           </div>
-        )}
-        <div>
-          <label htmlFor="q">Buscar en el concepto</label>
-          <input id="q" type="text" value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="field">
+            <label htmlFor="dateTo">Hasta</label>
+            <input id="dateTo" type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="filterCategoryId">Categoría</label>
+            <select
+              id="filterCategoryId"
+              className="input"
+              value={filterCategoryId}
+              onChange={(e) => setFilterCategoryId(e.target.value)}
+            >
+              <option value="">Todas</option>
+              {topLevelCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {type === 'EXPENSE' && (
+            <div className="field">
+              <label htmlFor="merchantFilter">Comercio</label>
+              <input
+                id="merchantFilter"
+                type="text"
+                className="input"
+                value={merchantFilter}
+                onChange={(e) => setMerchantFilter(e.target.value)}
+              />
+            </div>
+          )}
+          <div className="field">
+            <label htmlFor="q">Buscar en el concepto</label>
+            <input id="q" type="text" className="input" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
         </div>
       </section>
 
@@ -177,29 +198,46 @@ export function MovementsListPage() {
       <section>
         <h2>Movimientos</h2>
         {result && result.items.length === 0 && <p>No hay movimientos con estos filtros.</p>}
-        {/* Spec 009 (adaptación a móvil), plan.md §3.2 (H3). Campos
-            agrupados en 3 `<div>` (posición, sin clase nueva — mismo
-            criterio que `#home-summary > div`) para poder apilarlos en
-            bloque bajo el breakpoint de móvil; en escritorio el CSS los
-            mantiene en línea, sin cambio visual (H3 criterio 3). */}
+        {/* Spec 010 (rediseño editorial), plan.md §4.3. Cada movimiento pasa
+            a `.card.card-row` (antes 3 `<div>` en línea, spec 009 T3) — se
+            reutiliza el mismo agrupamiento en bloques, solo cambian las
+            clases del contenedor; la categoría (y subcategoría, si la hay)
+            pasan de texto con `·` a `.tag.tag-neutral`. */}
         {result && result.items.length > 0 && (
           <ul id="movements-list">
             {result.items.map((t) => (
-              <li key={t.id}>
+              <li className="card card-row" key={t.id}>
                 <div>
-                  <span>{t.date}</span> · <span>{categoryName(categories, t.categoryId)}</span>
-                  {t.subcategoryId && <span> / {categoryName(categories, t.subcategoryId)}</span>}
+                  <span className={`dot${type === 'INCOME' ? ' dot-accent' : ''}`} aria-hidden="true" />{' '}
+                  <strong>{t.concept}</strong> <span className="tag tag-neutral">{categoryName(categories, t.categoryId)}</span>
+                  {t.subcategoryId && (
+                    <span className="tag tag-neutral">{categoryName(categories, t.subcategoryId)}</span>
+                  )}
+                  <p className="card-meta">
+                    {[t.merchant, t.paymentMethod ? PAYMENT_METHOD_LABELS[t.paymentMethod] : null, t.date]
+                      .filter((part): part is string => Boolean(part))
+                      .map((part, i) => (
+                        <span key={`${i}-${part}`}>
+                          {i > 0 && ' · '}
+                          {part}
+                        </span>
+                      ))}
+                  </p>
                 </div>
-                <div>
-                  <span>{t.concept}</span> · <span>{t.amount}</span>
-                  {t.merchant && <span> · {t.merchant}</span>}
-                  {t.paymentMethod && <span> · {PAYMENT_METHOD_LABELS[t.paymentMethod]}</span>}
-                </div>
-                <div>
-                  <button type="button" onClick={() => navigate(`/movements/register/${t.id}`)}>
+                <div style={{ textAlign: 'right' }}>
+                  <p className="card-amount" style={{ fontSize: '16px' }}>
+                    {type === 'INCOME' ? '+' : '−'}
+                    {formatCurrency(t.amount)}
+                  </p>
+                  <button type="button" className="btn btn-secondary" onClick={() => navigate(`/movements/register/${t.id}`)}>
                     Editar
                   </button>{' '}
-                  <button type="button" disabled={pendingDeleteId === t.id} onClick={() => void handleDelete(t.id)}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={pendingDeleteId === t.id}
+                    onClick={() => void handleDelete(t.id)}
+                  >
                     {pendingDeleteId === t.id ? 'Eliminando…' : 'Eliminar'}
                   </button>
                 </div>
