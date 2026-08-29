@@ -105,18 +105,29 @@ export function AppLayout() {
       )}
       {isMobileMenuOpen && <div id="app-sidebar-backdrop" onClick={closeMobileMenu} />}
       {showSidebar && (
-        <nav id="app-sidebar" aria-label="Navegación principal" ref={sidebarRef} data-mobile-open={isMobileMenuOpen}>
+        <nav
+          id="app-sidebar"
+          aria-label="Navegación principal"
+          ref={sidebarRef}
+          data-mobile-open={isMobileMenuOpen}
+          data-collapsed={isCollapsed}
+        >
           {/* Spec 008 (rediseño Broadsheet), plan.md §4 (H4). Siempre visible,
               plegado o no — a diferencia del texto de los enlaces, no depende
               de `isCollapsed`. */}
           <p id="app-sidebar-brand">Ledger</p>
-          <button type="button" onClick={() => setIsCollapsed((collapsed) => !collapsed)} aria-expanded={!isCollapsed}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setIsCollapsed((collapsed) => !collapsed)}
+            aria-expanded={!isCollapsed}
+          >
             {isCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
           </button>
           <ul>
             {NAV_ITEMS.map(({ to, end, label }) => (
               <li key={to}>
-                <NavLink to={to} end={end} onClick={closeMobileMenu} {...collapsedLabel(label)}>
+                <NavLink to={to} end={end} className="nav-link" onClick={closeMobileMenu} {...collapsedLabel(label)}>
                   <span className="dot" aria-hidden="true" /> <span className={isCollapsed ? 'sr-only' : undefined}>{label}</span>
                 </NavLink>
               </li>
@@ -124,6 +135,7 @@ export function AppLayout() {
             <li>
               <button
                 type="button"
+                className="btn btn-secondary"
                 onClick={() => {
                   closeMobileMenu();
                   void logout();

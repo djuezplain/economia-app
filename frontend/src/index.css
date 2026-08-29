@@ -246,32 +246,56 @@ p {
   text-align: left;
 }
 
-/* Spec 008, plan.md §2: se quita el borde vertical (el mockup separa el
-   menú del contenido solo con espacio, sin línea divisoria) y se fija un
-   ancho propio ahora que #root ya no acota el ancho total. */
+/* Spec 010 (rediseño editorial), plan.md §3: ancho 236px/68px (antes fijo
+   220px, spec 008) con transición — antes `isCollapsed` solo ocultaba el
+   texto sin cambiar el ancho real; ahora el panel se estrecha de verdad,
+   como en el handoff. `overflow: hidden` evita que el texto oculto
+   (`.sr-only`) provoque scroll horizontal durante la animación. */
 #app-sidebar {
   flex-shrink: 0;
-  width: 220px;
-  padding: 24px 20px;
+  width: 236px;
+  padding: var(--space-4) var(--space-3);
+  overflow: hidden;
+  transition: width 0.18s ease;
+}
+#app-sidebar[data-collapsed='true'] {
+  width: 68px;
 }
 
 /* Spec 008, plan.md §4 (H4). Marca visual del menú lateral. */
 #app-sidebar-brand {
   font-family: var(--heading);
-  font-weight: 700;
-  font-size: 22px;
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.01em;
   color: var(--text-h);
-  margin: 0 0 20px;
+  margin: 0 0 var(--space-4);
+  white-space: nowrap;
 }
 
 #app-sidebar ul {
   list-style: none;
-  margin: 16px 0 0;
+  margin: var(--space-4) 0 0;
   padding: 0;
 }
 
 #app-sidebar li {
-  margin: 8px 0;
+  margin: var(--space-1) 0;
+}
+
+/* Spec 010, plan.md §3. Base de cada enlace del menú — el color de la
+   sección activa lo sigue decidiendo el selector por descendencia de más
+   abajo (`a[aria-current='page']`), no esta clase. */
+.nav-link {
+  display: flex;
+  align-items: center;
+  padding: 8px 6px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.nav-link:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 /* Spec 008 (rediseño Broadsheet), plan.md §5 (H5), corrección encontrada al
