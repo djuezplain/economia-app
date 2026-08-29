@@ -1,7 +1,7 @@
 # Tasks — Spec 009 (Adaptación a móvil)
 
-**Estado:** Aprobada
-**Fase:** 3 de 4 (Spec → Plan → Tasks → Implementación)
+**Estado:** Cerrada
+**Fase:** 4 de 4 (Spec → Plan → Tasks → Implementación)
 
 Cada tarea = un commit (Conventional Commits), validada contra su criterio
 antes de pasar a la siguiente (`constitution.md §1`). Tras cada tarea:
@@ -96,20 +96,23 @@ antes de pasar a la siguiente (`constitution.md §1`). Tras cada tarea:
 - **Criterio de aceptación**: H3 criterios 1 a 3 cumplidos para las dos
   tablas; `npm run test` en verde.
 
-## T7 — Auditoría de páginas sin menú lateral (H4)
+## T7 — Auditoría de páginas sin menú lateral (H4) — ✅ sin cambios de código
 
-- Revisión visual (Playwright, 390×844 y 430×932, claro y oscuro) de las 7
-  páginas listadas en `plan.md §4`: `RegisterPage`, `VerifyEmailPage`,
-  `ResendVerificationPage`, `LoginPage`, `OAuthCallbackPage`,
-  `ForgotPasswordPage`, `ResetPasswordPage`.
-- Corregir cualquier problema encontrado (desbordamiento, texto cortado,
-  control inaccesible) con el mismo criterio que H2 — normalmente ya
-  cubierto por las reglas de T2 (`#root > main`), pero se verifica cada
-  página en vez de asumirlo.
-- **Criterio de aceptación**: H4 criterios 1 y 2 cumplidos; capturas
-  guardadas como evidencia de la revisión (no se versionan, solo sirven
-  para esta verificación); cualquier corrección aplicada queda en este
-  mismo commit.
+- Revisión visual (Playwright, 390px y 430px de ancho) de las 7 páginas
+  listadas en `plan.md §4`: `RegisterPage`, `VerifyEmailPage`,
+  `ResendVerificationPage`, `LoginPage`, `OAuthCallbackPage`
+  (incluido su estado de error, sin backend de Google real),
+  `ForgotPasswordPage`, `ResetPasswordPage` (tanto con token en la URL,
+  mostrando el formulario, como sin él, mostrando su aviso de enlace
+  incompleto).
+- **Resultado**: `document.documentElement.scrollWidth >
+  document.documentElement.clientWidth` es `false` en las 14 combinaciones
+  (7 páginas × 2 anchos); ningún título parte palabras; los formularios
+  ocupan el ancho disponible. No se encontró ningún problema — las reglas
+  de T2 (`#root > main`, tipografía, `overflow-wrap`) ya cubren estas
+  páginas por completo, sin necesitar ningún ajuste específico. Sin commit
+  de código para esta tarea.
+- **Criterio de aceptación**: H4 criterios 1 y 2 cumplidos.
 
 ## T8 — Cierre: verificación final y documentación
 
@@ -126,5 +129,83 @@ antes de pasar a la siguiente (`constitution.md §1`). Tras cada tarea:
   el mismo formato que spec 008).
 
 ---
-**Aprobada por Diego.** Pendiente de ejecutar T1 a T8 en orden, cada una en
-su propio commit.
+**Aprobada por Diego.** Ejecutada T1 a T7 en orden, cada una en su propio
+commit (T7 sin cambios de código); T8 cierra la spec.
+
+## Checklist de cierre
+
+Verificación final contra cada criterio de aceptación de `spec.md`:
+
+**H1 — Menú lateral utilizable en móvil**
+- [x] Criterio 1: por debajo de 768px el menú no empuja el contenido —
+  permanece oculto (`transform: translateX(-100%)`) hasta abrirse — T1.
+- [x] Criterio 2: botón "Abrir/Cerrar menú" siempre visible y accesible
+  (`aria-expanded`, nombre accesible propio), fuera de `#app-sidebar`; se
+  cierra con el mismo control o seleccionando una sección — T1.
+- [x] Criterio 3: backdrop de fondo mientras el menú está abierto,
+  intercepta los clics al contenido de detrás — T1.
+- [x] Criterio 4: comportamiento de plegado en escritorio (`isCollapsed`)
+  sin cambios — verificado con los tests existentes de `AppLayout.test.tsx`
+  (sin modificar) y revisión visual a 1440px (T8).
+
+**H2 — Contenido legible sin desbordamiento horizontal**
+- [x] Criterio 1: sin scroll horizontal en 390-430px en ninguna de las 15
+  páginas (8 autenticadas + 7 sin menú) — verificado con
+  `scrollWidth`/`clientWidth` en cada una (T2, T7, T8).
+- [x] Criterio 2: `h1`/`h2` reducidos (28px/18px) bajo 768px; ningún título
+  se parte en una palabra por línea en la revisión visual — T2.
+- [x] Criterio 3: `main form { max-width: none }` bajo 768px — formularios
+  a ancho completo — T2.
+
+**H3 — Tablas y listados de varias columnas, legibles en móvil**
+- [x] Criterio 1: cada fila pasa a bloque apilado bajo 768px — Movimientos
+  (T3), Categorías (T4), Dispositivos y sesiones (T5), tablas del Dashboard
+  con `data-label` (T6); Inicio no lo necesitó (ya era una fila tipo
+  tarjeta, no columnas alineadas), pero `#home-summary` sí se apiló al
+  encontrarse un problema de legibilidad en la revisión de T2.
+- [x] Criterio 2: ningún dato ni acción se pierde — botones
+  "Editar"/"Eliminar"/"Renombrar"/"Cerrar sesión" siguen presentes y
+  utilizables en todas las páginas reestructuradas — verificado por los
+  tests existentes de cada página (T3-T6), sin modificar su intención.
+- [x] Criterio 3: cambio puramente presentacional — ningún test de
+  comportamiento (filtros, formularios, acciones) cambió su aserción, solo
+  se ajustó el árbol de elementos envolventes.
+
+**H4 — Auditoría de las páginas sin menú lateral**
+- [x] Criterio 1: las 7 páginas (`RegisterPage`, `VerifyEmailPage`,
+  `ResendVerificationPage`, `LoginPage`, `OAuthCallbackPage`,
+  `ForgotPasswordPage`, `ResetPasswordPage`) revisadas a 390px y 430px,
+  incluidos los estados con y sin parámetros de la URL — T7.
+- [x] Criterio 2: no se encontró ningún problema — las reglas de H2 (T2) ya
+  las cubrían por completo; sin cambios de código para esta historia.
+
+**Verificación técnica final**
+- [x] `npm run build` (tipos + build de producción) en verde.
+- [x] `npm run test` — 156/157 en verde; el único fallo es el flake
+  intermitente preexistente de `RegisterMovementPage.test.tsx`
+  (documentado desde spec 007, reproducido también en una rama sin
+  cambios de esta spec).
+- [x] `npx oxlint` sin avisos nuevos (los 5 avisos `set-state-in-effect`
+  preexistentes, ninguno en los ficheros tocados por esta spec).
+- [x] Revisión visual manual con backend real (Playwright, Chromium),
+  390×844 y 430×932: las 8 páginas autenticadas con el menú cerrado y
+  abierto (Inicio, Categorías, Movimientos, Dashboard, Importar Excel,
+  Objetivos y presupuestos, Tu perfil, Dispositivos y sesiones) y las 7
+  páginas sin menú lateral — sin scroll horizontal en ninguna. Un problema
+  encontrado y corregido fuera de lo previsto en `plan.md` (T6): el
+  `<caption>` de las tablas del Dashboard quedaba con el texto partido
+  letra a letra al apilar la tabla; se oculta visualmente junto con
+  `thead`, mismo criterio de accesibilidad.
+- [x] Revisión visual a 1440px (escritorio): sin cambios respecto a las
+  capturas de spec 008 T8 — el botón de menú móvil permanece oculto, el
+  menú lateral y el contenido se comportan exactamente igual que antes de
+  esta spec.
+- [x] `README.md` actualizado con spec 009 cerrada.
+
+**Nota de alcance**: el modo oscuro no se revisó página a página como el
+claro (T2-T7 se hicieron en claro); se comprobó puntualmente en T8 con
+capturas de Inicio (menú abierto) y Dashboard a 390px en oscuro — panel,
+fondo/backdrop y tabla apilada se ven correctos, ningún CSS nuevo de esta
+spec depende del esquema de color (usa las mismas variables `--bg`/
+`--text`/`--text-h`/`--border` que ya tienen su variante oscura desde spec
+008).
