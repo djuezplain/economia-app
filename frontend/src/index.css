@@ -947,6 +947,19 @@ main ul li:last-child {
   background: var(--accent);
 }
 
+/* Spec 010 (rediseño editorial), plan.md §4.5. Recuadro de "1. Seleccionar
+   fichero" en Importar Excel — valores tal cual el handoff (`Gestion
+   Economia.dc.html`); por `id` porque solo aparece una vez en toda la app
+   (no es una excepción de clase, es la propia convención "sin className,
+   todo por id" del proyecto). */
+#import-dropzone {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  text-align: center;
+  max-width: 560px;
+}
+
 /* Spec 007 (mejoras visuales), plan.md §2. Único componente del proyecto
    con className propio (ver justificación en ProgressBar.tsx) — se instancia
    varias veces en la misma página, a diferencia de los elementos con `id`. */

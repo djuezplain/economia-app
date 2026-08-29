@@ -93,13 +93,19 @@ export function ImportPage() {
 
       <section>
         <h2>1. Seleccionar fichero</h2>
-        <form onSubmit={(e) => void handlePreview(e)}>
+        {/* Spec 010 (rediseño editorial), plan.md §4.5. Borde discontinuo del
+            handoff — solo aparece una vez en toda la app, así que va por
+            `id` (convención del proyecto) en vez de una clase nueva; el
+            propio formulario (label + input + botón) es el real, no se
+            añade "arrastra tu archivo" porque no hay arrastrar-y-soltar
+            implementado, solo el estilo del recuadro. */}
+        <form id="import-dropzone" onSubmit={(e) => void handlePreview(e)}>
           <label htmlFor="import-file">Fichero .xlsx</label>
-          <input id="import-file" type="file" accept=".xlsx" onChange={handleFileChange} />
+          <input id="import-file" type="file" accept=".xlsx" className="input" onChange={handleFileChange} />
 
           {previewError && <p role="alert">{previewError}</p>}
 
-          <button type="submit" disabled={!selectedFile || isPreviewing}>
+          <button type="submit" className="btn btn-primary" disabled={!selectedFile || isPreviewing}>
             {isPreviewing ? 'Validando…' : 'Validar'}
           </button>
         </form>
@@ -136,7 +142,7 @@ export function ImportPage() {
 
           {confirmError && <p role="alert">{confirmError}</p>}
 
-          <button type="button" disabled={isConfirming} onClick={() => void handleConfirm()}>
+          <button type="button" className="btn btn-primary" disabled={isConfirming} onClick={() => void handleConfirm()}>
             {isConfirming ? 'Importando…' : 'Confirmar importación'}
           </button>
         </section>
@@ -173,7 +179,7 @@ export function ImportPage() {
 function InvalidRowsTable({ title, rows }: { title: string; rows: InvalidImportRow[] }) {
   if (rows.length === 0) return null;
   return (
-    <table>
+    <table className="table">
       <caption>{title}</caption>
       <thead>
         <tr>
