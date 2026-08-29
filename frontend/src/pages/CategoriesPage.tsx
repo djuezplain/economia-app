@@ -156,20 +156,27 @@ export function CategoriesPage() {
             </button>
           </form>
         ) : (
+          // Spec 009 (adaptación a móvil), plan.md §3.3 (H3). Nombre/badge y
+          // acciones en dos <div> (posición, sin clase nueva) para poder
+          // apilarlos en bloque bajo el breakpoint de móvil; en escritorio
+          // el CSS los mantiene en línea, sin cambio visual (H3 criterio 3).
           <>
-            <span>{category.name}</span>
-            {category.isDefault && <span> (por defecto)</span>}
-            {' · '}
-            <button type="button" onClick={() => startRename(category)}>
-              Renombrar
-            </button>{' '}
-            <button
-              type="button"
-              disabled={pendingDeleteId === category.id}
-              onClick={() => void handleDelete(category.id)}
-            >
-              {pendingDeleteId === category.id ? 'Eliminando…' : 'Eliminar'}
-            </button>
+            <div>
+              <span>{category.name}</span>
+              {category.isDefault && <span> (por defecto)</span>}
+            </div>
+            <div>
+              <button type="button" onClick={() => startRename(category)}>
+                Renombrar
+              </button>{' '}
+              <button
+                type="button"
+                disabled={pendingDeleteId === category.id}
+                onClick={() => void handleDelete(category.id)}
+              >
+                {pendingDeleteId === category.id ? 'Eliminando…' : 'Eliminar'}
+              </button>
+            </div>
           </>
         )}
         {renameError && isEditing && <p role="alert">{renameError}</p>}
@@ -198,7 +205,11 @@ export function CategoriesPage() {
         <>
           <section>
             <h2>Ingresos</h2>
-            {income.length === 0 ? <p>No tienes categorías de ingreso.</p> : <ul>{income.map((c) => renderCategory(c))}</ul>}
+            {income.length === 0 ? (
+              <p>No tienes categorías de ingreso.</p>
+            ) : (
+              <ul id="categories-income-list">{income.map((c) => renderCategory(c))}</ul>
+            )}
           </section>
 
           <section>
@@ -206,7 +217,7 @@ export function CategoriesPage() {
             {expenseTopLevel.length === 0 ? (
               <p>No tienes categorías de gasto.</p>
             ) : (
-              <ul>{expenseTopLevel.map((c) => renderCategory(c))}</ul>
+              <ul id="categories-expense-list">{expenseTopLevel.map((c) => renderCategory(c))}</ul>
             )}
           </section>
 

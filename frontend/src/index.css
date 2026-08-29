@@ -319,6 +319,21 @@ p {
   }
 }
 
+/* Spec 009 (adaptación a móvil), plan.md §3.3 (H3). Nombre/badge y acciones
+   de cada categoría, apilados en bloque; `ul li` cubre también las
+   subcategorías anidadas sin necesitar su propio id. */
+@media (max-width: 768px) {
+  #categories-income-list li,
+  #categories-expense-list li,
+  #categories-income-list ul li,
+  #categories-expense-list ul li {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+}
+
 /* Spec 007 (mejoras visuales), plan.md §4 (H4). Espaciado y agrupación de
    formularios/tablas/listados resuelto entero por selectores de
    descendencia dentro de `main` — sin tocar ningún componente ni introducir
