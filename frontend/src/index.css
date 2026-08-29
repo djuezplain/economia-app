@@ -90,6 +90,18 @@ body {
   margin: 0;
 }
 
+/* Spec 008, plan.md §2, corrección encontrada al verificar visualmente
+   (T8): las páginas sin menú lateral (login, registro, verificación de
+   email...) montan su `<main>` directamente bajo #root, sin pasar por
+   `#app-content` — con el contenedor centrado de antes, esto no se notaba
+   (el propio `#root` ya dejaba margen a los lados); al pasar a ancho
+   completo (H2), se quedaban con el contenido pegado al borde de la
+   ventana. Selector de hijo directo: no afecta al `<main>` de las páginas
+   autenticadas, que ya tiene su relleno propio vía `#app-content`. */
+#root > main {
+  padding: 32px 40px;
+}
+
 h1,
 h2 {
   font-family: var(--heading);
@@ -156,6 +168,17 @@ p {
 
 #app-sidebar li {
   margin: 8px 0;
+}
+
+/* Spec 008 (rediseño Broadsheet), plan.md §5 (H5), corrección encontrada al
+   verificar visualmente (T8): sin esto, los enlaces del menú heredaban el
+   azul/subrayado por defecto del navegador — nunca se había notado antes
+   porque el resto de la app tampoco tenía una paleta propia con la que
+   contrastara. El mockup solo colorea de acento la sección activa; el
+   resto va en el mismo tono que el texto normal, sin subrayado. */
+#app-sidebar a {
+  color: var(--text-h);
+  text-decoration: none;
 }
 
 #app-sidebar a[aria-current='page'] {
