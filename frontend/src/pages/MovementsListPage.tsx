@@ -177,23 +177,32 @@ export function MovementsListPage() {
       <section>
         <h2>Movimientos</h2>
         {result && result.items.length === 0 && <p>No hay movimientos con estos filtros.</p>}
+        {/* Spec 009 (adaptación a móvil), plan.md §3.2 (H3). Campos
+            agrupados en 3 `<div>` (posición, sin clase nueva — mismo
+            criterio que `#home-summary > div`) para poder apilarlos en
+            bloque bajo el breakpoint de móvil; en escritorio el CSS los
+            mantiene en línea, sin cambio visual (H3 criterio 3). */}
         {result && result.items.length > 0 && (
-          <ul>
+          <ul id="movements-list">
             {result.items.map((t) => (
               <li key={t.id}>
-                <span>{t.date}</span> · <span>{categoryName(categories, t.categoryId)}</span>
-                {t.subcategoryId && <span> / {categoryName(categories, t.subcategoryId)}</span>}
-                {' · '}
-                <span>{t.concept}</span> · <span>{t.amount}</span>
-                {t.merchant && <span> · {t.merchant}</span>}
-                {t.paymentMethod && <span> · {PAYMENT_METHOD_LABELS[t.paymentMethod]}</span>}
-                {' · '}
-                <button type="button" onClick={() => navigate(`/movements/register/${t.id}`)}>
-                  Editar
-                </button>{' '}
-                <button type="button" disabled={pendingDeleteId === t.id} onClick={() => void handleDelete(t.id)}>
-                  {pendingDeleteId === t.id ? 'Eliminando…' : 'Eliminar'}
-                </button>
+                <div>
+                  <span>{t.date}</span> · <span>{categoryName(categories, t.categoryId)}</span>
+                  {t.subcategoryId && <span> / {categoryName(categories, t.subcategoryId)}</span>}
+                </div>
+                <div>
+                  <span>{t.concept}</span> · <span>{t.amount}</span>
+                  {t.merchant && <span> · {t.merchant}</span>}
+                  {t.paymentMethod && <span> · {PAYMENT_METHOD_LABELS[t.paymentMethod]}</span>}
+                </div>
+                <div>
+                  <button type="button" onClick={() => navigate(`/movements/register/${t.id}`)}>
+                    Editar
+                  </button>{' '}
+                  <button type="button" disabled={pendingDeleteId === t.id} onClick={() => void handleDelete(t.id)}>
+                    {pendingDeleteId === t.id ? 'Eliminando…' : 'Eliminar'}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

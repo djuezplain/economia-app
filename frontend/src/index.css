@@ -308,6 +308,17 @@ p {
   }
 }
 
+/* Spec 009 (adaptación a móvil), plan.md §3.2 (H3). Cada fila de
+   Movimientos pasa de 3 bloques en línea a 3 bloques apilados. */
+@media (max-width: 768px) {
+  #movements-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+}
+
 /* Spec 007 (mejoras visuales), plan.md §4 (H4). Espaciado y agrupación de
    formularios/tablas/listados resuelto entero por selectores de
    descendencia dentro de `main` — sin tocar ningún componente ni introducir
