@@ -1,38 +1,96 @@
+/* Spec 010 (rediseño editorial), plan.md §1: tipografía del handoff
+   (Source Serif 4 en titulares Y cuerpo — antes spec 008 solo la usaba en
+   titulares). Se carga aquí, no en cada página. */
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
+
 :root {
-  /* Spec 008 (rediseño "Broadsheet"), plan.md §1. Paleta cálida (fondo y
-     texto) y acento azul-verdoso apagado, aproximados por inspección visual
-     del mockup del canvas de Diseño (no se pudo leer su CSS real, ver
-     spec.md §5) — a ajustar con Diego si algo no encaja en la app real. */
-  --text: #6c6a66;
-  --text-h: #1c1a17;
-  --bg: #f2f0ec;
-  --border: #e2ded7;
-  --code-bg: #eae7e1;
-  --accent: #3b6e86;
-  --accent-bg: rgba(59, 110, 134, 0.1);
-  --accent-border: rgba(59, 110, 134, 0.5);
-  --card-bg: #e9e6e1;
+  /* Spec 010 (rediseño editorial), plan.md §1. Handoff de Claude Design en
+     `design_handoff_gestion_economia/` — valores finales (colores,
+     tipografía, espaciado son "high-fidelity" según su README, no una
+     aproximación como fue spec 008). Se mapean sobre los nombres de
+     variable que el proyecto ya tenía desde spec 008 (el propio README del
+     handoff pide reutilizar tokens existentes en vez de inventar nombres
+     nuevos) — solo `--sans` se renombra a `--font-body` (ya no es
+     sans-serif) y `--accent-2` es nueva (spec 008 solo tenía un acento). */
+  --text: #201e1d;
+  --text-h: #201e1d;
+  --bg: #f3f2f2;
+  --border: color-mix(in srgb, #201e1d 16%, transparent);
+  --code-bg: #eae9e9;
+  --accent: #0088b0;
+  --accent-2: #d6006c;
+  --card-bg: #eae9e9;
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
 
-  /* Spec 007 (mejoras visuales), plan.md §1. Rampa de 4 niveles para el
-     progreso de objetivos/presupuestos (H1/H3) — a qué color corresponde
-     cada nivel (verde/ámbar/naranja/rojo, sin dirección) se decide en
-     `goals-shared.ts`, no aquí. */
+  /* Rampas tonales de 9 pasos del handoff (nuevas — spec 008 solo tenía
+     --accent-bg/--accent-border, 2 tintas). --accent-bg/--accent-border se
+     mantienen apuntando a la rampa para no romper nada que ya las use. */
+  --neutral-100: #f8f4f4;
+  --neutral-200: #eae7e7;
+  --neutral-300: #d7d3d3;
+  --neutral-400: #bab6b6;
+  --neutral-500: #9b9797;
+  --neutral-600: #7d7979;
+  --neutral-700: #605d5d;
+  --neutral-800: #444141;
+  --neutral-900: #2d2b2b;
+
+  --accent-100: #e9f8ff;
+  --accent-200: #cbeeff;
+  --accent-300: #99e0ff;
+  --accent-400: #62c5ee;
+  --accent-500: #38a6cf;
+  --accent-600: #1186ac;
+  --accent-700: #006786;
+  --accent-800: #004961;
+  --accent-900: #0a303e;
+  --accent-bg: var(--accent-100);
+  --accent-border: var(--accent-400);
+
+  --accent-2-100: #fff1f4;
+  --accent-2-200: #ffdee6;
+  --accent-2-300: #ffc0d0;
+  --accent-2-400: #ff90b1;
+  --accent-2-500: #ff458e;
+  --accent-2-600: #d82071;
+  --accent-2-700: #aa0b56;
+  --accent-2-800: #790e3d;
+  --accent-2-900: #4b1528;
+
+  /* Spec 007 (mejoras visuales), plan.md §1 — sin cambios: rampa de 4
+     niveles para el progreso de objetivos/presupuestos, decisión de
+     negocio ajena al handoff (spec 010 plan.md §5). */
   --status-green: #1baf7a;
   --status-amber: #d6a92a;
   --status-orange: #eb6834;
   --status-red: #d64545;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  /* Spec 008, plan.md §1. Pila serif de sistema (sin cargar una tipografía
-     web nueva) para los titulares, distinta de --sans desde esta spec. */
-  --heading: Georgia, 'Times New Roman', Times, serif;
+  /* Spec 010, plan.md §0. Antes --sans (cuerpo en sans-serif desde
+     siempre); el handoff usa la misma tipografía serif en titulares y
+     cuerpo, así que mantener el nombre "--sans" habría sido confuso. */
+  --font-body: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --heading: 'Source Serif 4', Georgia, 'Times New Roman', serif;
   --mono: ui-monospace, Consolas, monospace;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
+  /* Escala de espaciado del handoff — sustituye a los valores sueltos
+     (16px, 24px, 32px...) usados desde spec 007/008. */
+  --space-1: 5px;
+  --space-2: 10px;
+  --space-3: 15px;
+  --space-4: 20px;
+  --space-6: 30px;
+  --space-8: 40px;
+
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+
+  font: 15px/155% var(--font-body);
+  letter-spacing: normal;
   color-scheme: light dark;
   color: var(--text);
   background: var(--bg);
@@ -42,27 +100,60 @@
   -moz-osx-font-smoothing: grayscale;
 
   @media (max-width: 1024px) {
-    font-size: 16px;
+    font-size: 14px;
   }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Spec 008, plan.md §1. El mockup no tiene variante oscura — se deriva
-       con el mismo criterio que ya usaba este bloque (invertir luminosidad,
-       mantener el matiz del nuevo acento). */
-    --text: #a8a49c;
-    --text-h: #f0eee9;
-    --bg: #1a1917;
-    --border: #35322c;
-    --code-bg: #232019;
-    --accent: #7fb3c9;
-    --accent-bg: rgba(127, 179, 201, 0.15);
-    --accent-border: rgba(127, 179, 201, 0.5);
-    --card-bg: #26241f;
+    /* Spec 010, plan.md §1. El handoff no tiene variante oscura (mismo
+       caso que spec 008) — se deriva con el mismo criterio: invertir
+       luminosidad, mantener el matiz de cada acento. */
+    --text: #d8d5d4;
+    --text-h: #efeceb;
+    --bg: #1c1b1a;
+    --border: color-mix(in srgb, #efeceb 18%, transparent);
+    --code-bg: #28211f;
+    --accent: #5fc3e6;
+    --accent-2: #ff6fa8;
+    --card-bg: #28211f;
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.35);
+
+    --neutral-100: #2d2b2b;
+    --neutral-200: #444141;
+    --neutral-300: #605d5d;
+    --neutral-400: #7d7979;
+    --neutral-500: #9b9797;
+    --neutral-600: #bab6b6;
+    --neutral-700: #d7d3d3;
+    --neutral-800: #eae7e7;
+    --neutral-900: #f8f4f4;
+
+    --accent-100: #0a303e;
+    --accent-200: #004961;
+    --accent-300: #006786;
+    --accent-400: #1186ac;
+    --accent-500: #38a6cf;
+    --accent-600: #62c5ee;
+    --accent-700: #99e0ff;
+    --accent-800: #cbeeff;
+    --accent-900: #e9f8ff;
+    --accent-bg: var(--accent-100);
+    --accent-border: var(--accent-400);
+
+    --accent-2-100: #4b1528;
+    --accent-2-200: #790e3d;
+    --accent-2-300: #aa0b56;
+    --accent-2-400: #d82071;
+    --accent-2-500: #ff458e;
+    --accent-2-600: #ff90b1;
+    --accent-2-700: #ffc0d0;
+    --accent-2-800: #ffdee6;
+    --accent-2-900: #fff1f4;
 
     --status-green: #34d399;
     --status-amber: #eab308;
@@ -103,30 +194,43 @@ body {
 }
 
 h1,
-h2 {
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--heading);
-  /* Spec 008, plan.md §1: 700 (antes 500) — peso "serif negrita" del mockup. */
-  font-weight: 700;
+  /* Spec 010, plan.md §1: 600 (antes 700 en spec 008) — peso del handoff. */
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
   color: var(--text-h);
+  margin: 0 0 var(--space-2);
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
+  font-size: 42px;
+  margin: var(--space-6) 0;
   @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+    font-size: 32px;
   }
 }
 h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
+  font-size: 32px;
+}
+h3 {
+  font-size: 25px;
+}
+h4 {
+  font-size: 20px;
+}
+h5 {
+  font-size: 16px;
+}
+h6 {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 p {
   margin: 0;
@@ -447,6 +551,243 @@ main ul li {
 }
 main ul li:last-child {
   border-bottom: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Spec 010 (rediseño editorial), plan.md §2. Componentes reutilizables del
+   handoff de Claude Design, adoptados como clases CSS — quinta excepción
+   (a partir de aquí, la principal) a la convención "sin className, todo
+   por id" de specs 007-009: estos elementos se repiten decenas de veces
+   por pantalla (una tarjeta por categoría, un botón por fila...), el mismo
+   motivo exacto que ya justificaba `.dot`/`.progress-bar`/`.sr-only`,
+   llevado aquí a todo un sistema en vez de a 2-3 elementos sueltos
+   (spec.md §1 decisión 1, aprobada por Diego). Solo se portan las clases
+   que alguna de las 8 pantallas rediseñadas usa realmente — se excluyen a
+   propósito las clases decorativas de "separación CMYK" del fichero
+   original del handoff (spec.md §5): ninguna pantalla las usa y su
+   comentario pide cargar un script externo no incluido en el handoff.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.hr {
+  height: 1px;
+  border: 0;
+  margin: var(--space-4) 0;
+  background: var(--border);
+}
+
+/* — botones — */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: var(--heading);
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  border-radius: var(--radius-md);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+.btn-primary:hover {
+  background: var(--accent-600);
+}
+.btn-primary:active {
+  background: var(--accent-700);
+}
+.btn-secondary {
+  border-color: var(--border);
+  color: var(--text-h);
+}
+.btn-secondary:hover {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+.btn-secondary:active {
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+.btn-ghost {
+  color: var(--accent);
+  padding-inline: var(--space-1);
+}
+.btn-ghost:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.btn-ghost:active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.btn-block {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+/* — formularios — */
+.field > label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 5px;
+  color: color-mix(in srgb, var(--text) 70%, transparent);
+}
+.input {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-h);
+  caret-color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.input:hover {
+  border-color: color-mix(in srgb, var(--text) 45%, transparent);
+}
+.input:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.seg {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.seg-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.seg-opt input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.seg-opt + .seg-opt {
+  border-left: 1px solid var(--border);
+}
+.seg-opt:has(input:checked) {
+  background: var(--accent);
+  color: var(--bg);
+}
+.seg-opt:not(:has(input:checked)):hover {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+.seg-opt:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* — tarjetas — */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+.card-kicker {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.card-title {
+  font-family: var(--heading);
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.2;
+}
+.card-body {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.8;
+  flex: 1;
+}
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--text) 50%, transparent);
+}
+.elev-sm {
+  box-shadow: var(--shadow-sm);
+}
+.elev-md {
+  box-shadow: var(--shadow-md);
+}
+
+/* — etiquetas — */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 3px 10px;
+  border-radius: calc(var(--radius-md) * 0.75);
+}
+.tag-accent {
+  background: var(--accent-100);
+  color: var(--accent-800);
+}
+.tag-accent-2 {
+  background: var(--accent-2-100);
+  color: var(--accent-2-800);
+}
+.tag-neutral {
+  background: var(--neutral-100);
+  color: var(--neutral-800);
+}
+
+/* — navegación (pestañas, p. ej. MovementsLayout) — */
+.nav a {
+  color: inherit;
+  text-decoration: none;
+  font-size: 14px;
+}
+.nav a:hover,
+.nav a[aria-current='page'] {
+  color: var(--accent);
+}
+
+/* — tabla (mapeada sobre `main table`, mismo aspecto, nombre explícito para
+   las tablas que además usan el sistema de tarjetas en su misma pantalla) — */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.table th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text) 60%, transparent);
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
 }
 
 /* Spec 008 (rediseño Broadsheet), plan.md §3 (H3). Acotado por id a la
