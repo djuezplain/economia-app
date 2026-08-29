@@ -90,7 +90,7 @@ describe('AppLayout', () => {
     expect(screen.getByText('Ledger')).toBeInTheDocument();
   });
 
-  it('con sesión muestra los 8 enlaces y el botón de cerrar sesión, cada uno con su icono (H5, spec 007)', async () => {
+  it('con sesión muestra los 8 enlaces y el botón de cerrar sesión, cada uno con su punto de color (H5, spec 008)', async () => {
     mockLoggedIn();
     renderLayout();
 
@@ -107,12 +107,12 @@ describe('AppLayout', () => {
     ]) {
       const link = screen.getByRole('link', { name });
       expect(link).toBeInTheDocument();
-      expect(link.querySelector('svg')).toBeInTheDocument();
+      expect(link.querySelector('.dot')).toBeInTheDocument();
     }
     expect(nav).toBeInTheDocument();
     const logoutButton = screen.getByRole('button', { name: 'Cerrar sesión' });
     expect(logoutButton).toBeInTheDocument();
-    expect(logoutButton.querySelector('svg')).toBeInTheDocument();
+    expect(logoutButton.querySelector('.dot')).toBeInTheDocument();
   });
 
   it('marca como activo solo el enlace de la ruta actual, incluido "Inicio" solo en la home', async () => {
@@ -124,7 +124,7 @@ describe('AppLayout', () => {
     expect(screen.getByRole('link', { name: 'Inicio' })).not.toHaveAttribute('aria-current');
   });
 
-  it('el botón de plegar oculta el texto de los enlaces y del botón de cerrar sesión, que siguen siendo accesibles por su icono (H5 criterio 2, spec 007), y se puede desplegar de nuevo', async () => {
+  it('el botón de plegar oculta el texto de los enlaces y del botón de cerrar sesión, que siguen siendo accesibles por su punto de color (H5 criterio 2, spec 008), y se puede desplegar de nuevo', async () => {
     mockLoggedIn();
     const user = userEvent.setup();
     renderLayout();
@@ -133,7 +133,7 @@ describe('AppLayout', () => {
     // Antes de plegar: sin `aria-label` (el nombre accesible viene del
     // texto visible) y sin la clase `sr-only` en el texto.
     expect(inicioLink).not.toHaveAttribute('aria-label');
-    expect(inicioLink.querySelector('span')).not.toHaveClass('sr-only');
+    expect(inicioLink.querySelector('span:not(.dot)')).not.toHaveClass('sr-only');
 
     await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
 
@@ -142,19 +142,19 @@ describe('AppLayout', () => {
     // ya no desaparece del todo, a diferencia del comportamiento anterior
     // de spec 005.
     const collapsedInicioLink = screen.getByRole('link', { name: 'Inicio' });
-    expect(collapsedInicioLink.querySelector('span')).toHaveClass('sr-only');
-    expect(collapsedInicioLink.querySelector('svg')).toBeInTheDocument();
+    expect(collapsedInicioLink.querySelector('span:not(.dot)')).toHaveClass('sr-only');
+    expect(collapsedInicioLink.querySelector('.dot')).toBeInTheDocument();
 
     const logoutButton = screen.getByRole('button', { name: 'Cerrar sesión' });
-    expect(logoutButton.querySelector('span')).toHaveClass('sr-only');
-    expect(logoutButton.querySelector('svg')).toBeInTheDocument();
+    expect(logoutButton.querySelector('span:not(.dot)')).toHaveClass('sr-only');
+    expect(logoutButton.querySelector('.dot')).toBeInTheDocument();
 
     const toggle = screen.getByRole('button', { name: 'Mostrar menú' });
     await user.click(toggle);
 
     const expandedInicioLink = await screen.findByRole('link', { name: 'Inicio' });
     expect(expandedInicioLink).not.toHaveAttribute('aria-label');
-    expect(expandedInicioLink.querySelector('span')).not.toHaveClass('sr-only');
+    expect(expandedInicioLink.querySelector('span:not(.dot)')).not.toHaveClass('sr-only');
   });
 
   it('conserva el estado plegado al navegar entre rutas hijas (AppLayout no se desmonta)', async () => {
@@ -173,7 +173,7 @@ describe('AppLayout', () => {
 
     expect(await screen.findByText('Contenido de categorías')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mostrar menú' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Categorías' }).querySelector('span')).toHaveClass('sr-only');
+    expect(screen.getByRole('link', { name: 'Categorías' }).querySelector('span:not(.dot)')).toHaveClass('sr-only');
   });
 
   it('pulsar "Cerrar sesión" llama a logout', async () => {

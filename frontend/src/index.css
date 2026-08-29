@@ -163,6 +163,26 @@ p {
   font-weight: 600;
 }
 
+/* Spec 008 (rediseño Broadsheet), plan.md §5 (H5). Tercera y cuarta
+   excepción a "sin className" del proyecto (junto a `.progress-bar` y
+   `.sr-only` de spec 007): elemento reutilizable instanciado varias veces
+   por página (una vez por enlace del menú, y de nuevo en la lista de
+   Inicio, `#home-recent-list`) — mismo motivo exacto que `ProgressBar`.
+   El color de "activo" lo decide el CSS por descendencia de
+   `a[aria-current='page']` (mismo patrón que el texto en negrita de arriba),
+   no una prop de React nueva. */
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.dot-accent,
+#app-sidebar a[aria-current='page'] .dot {
+  background: var(--accent);
+}
+
 #app-content {
   flex: 1;
   min-width: 0;

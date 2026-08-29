@@ -1,22 +1,22 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { ArrowLeftRight, FileUp, Home, LayoutDashboard, LogOut, Monitor, Tags, Target, User } from 'lucide-react';
 import { useAuth } from '../auth/auth-context';
 
-// Spec 007 (mejoras visuales), H5 / plan.md §5. Un icono por sección del
-// menú lateral (spec 005) — decorativo, el nombre accesible del enlace
-// sigue siendo `label` (el texto visible, o `aria-label` con el menú
-// plegado, T6.2). `end` solo hace falta en "Inicio" (mismo motivo que
+// Spec 008 (rediseño Broadsheet), plan.md §5. Sustituye a los iconos de
+// `lucide-react` de spec 007 H5 (retirados en T7) por un punto de color
+// (`.dot`, ver el `<span>` de más abajo) — decorativo, el nombre accesible
+// del enlace sigue siendo `label` (el texto visible, o `aria-label` con el
+// menú plegado). `end` solo hace falta en "Inicio" (mismo motivo que
 // `AppLayout` original: sin él, "/" quedaría activo en cualquier ruta).
 const NAV_ITEMS = [
-  { to: '/', end: true, label: 'Inicio', Icon: Home },
-  { to: '/categories', end: false, label: 'Categorías', Icon: Tags },
-  { to: '/movements', end: false, label: 'Ingresos y gastos', Icon: ArrowLeftRight },
-  { to: '/dashboard', end: false, label: 'Dashboard', Icon: LayoutDashboard },
-  { to: '/import', end: false, label: 'Importar Excel', Icon: FileUp },
-  { to: '/goals', end: false, label: 'Objetivos y presupuestos', Icon: Target },
-  { to: '/profile', end: false, label: 'Tu perfil', Icon: User },
-  { to: '/sessions', end: false, label: 'Dispositivos y sesiones', Icon: Monitor },
+  { to: '/', end: true, label: 'Inicio' },
+  { to: '/categories', end: false, label: 'Categorías' },
+  { to: '/movements', end: false, label: 'Ingresos y gastos' },
+  { to: '/dashboard', end: false, label: 'Dashboard' },
+  { to: '/import', end: false, label: 'Importar Excel' },
+  { to: '/goals', end: false, label: 'Objetivos y presupuestos' },
+  { to: '/profile', end: false, label: 'Tu perfil' },
+  { to: '/sessions', end: false, label: 'Dispositivos y sesiones' },
 ] as const;
 
 /**
@@ -55,16 +55,16 @@ export function AppLayout() {
             {isCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
           </button>
           <ul>
-            {NAV_ITEMS.map(({ to, end, label, Icon }) => (
+            {NAV_ITEMS.map(({ to, end, label }) => (
               <li key={to}>
                 <NavLink to={to} end={end} {...collapsedLabel(label)}>
-                  <Icon aria-hidden="true" size={18} /> <span className={isCollapsed ? 'sr-only' : undefined}>{label}</span>
+                  <span className="dot" aria-hidden="true" /> <span className={isCollapsed ? 'sr-only' : undefined}>{label}</span>
                 </NavLink>
               </li>
             ))}
             <li>
               <button type="button" onClick={() => void logout()} {...collapsedLabel('Cerrar sesión')}>
-                <LogOut aria-hidden="true" size={18} />{' '}
+                <span className="dot" aria-hidden="true" />{' '}
                 <span className={isCollapsed ? 'sr-only' : undefined}>Cerrar sesión</span>
               </button>
             </li>
