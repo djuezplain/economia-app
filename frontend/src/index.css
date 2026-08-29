@@ -348,6 +348,58 @@ p {
   }
 }
 
+/* Spec 009 (adaptación a móvil), plan.md §3.5 (H3). Técnica estándar de
+   tabla responsive con `data-label`: cada fila pasa a bloque, cada celda
+   muestra su etiqueta delante vía `::before` — sin tocar la semántica de
+   tabla (`<table>`/`<th scope="col">` no cambian), solo la presentación
+   visual. `main table` cubre las dos tablas de DashboardPage (únicas
+   tablas de la app hoy), sin necesitar un id nuevo. */
+@media (max-width: 768px) {
+  main table thead,
+  main table caption {
+    /* Oculta visualmente la cabecera (y el <caption>, encontrado en la
+       revisión visual de esta tarea: al pasar `table` a `display: block`,
+       el `<caption>` — que sigue siendo `display: table-caption` por
+       defecto — queda con un ancho de cálculo roto y su texto se parte
+       letra a letra) sin quitarlos del árbol de accesibilidad — mismas
+       propiedades que .sr-only (spec 007), pero por selector de
+       descendencia: ninguno de los dos lleva className en ningún
+       componente. El título visible de cada bloque (`h2`/`h3`) ya explica
+       de qué tabla se trata, así que ocultar el `<caption>` no pierde
+       contexto para quien ve la pantalla. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  main table,
+  main table tbody,
+  main table tr {
+    display: block;
+    width: 100%;
+  }
+  main table tr {
+    margin-bottom: 12px;
+  }
+  main table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 4px;
+    border-bottom: none;
+  }
+  main table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-h);
+  }
+}
+
 /* Spec 007 (mejoras visuales), plan.md §4 (H4). Espaciado y agrupación de
    formularios/tablas/listados resuelto entero por selectores de
    descendencia dentro de `main` — sin tocar ningún componente ni introducir

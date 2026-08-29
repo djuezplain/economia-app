@@ -209,8 +209,8 @@ export function DashboardPage() {
                   <tbody>
                     {byCategoryChartData.map((entry) => (
                       <tr key={entry.name}>
-                        <td>{entry.name}</td>
-                        <td>{entry.total.toFixed(2)}</td>
+                        <td data-label="Categoría">{entry.name}</td>
+                        <td data-label="Total">{entry.total.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -270,10 +270,10 @@ export function DashboardPage() {
               <tbody>
                 {yearSummary.months.map((entry) => (
                   <tr key={entry.month}>
-                    <td>{entry.month}</td>
-                    <td>{entry.income}</td>
-                    <td>{entry.expense}</td>
-                    <td>{entry.savings}</td>
+                    <td data-label="Mes">{entry.month}</td>
+                    <td data-label="Ingresos">{entry.income}</td>
+                    <td data-label="Gastos">{entry.expense}</td>
+                    <td data-label="Ahorro">{entry.savings}</td>
                   </tr>
                 ))}
               </tbody>
