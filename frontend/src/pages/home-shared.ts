@@ -10,3 +10,22 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat('es-ES', { style: 'currency', c
 export function formatCurrency(amount: string): string {
   return CURRENCY_FORMATTER.format(parseFloat(amount));
 }
+
+const SHORT_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** '2026-08-26' → '26 ago'. Manipulación de texto pura, sin pasar por
+ *  `Date` (evitaría desplazamientos de zona horaria al formatear una fecha
+ *  sin hora, como las de un movimiento) — mismo criterio que `lastDayOfMonth`. */
+export function formatDate(isoDate: string): string {
+  const [, month, day] = isoDate.split('-');
+  return `${parseInt(day, 10)} ${SHORT_MONTHS[parseInt(month, 10) - 1]}`;
+}
+
+/** Último día de un mes 'YYYY-MM' (28/29 en febrero, 30 o 31 el resto).
+ *  Usa `Date.UTC` solo para el cálculo de calendario (día 0 del mes
+ *  siguiente = último día de este mes), nunca para mostrar una fecha, así
+ *  que no depende de la zona horaria del entorno. */
+export function lastDayOfMonth(month: string): number {
+  const [year, monthNumber] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+}

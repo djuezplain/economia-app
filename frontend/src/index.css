@@ -212,6 +212,48 @@ main ul li:last-child {
   border-bottom: none;
 }
 
+/* Spec 008 (rediseño Broadsheet), plan.md §3 (H3). Acotado por id a la
+   página de Inicio — no toca la regla genérica `main ul li` de arriba, que
+   sigue rigiendo el resto de listados de texto simple de la app. */
+#home-summary {
+  display: flex;
+  gap: 16px;
+  margin: 24px 0;
+}
+#home-summary > div {
+  flex: 1;
+  background: var(--card-bg);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+#home-summary > div > p:first-child {
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+#home-summary > div > p:nth-child(2) {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+#home-summary > div > p:last-child {
+  font-size: 14px;
+  color: var(--text);
+}
+
+#home-recent-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#home-recent-list li > span:last-child {
+  margin-inline-start: auto;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
 /* Spec 007 (mejoras visuales), plan.md §2. Único componente del proyecto
    con className propio (ver justificación en ProgressBar.tsx) — se instancia
    varias veces en la misma página, a diferencia de los elementos con `id`. */
