@@ -47,6 +47,10 @@ export function AppLayout() {
     <div id="app-shell">
       {showSidebar && (
         <nav id="app-sidebar" aria-label="Navegación principal">
+          {/* Spec 008 (rediseño Broadsheet), plan.md §4 (H4). Siempre visible,
+              plegado o no — a diferencia del texto de los enlaces, no depende
+              de `isCollapsed`. */}
+          <p id="app-sidebar-brand">Ledger</p>
           <button type="button" onClick={() => setIsCollapsed((collapsed) => !collapsed)} aria-expanded={!isCollapsed}>
             {isCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
           </button>

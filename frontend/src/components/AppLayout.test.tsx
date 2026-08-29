@@ -77,6 +77,19 @@ describe('AppLayout', () => {
     expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
   });
 
+  it('con sesión muestra la marca "Ledger", plegado o no (H4, spec 008)', async () => {
+    mockLoggedIn();
+    const user = userEvent.setup();
+    renderLayout();
+
+    await screen.findByRole('link', { name: 'Inicio' });
+    expect(screen.getByText('Ledger')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
+
+    expect(screen.getByText('Ledger')).toBeInTheDocument();
+  });
+
   it('con sesión muestra los 8 enlaces y el botón de cerrar sesión, cada uno con su icono (H5, spec 007)', async () => {
     mockLoggedIn();
     renderLayout();
