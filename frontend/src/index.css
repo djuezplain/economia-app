@@ -334,6 +334,20 @@ p {
   }
 }
 
+/* Spec 009 (adaptación a móvil), plan.md §3.4 (H3). Datos del dispositivo
+   y acción de Dispositivos y sesiones, apilados en bloque. */
+@media (max-width: 768px) {
+  #sessions-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+  #sessions-list li > div:first-child {
+    overflow-wrap: anywhere;
+  }
+}
+
 /* Spec 007 (mejoras visuales), plan.md §4 (H4). Espaciado y agrupación de
    formularios/tablas/listados resuelto entero por selectores de
    descendencia dentro de `main` — sin tocar ningún componente ni introducir

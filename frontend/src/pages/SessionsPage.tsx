@@ -93,16 +93,26 @@ export function SessionsPage() {
       {sessions !== null && sessions.length === 0 && <p>No tienes ninguna sesión activa.</p>}
 
       {sessions !== null && sessions.length > 0 && (
-        <ul>
+        // Spec 009 (adaptación a móvil), plan.md §3.4 (H3). Datos del
+        // dispositivo y acción en 2 <div> (posición, sin clase nueva) para
+        // poder apilarlos en bloque bajo el breakpoint de móvil; el
+        // user-agent es la cadena con más riesgo de desbordar (puede no
+        // tener espacios en tramos largos), de ahí el `overflow-wrap`
+        // explícito en su bloque (además de la red de seguridad genérica
+        // de `main` en H2).
+        <ul id="sessions-list">
           {sessions.map((session) => (
             <li key={session.id}>
-              <span>{session.userAgent ?? 'Dispositivo desconocido'}</span>
-              {session.ipAddress && <span> · {session.ipAddress}</span>}
-              <span> · última actividad: {formatDateTime(session.lastUsedAt)}</span>
-              {' · '}
-              <button type="button" disabled={revokingId === session.id} onClick={() => void handleRevoke(session.id)}>
-                {revokingId === session.id ? 'Cerrando…' : 'Cerrar sesión'}
-              </button>
+              <div>
+                <span>{session.userAgent ?? 'Dispositivo desconocido'}</span>
+                {session.ipAddress && <span> · {session.ipAddress}</span>}
+                <span> · última actividad: {formatDateTime(session.lastUsedAt)}</span>
+              </div>
+              <div>
+                <button type="button" disabled={revokingId === session.id} onClick={() => void handleRevoke(session.id)}>
+                  {revokingId === session.id ? 'Cerrando…' : 'Cerrar sesión'}
+                </button>
+              </div>
             </li>
           ))}
         </ul>
