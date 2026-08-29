@@ -26,7 +26,6 @@ Regla de oro: **no se escribe código de producción sin una tarea de un `tasks.
 |---|---|
 | Frontend | React + TypeScript (Vite) |
 | Gráficos | Recharts |
-| Iconos | lucide-react (añadida en spec 007, H5 — menú lateral) |
 | Backend | Node.js + NestJS + TypeScript |
 | Base de datos | PostgreSQL |
 | ORM | Drizzle ORM (ver nota) |
