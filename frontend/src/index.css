@@ -267,6 +267,47 @@ p {
   }
 }
 
+/* Spec 009 (adaptación a móvil), plan.md §2 (H2). Tipografía, formularios y
+   red de seguridad contra el scroll horizontal en anchos de móvil. */
+@media (max-width: 768px) {
+  h1 {
+    font-size: 28px;
+    letter-spacing: -0.6px;
+    margin: 16px 0;
+  }
+  h2 {
+    font-size: 18px;
+  }
+
+  main form {
+    max-width: none;
+  }
+
+  /* Páginas sin menú lateral (login, registro, verificación...) — spec 008
+     T8 ya les da su propio relleno vía este selector; en móvil, 32px 40px
+     deja muy poco ancho útil. */
+  #root > main {
+    padding: 20px;
+  }
+
+  /* Evita que una cadena sin espacios (URL larga, user-agent, correo largo)
+     fuerce scroll horizontal — no cambia el salto de línea de texto normal,
+     solo actúa cuando una palabra sola no cabe (H2 criterio 1). */
+  main {
+    overflow-wrap: anywhere;
+  }
+
+  /* Encontrado en la revisión visual de esta tarea (no estaba en plan.md
+     §3.1, que solo preveía tocar `#home-recent-list`): con las 3 tarjetas
+     de #home-summary en fila a 390px, cada una queda tan estrecha que la
+     etiqueta ("INGRESOS") y el importe se parten de forma ilegible. Se
+     apilan en vertical, igual criterio que el resto de listados de esta
+     spec (H3, decisión "apilar en bloques"). */
+  #home-summary {
+    flex-direction: column;
+  }
+}
+
 /* Spec 007 (mejoras visuales), plan.md §4 (H4). Espaciado y agrupación de
    formularios/tablas/listados resuelto entero por selectores de
    descendencia dentro de `main` — sin tocar ningún componente ni introducir
