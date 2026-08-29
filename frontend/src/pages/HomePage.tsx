@@ -134,10 +134,10 @@ export function HomePage() {
 
           {monthSummary && !isEmptyMonth && (
             <div id="home-summary">
-              <div>
-                <p>Balance del mes</p>
-                <p>{formatCurrency((parseFloat(monthSummary.income) - parseFloat(monthSummary.expense)).toFixed(2))}</p>
-                <p>
+              <div className="card elev-sm">
+                <p className="card-kicker">Balance del mes</p>
+                <p className="card-amount">{formatCurrency((parseFloat(monthSummary.income) - parseFloat(monthSummary.expense)).toFixed(2))}</p>
+                <p className="card-body">
                   {savingsGoal?.targetAmount !== null && savingsGoal?.targetAmount !== undefined ? (
                     `Sobre un objetivo de ${formatCurrency(savingsGoal.targetAmount)}`
                   ) : (
@@ -147,13 +147,13 @@ export function HomePage() {
                   )}
                 </p>
               </div>
-              <div>
-                <p>Ingresos</p>
-                <p>{formatCurrency(monthSummary.income)}</p>
+              <div className="card elev-sm">
+                <p className="card-kicker">Ingresos</p>
+                <p className="card-amount">{formatCurrency(monthSummary.income)}</p>
               </div>
-              <div>
-                <p>Gastos</p>
-                <p>{formatCurrency(monthSummary.expense)}</p>
+              <div className="card elev-sm">
+                <p className="card-kicker">Gastos</p>
+                <p className="card-amount">{formatCurrency(monthSummary.expense)}</p>
               </div>
             </div>
           )}

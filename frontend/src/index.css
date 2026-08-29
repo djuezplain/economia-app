@@ -740,6 +740,15 @@ main ul li:last-child {
   font-size: 17px;
   line-height: 1.2;
 }
+/* Spec 010 (rediseño editorial), plan.md §4.1. Importe grande de las
+   tarjetas de resumen de Inicio (`#home-summary`) — clase genérica en vez
+   de una regla `#home-summary > div > p:nth-child(2)` como antes (spec
+   008), por si otra pantalla necesita el mismo tratamiento. */
+.card-amount {
+  font-weight: 700;
+  font-size: 28px;
+  color: var(--text-h);
+}
 .card-body {
   margin: 0;
   font-size: 13px;
@@ -817,32 +826,16 @@ main ul li:last-child {
 /* Spec 008 (rediseño Broadsheet), plan.md §3 (H3). Acotado por id a la
    página de Inicio — no toca la regla genérica `main ul li` de arriba, que
    sigue rigiendo el resto de listados de texto simple de la app. */
+/* Spec 010 (rediseño editorial), plan.md §4.1. Las propias tarjetas
+   (fondo, radio, relleno) ya las da `.card.elev-sm`; aquí solo queda la
+   disposición en fila de `#home-summary` como contenedor. */
 #home-summary {
   display: flex;
-  gap: 16px;
-  margin: 24px 0;
+  gap: var(--space-3);
+  margin: var(--space-6) 0;
 }
-#home-summary > div {
+#home-summary > .card {
   flex: 1;
-  background: var(--card-bg);
-  border-radius: 10px;
-  padding: 16px 20px;
-}
-#home-summary > div > p:first-child {
-  margin: 0 0 4px;
-  font-size: 13px;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-#home-summary > div > p:nth-child(2) {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text-h);
-}
-#home-summary > div > p:last-child {
-  font-size: 14px;
-  color: var(--text);
 }
 
 #home-recent-list li {
