@@ -1,7 +1,7 @@
 # Tasks — Spec 008 (Rediseño visual "Broadsheet")
 
-**Estado:** Aprobada — en curso
-**Fase:** 3 de 4 (Spec → Plan → Tasks → Implementación)
+**Estado:** Cerrada
+**Fase:** 4 de 4 (Spec → Plan → Tasks → Implementación)
 
 Cada tarea = un commit (Conventional Commits), validada contra su criterio antes de pasar a la siguiente (`constitution.md §1`). Tras cada tarea: `npm run test` (frontend) y `npx oxlint` en el/los ficheros tocados; `npm run build` al final de todo (T8), como añadió spec 007 a la rutina tras el fallo de tipos que solo `tsc -b` detectaba.
 
@@ -62,4 +62,46 @@ Cada tarea = un commit (Conventional Commits), validada contra su criterio antes
 - Checklist de cierre (se añade a este mismo fichero al completar T8, con el mismo formato que spec 007).
 
 ---
-**Pendiente de aprobación por Diego.** Tras aprobar, se ejecutan T1 a T8 en orden, cada una en su propio commit.
+**Aprobada por Diego.** Ejecutada T1 a T8 en orden, cada una en su propio commit.
+
+## Checklist de cierre
+
+Verificación final contra cada criterio de aceptación de `spec.md`:
+
+**H1 — Sistema visual base**
+- [x] Criterio 1: tokens de color/tipografía sustituidos en `index.css`, con variante de modo oscuro (derivada, el mockup no tenía una) — T1.
+- [x] Criterio 2: son variables CSS — toda página hereda el cambio sin tocarse una por una. Verificado visualmente en las 8 páginas autenticadas (T8).
+- [x] Criterio 3: ninguna estructura HTML, comportamiento ni test funcional cambia fuera de lo explícito en H2-H5 — 153/153 tests en verde tras cada tarea.
+- [x] Criterio 4: estilo de tarjeta (`--card-bg`) introducido y usado por H3 (`#home-summary`); no aplicado retroactivamente a otras páginas — T4.
+
+**H2 — Layout a ancho completo**
+- [x] Criterio 1: `#root` sin ancho fijo/borde; menú y contenido a ancho completo — T2.
+- [x] Criterio 2: formularios acotados a 640px (`main form`); tablas/listados sin acotar — T2. Corrección T8: páginas sin menú lateral (`#root > main`) también necesitaban su propio relleno.
+- [x] Criterio 3: comportamiento de plegado del menú sin cambios, solo su anchura relativa — verificado en T8 (capturas colapsado/desplegado).
+
+**H3 — Página de Inicio rediseñada**
+- [x] Criterio 1: 3 tarjetas de resumen del mes, reutilizando `getMonthSummary` — T4.
+- [x] Criterio 2: referencia al objetivo de ahorro (`getMonthProgress`), con mensaje si no hay objetivo configurado — T4.
+- [x] Criterio 3: últimos 5 movimientos del mes, indicador de color por tipo — T4.
+- [x] Criterio 4: enlace "Ver todos los movimientos" hacia `/movements` — T4.
+- [x] Criterio 5: aviso de verificación pendiente y enlaces de registro/login sin cambios de comportamiento — cubierto por los tests existentes, sin modificar.
+- [x] Criterio 6: estado vacío explícito si el mes no tiene movimientos — T4.
+
+**H4 — Marca "Ledger"**
+- [x] Criterio 1: `#app-sidebar-brand` visible plegado o no — T5.
+- [x] Criterio 2: no se toca `document.title` ni ningún metadato — confirmado, sin cambios en `index.html`.
+
+**H5 — Punto de color en vez de iconos**
+- [x] Criterio 1: `.dot`/`.dot-accent` en cada enlace y en el botón de cerrar sesión — T6.
+- [x] Criterio 2: `aria-label`/`title` con el nombre completo con el menú plegado (ya existente, sin cambios de comportamiento) — T6.
+- [x] Criterio 3: `lucide-react` retirada de `package.json` y del lockfile — T7.
+- [x] Criterio 4: la sección activa se sigue distinguiendo por el texto en negrita existente, el punto es un añadido — T6.
+
+**Verificación técnica final**
+- [x] `npm run build` (tipos + build de producción) en verde.
+- [x] `npm run test` — 153/153 en verde (incluida `RegisterMovementPage.test.tsx`, cuyo fallo intermitente preexistente —documentado desde spec 007— no reapareció en la última pasada completa).
+- [x] `npx oxlint` sin avisos nuevos (los 5 avisos `set-state-in-effect` son preexistentes, ajenos a esta spec).
+- [x] Revisión visual manual con backend real (usuario, categorías por defecto, movimientos e ingreso de prueba, objetivo de ahorro): Inicio, Dashboard, Objetivos y presupuestos, Movimientos, Registrar, Categorías, Importar Excel, Tu perfil, Dispositivos y sesiones, e Iniciar sesión (sin menú) — en claro y oscuro, más Inicio con el menú colapsado. Dos correcciones encontradas y corregidas (T8: color de los enlaces del menú, relleno de las páginas sin menú lateral).
+- [x] `README.md` actualizado con spec 008 cerrada.
+
+**Nota de alcance**: esta spec cubre únicamente lo que el mockup de Diego tenía realmente maquetado (la pantalla "Inicio" y su sistema de color/tipografía) — las otras 7 secciones que su menú lateral enumera (Categorías, Ingresos y gastos, Dashboard, Importar Excel, Objetivos y presupuestos, Perfil, Dispositivos) no respondían a clic en el canvas de Diseño y no se encontró ningún artboard adicional, pese a que el resumen del propio chat de diseño afirmaba haberlas rediseñado todas. Quedan pendientes de una spec futura si Diego decide completarlas.
