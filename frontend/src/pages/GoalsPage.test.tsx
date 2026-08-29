@@ -163,10 +163,12 @@ describe('GoalsPage', () => {
     expect(screen.getByText('% alcanzado: 340.00%')).toBeInTheDocument();
     expect(screen.getByText('Estado: cumplido')).toBeInTheDocument();
 
-    const table = screen.getByRole('table', { name: 'Tus presupuestos de gasto' });
-    const rows = within(table).getAllByRole('row').slice(1);
-    expect(within(rows[0]).getByText('Comida')).toBeInTheDocument();
-    expect(within(rows[0]).getByText('300.00 de 250.00 (120.00%) · superado')).toBeInTheDocument();
+    // Spec 010 (rediseño editorial), T8: la tabla se sustituyó por una lista
+    // de tarjetas, una por presupuesto (H8 criterio 1).
+    const list = screen.getByRole('list', { name: 'Tus presupuestos de gasto' });
+    const items = within(list).getAllByRole('listitem');
+    expect(within(items[0]).getByText('Comida')).toBeInTheDocument();
+    expect(within(items[0]).getByText('300.00 de 250.00 (120.00%) · superado')).toBeInTheDocument();
   });
 
   it('H1/H3 (spec 007): un presupuesto superado se pinta en rojo y un objetivo de ahorro superado en verde (mismo dato, direcciones opuestas)', async () => {
@@ -201,8 +203,8 @@ describe('GoalsPage', () => {
     renderPage();
 
     expect(await screen.findByText('Estado: cerca de conseguirlo')).toBeInTheDocument();
-    const table = screen.getByRole('table', { name: 'Tus presupuestos de gasto' });
-    expect(within(table).getByText(/dentro de lo previsto/)).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Tus presupuestos de gasto' });
+    expect(within(list).getByText(/dentro de lo previsto/)).toBeInTheDocument();
   });
 
   it('crea un objetivo de ahorro mensual desde el formulario', async () => {
@@ -245,7 +247,7 @@ describe('GoalsPage', () => {
     const updateSpy = vi.spyOn(expenseBudgetsApi, 'updateExpenseBudget').mockResolvedValue(FOOD_BUDGET);
 
     renderPage();
-    await screen.findByRole('table', { name: 'Tus presupuestos de gasto' });
+    await screen.findByRole('list', { name: 'Tus presupuestos de gasto' });
 
     await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
 
@@ -274,7 +276,7 @@ describe('GoalsPage', () => {
     const deleteSpy = vi.spyOn(expenseBudgetsApi, 'deleteExpenseBudget').mockResolvedValue(undefined);
 
     renderPage();
-    await screen.findByRole('table', { name: 'Tus presupuestos de gasto' });
+    await screen.findByRole('list', { name: 'Tus presupuestos de gasto' });
 
     await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
 

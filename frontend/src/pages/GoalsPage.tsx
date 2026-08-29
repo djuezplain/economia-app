@@ -13,6 +13,7 @@ import type { BudgetProgress, GoalProgress, MonthProgress, ProgressStatus, YearP
 import { ApiError } from '../api/client';
 import { ProgressBar } from '../components/ProgressBar';
 import { resolveVisualLevel } from './goals-shared';
+import type { VisualLevel } from './goals-shared';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -52,6 +53,20 @@ function budgetStatusLabel(status: ProgressStatus): string {
   }
 }
 
+/**
+ * Spec 010 (rediseño editorial), plan.md §5. El handoff solo define 2
+ * estilos de etiqueta (`tag-accent`/`tag-accent-2`) frente a los 4 niveles
+ * reales de `resolveVisualLevel` — se agrupan 2 a 2 para el TEXTO de la
+ * etiqueta (`ok`/`near` → "En curso"; `warning`/`over` → "Excedido" en un
+ * presupuesto, o el propio `statusLabel` ya calculado en un objetivo de
+ * ahorro, donde "excedido" no describe bien un buen resultado). La barra de
+ * progreso (`ProgressBar`) no cambia: sigue pintando los 4 colores exactos.
+ */
+function statusTag(level: VisualLevel, kind: 'budget' | 'savings', savingsText: string): { className: string; text: string } {
+  if (level === 'ok' || level === 'near') return { className: 'tag tag-accent', text: 'En curso' };
+  return { className: 'tag tag-accent-2', text: kind === 'budget' ? 'Excedido' : savingsText };
+}
+
 interface GoalFormState {
   targetType: TargetType;
   targetValue: string;
@@ -77,10 +92,11 @@ function GoalFormFields({
 }) {
   return (
     <>
-      <div>
+      <div className="field">
         <label htmlFor={`${idPrefix}-targetType`}>Tipo de objetivo</label>
         <select
           id={`${idPrefix}-targetType`}
+          className="input"
           value={form.targetType}
           onChange={(e) => onChange({ ...form, targetType: e.target.value as TargetType })}
         >
@@ -88,24 +104,26 @@ function GoalFormFields({
           <option value="PERCENT">% de los ingresos del periodo</option>
         </select>
       </div>
-      <div>
+      <div className="field">
         <label htmlFor={`${idPrefix}-targetValue`}>{form.targetType === 'AMOUNT' ? 'Importe objetivo' : '% objetivo'}</label>
         <input
           id={`${idPrefix}-targetValue`}
           type="text"
           inputMode="decimal"
+          className="input"
           required
           placeholder={form.targetType === 'AMOUNT' ? '0.00' : '0-100'}
           value={form.targetValue}
           onChange={(e) => onChange({ ...form, targetValue: e.target.value })}
         />
       </div>
-      <div>
+      <div className="field">
         <label htmlFor={`${idPrefix}-alertThresholdPercent`}>Umbral de aviso (%)</label>
         <input
           id={`${idPrefix}-alertThresholdPercent`}
           type="text"
           inputMode="decimal"
+          className="input"
           required
           placeholder="80.00"
           value={form.alertThresholdPercent}
@@ -123,18 +141,31 @@ function GoalFormFields({
  * ahorro (mensual/anual); los presupuestos tienen su propia celda en la
  * tabla de abajo (`plan.md` §2).
  */
-function GoalProgressSummary({ progress, statusLabel }: { progress: GoalProgress; statusLabel: (status: ProgressStatus) => string }) {
+function GoalProgressSummary({
+  progress,
+  statusLabel,
+  title,
+}: {
+  progress: GoalProgress;
+  statusLabel: (status: ProgressStatus) => string;
+  title: string;
+}) {
   const level = resolveVisualLevel(progress.progressPercent, progress.alertThresholdPercent);
   const percentLabel = progress.progressPercent === null ? 'sin datos' : `${progress.progressPercent}%`;
+  const tag = statusTag(level, 'savings', statusLabel(progress.status));
   return (
-    <>
+    <div className="card elev-sm" style={{ maxWidth: 640, margin: 'var(--space-3) 0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span className="card-title">{title}</span>
+        <span className={tag.className}>{tag.text}</span>
+      </div>
       <ProgressBar
         percent={progress.progressPercent === null ? null : parseFloat(progress.progressPercent)}
         level={level}
         direction="savings"
         label={`Objetivo de ahorro: ${percentLabel} — ${statusLabel(progress.status)}`}
       />
-      <ul>
+      <ul className="card-body">
         <li>Importe objetivo: {progress.targetAmount ?? 'sin datos (sin ingresos en este periodo)'}</li>
         <li>Real: {progress.actualAmount}</li>
         <li>Desviación: {progress.deviation ?? 'sin datos'}</li>
@@ -142,7 +173,7 @@ function GoalProgressSummary({ progress, statusLabel }: { progress: GoalProgress
         <li>Proyección de cierre del periodo: {progress.projectedAmount ?? 'sin proyección (periodo cerrado o sin datos)'}</li>
         <li>Estado: {statusLabel(progress.status)}</li>
       </ul>
-    </>
+    </div>
   );
 }
 
@@ -418,24 +449,27 @@ export function GoalsPage() {
         <h2>Objetivo de ahorro</h2>
 
         <h3>Mensual</h3>
-        <div>
+        <div className="field" style={{ maxWidth: 220 }}>
           <label htmlFor="goals-month">Mes a consultar</label>
-          <input id="goals-month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+          <input id="goals-month" type="month" className="input" value={month} onChange={(e) => setMonth(e.target.value)} />
         </div>
 
         {monthProgressError && <p role="alert">{monthProgressError}</p>}
-        {monthProgress?.savingsGoal && <GoalProgressSummary progress={monthProgress.savingsGoal} statusLabel={savingsStatusLabel} />}
+        {monthProgress?.savingsGoal && (
+          <GoalProgressSummary progress={monthProgress.savingsGoal} statusLabel={savingsStatusLabel} title="Ahorro mensual" />
+        )}
         {monthProgress && !monthProgress.savingsGoal && <p>No tienes un objetivo de ahorro mensual definido todavía.</p>}
 
         <form onSubmit={handleMonthlyGoalSubmit} aria-label="Objetivo de ahorro mensual" noValidate>
           <GoalFormFields idPrefix="monthly-goal" form={monthlyForm} onChange={setMonthlyForm} />
           {monthlyFormError && <p role="alert">{monthlyFormError}</p>}
-          <button type="submit" disabled={isSavingMonthly}>
+          <button type="submit" className="btn btn-primary" disabled={isSavingMonthly}>
             {isSavingMonthly ? 'Guardando…' : hasMonthlyGoal ? 'Guardar objetivo mensual' : 'Crear objetivo mensual'}
           </button>{' '}
           {hasMonthlyGoal && (
             <button
               type="button"
+              className="btn btn-ghost"
               disabled={isSavingMonthly}
               onClick={() => void handleDeleteSavingsGoal('MONTHLY', setMonthlyFormError, setIsSavingMonthly)}
             >
@@ -445,24 +479,27 @@ export function GoalsPage() {
         </form>
 
         <h3>Anual</h3>
-        <div>
+        <div className="field" style={{ maxWidth: 220 }}>
           <label htmlFor="goals-year">Año a consultar</label>
-          <input id="goals-year" type="number" value={year} onChange={(e) => setYear(e.target.value)} />
+          <input id="goals-year" type="number" className="input" value={year} onChange={(e) => setYear(e.target.value)} />
         </div>
 
         {yearProgressError && <p role="alert">{yearProgressError}</p>}
-        {yearProgress?.savingsGoal && <GoalProgressSummary progress={yearProgress.savingsGoal} statusLabel={savingsStatusLabel} />}
+        {yearProgress?.savingsGoal && (
+          <GoalProgressSummary progress={yearProgress.savingsGoal} statusLabel={savingsStatusLabel} title="Ahorro anual" />
+        )}
         {yearProgress && !yearProgress.savingsGoal && <p>No tienes un objetivo de ahorro anual definido todavía.</p>}
 
         <form onSubmit={handleAnnualGoalSubmit} aria-label="Objetivo de ahorro anual" noValidate>
           <GoalFormFields idPrefix="annual-goal" form={annualForm} onChange={setAnnualForm} />
           {annualFormError && <p role="alert">{annualFormError}</p>}
-          <button type="submit" disabled={isSavingAnnual}>
+          <button type="submit" className="btn btn-primary" disabled={isSavingAnnual}>
             {isSavingAnnual ? 'Guardando…' : hasAnnualGoal ? 'Guardar objetivo anual' : 'Crear objetivo anual'}
           </button>{' '}
           {hasAnnualGoal && (
             <button
               type="button"
+              className="btn btn-ghost"
               disabled={isSavingAnnual}
               onClick={() => void handleDeleteSavingsGoal('ANNUAL', setAnnualFormError, setIsSavingAnnual)}
             >
@@ -480,89 +517,88 @@ export function GoalsPage() {
 
         {expenseBudgets && expenseBudgets.length === 0 && <p>No tienes presupuestos de gasto todavía.</p>}
 
+        {/* Spec 010 (rediseño editorial), plan.md §4.6/§5. Cada presupuesto
+            pasa de una fila de tabla a `.card.elev-sm` con etiqueta de
+            estado — H8 criterio 1. `aria-label` en el propio `<ul>` hace de
+            nombre accesible (antes el `<caption>` de la tabla). */}
         {expenseBudgets && expenseBudgets.length > 0 && (
-          <table>
-            <caption>Tus presupuestos de gasto</caption>
-            <thead>
-              <tr>
-                <th scope="col">Categoría</th>
-                <th scope="col">Tipo</th>
-                <th scope="col">Objetivo</th>
-                <th scope="col">Umbral de aviso</th>
-                <th scope="col">Progreso del mes</th>
-                <th scope="col">Progreso visual</th>
-                <th scope="col">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expenseBudgets.map((budget) => {
-                const isEditing = editingBudgetId === budget.id;
-                const progress = monthProgress?.expenseBudgets.find((p) => p.id === budget.id);
-                const categoryName = budget.categoryId
-                  ? (categories?.find((c) => c.id === budget.categoryId)?.name ?? budget.categoryId)
-                  : 'Global (todo el gasto)';
+          <ul id="goals-budget-list" aria-label="Tus presupuestos de gasto">
+            {expenseBudgets.map((budget) => {
+              const isEditing = editingBudgetId === budget.id;
+              const progress = monthProgress?.expenseBudgets.find((p) => p.id === budget.id);
+              const categoryName = budget.categoryId
+                ? (categories?.find((c) => c.id === budget.categoryId)?.name ?? budget.categoryId)
+                : 'Global (todo el gasto)';
+              const level = progress ? resolveVisualLevel(progress.progressPercent, progress.alertThresholdPercent) : 'ok';
 
-                if (isEditing) {
-                  return (
-                    <tr key={budget.id}>
-                      <td>{categoryName}</td>
-                      <td colSpan={6}>
-                        <form onSubmit={handleEditBudget} aria-label={`Editar presupuesto: ${categoryName}`} noValidate>
-                          <GoalFormFields idPrefix={`budget-${budget.id}`} form={editingBudgetForm} onChange={setEditingBudgetForm} />
-                          {editBudgetError && <p role="alert">{editBudgetError}</p>}
-                          <button type="submit" disabled={isSavingBudget}>
-                            {isSavingBudget ? 'Guardando…' : 'Guardar'}
-                          </button>{' '}
-                          <button type="button" disabled={isSavingBudget} onClick={() => setEditingBudgetId(null)}>
-                            Cancelar
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  );
-                }
-
+              if (isEditing) {
                 return (
-                  <tr key={budget.id}>
-                    <td>{categoryName}</td>
-                    <td>{budget.targetType === 'AMOUNT' ? 'Importe' : '% de ingresos'}</td>
-                    <td>{budget.targetValue}</td>
-                    <td>{budget.alertThresholdPercent}%</td>
-                    <td>{budgetProgressCellText(progress)}</td>
-                    <td>
-                      <ProgressBar
-                        percent={progress?.progressPercent == null ? null : parseFloat(progress.progressPercent)}
-                        level={progress ? resolveVisualLevel(progress.progressPercent, progress.alertThresholdPercent) : 'ok'}
-                        direction="budget"
-                        label={`${categoryName}: ${budgetProgressCellText(progress)}`}
-                      />
-                    </td>
-                    <td>
-                      <button type="button" onClick={() => startEditBudget(budget)}>
-                        Editar
+                  <li className="card elev-sm" key={budget.id}>
+                    <span className="card-title">{categoryName}</span>
+                    <form onSubmit={handleEditBudget} aria-label={`Editar presupuesto: ${categoryName}`} noValidate>
+                      <GoalFormFields idPrefix={`budget-${budget.id}`} form={editingBudgetForm} onChange={setEditingBudgetForm} />
+                      {editBudgetError && <p role="alert">{editBudgetError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={isSavingBudget}>
+                        {isSavingBudget ? 'Guardando…' : 'Guardar'}
                       </button>{' '}
-                      <button
-                        type="button"
-                        disabled={pendingDeleteBudgetId === budget.id}
-                        onClick={() => void handleDeleteBudget(budget.id)}
-                      >
-                        {pendingDeleteBudgetId === budget.id ? 'Eliminando…' : 'Eliminar'}
+                      <button type="button" className="btn btn-secondary" disabled={isSavingBudget} onClick={() => setEditingBudgetId(null)}>
+                        Cancelar
                       </button>
-                    </td>
-                  </tr>
+                    </form>
+                  </li>
                 );
-              })}
-            </tbody>
-          </table>
+              }
+
+              const tag = statusTag(level, 'budget', '');
+
+              return (
+                <li className="card elev-sm" key={budget.id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="card-title">{categoryName}</span>
+                    <span className={tag.className}>{tag.text}</span>
+                  </div>
+                  <p className="card-body">
+                    {budget.targetType === 'AMOUNT' ? 'Importe' : '% de ingresos'}: {budget.targetValue} · Umbral de aviso:{' '}
+                    {budget.alertThresholdPercent}%
+                  </p>
+                  <p className="card-meta">{budgetProgressCellText(progress)}</p>
+                  <ProgressBar
+                    percent={progress?.progressPercent == null ? null : parseFloat(progress.progressPercent)}
+                    level={level}
+                    direction="budget"
+                    label={`${categoryName}: ${budgetProgressCellText(progress)}`}
+                  />
+                  <div>
+                    <button type="button" className="btn btn-secondary" onClick={() => startEditBudget(budget)}>
+                      Editar
+                    </button>{' '}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={pendingDeleteBudgetId === budget.id}
+                      onClick={() => void handleDeleteBudget(budget.id)}
+                    >
+                      {pendingDeleteBudgetId === budget.id ? 'Eliminando…' : 'Eliminar'}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
 
         <h3>Añadir presupuesto</h3>
         {expenseBudgets && !canCreateBudget && <p>Ya tienes presupuestos para todas tus categorías de gasto y el global.</p>}
         {expenseBudgets && canCreateBudget && (
           <form onSubmit={handleCreateBudget} aria-label="Añadir presupuesto" noValidate>
-            <div>
+            <div className="field">
               <label htmlFor="newBudgetCategoryId">Categoría</label>
-              <select id="newBudgetCategoryId" value={newBudgetCategoryId} onChange={(e) => setNewBudgetCategoryId(e.target.value)}>
+              <select
+                id="newBudgetCategoryId"
+                className="input"
+                value={newBudgetCategoryId}
+                onChange={(e) => setNewBudgetCategoryId(e.target.value)}
+              >
                 {!hasGlobalBudget && <option value="">— Presupuesto global (todo el gasto) —</option>}
                 {availableCategories.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -573,7 +609,7 @@ export function GoalsPage() {
             </div>
             <GoalFormFields idPrefix="new-budget" form={newBudgetForm} onChange={setNewBudgetForm} />
             {createBudgetError && <p role="alert">{createBudgetError}</p>}
-            <button type="submit" disabled={isCreatingBudget}>
+            <button type="submit" className="btn btn-primary" disabled={isCreatingBudget}>
               {isCreatingBudget ? 'Creando…' : 'Crear presupuesto'}
             </button>
           </form>

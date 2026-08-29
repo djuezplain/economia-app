@@ -960,6 +960,22 @@ main ul li:last-child {
   max-width: 560px;
 }
 
+/* Spec 010 (rediseño editorial), plan.md §4.6. Cada presupuesto de gasto
+   pasa de fila de tabla a `.card.elev-sm` (H8 criterio 1) — mismo criterio
+   de reinicio de lista que Categorías/Movimientos. */
+#goals-budget-list {
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 640px;
+}
+#goals-budget-list li {
+  border-bottom: none;
+}
+
 /* Spec 007 (mejoras visuales), plan.md §2. Único componente del proyecto
    con className propio (ver justificación en ProgressBar.tsx) — se instancia
    varias veces en la misma página, a diferencia de los elementos con `id`. */
