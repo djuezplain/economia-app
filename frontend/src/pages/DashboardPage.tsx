@@ -18,18 +18,30 @@ import type { Category } from '../api/categories';
 import { getMonthSummary, getYearSummary } from '../api/dashboard';
 import type { MonthSummary, YearSummary } from '../api/dashboard';
 import { ApiError } from '../api/client';
+import { formatCurrency } from './home-shared';
 
-// Colores fijos del "job" de cada serie (paleta categórica validada de la
-// skill de dataviz — slots 1/2/3, orden fijo, no ciclado): ingresos = azul,
-// gastos = naranja, ahorro = aqua. El desglose de gastos por categoría (H4
-// criterio 2) no usa un color por categoría (podrían ser más de 8 y romper
-// el presupuesto categórico) — es una comparación de magnitud con la
-// categoría ya identificada por su etiqueta en el eje, así que lleva un
-// único tono (secuencial) en vez de gastar el canal de identidad sin falta.
-const COLOR_INCOME = '#2a78d6';
-const COLOR_EXPENSE = '#eb6834';
-const COLOR_SAVINGS = '#1baf7a';
-const COLOR_CATEGORY_BAR = '#2a78d6';
+// El desglose de gastos por categoría (H4 criterio 2) no usa un color por
+// categoría (podrían ser más de 8 y romper el presupuesto categórico) — es
+// una comparación de magnitud con la categoría ya identificada por su
+// etiqueta en el eje, así que lleva un único tono (secuencial) en vez de
+// gastar el canal de identidad sin falta.
+//
+// Spec 010 (rediseño editorial), plan.md §4.4: estos 3 colores eran antes
+// una paleta categórica fija (azul/naranja/aqua) validada por la skill de
+// dataviz; se sustituyen a propósito por los tokens del nuevo sistema
+// visual (decisión aprobada por Diego) — siguen siendo 3 tonos claramente
+// distinguibles (azul claro/gris/magenta), solo cambia de dónde salen.
+const COLOR_INCOME = 'var(--accent-300)';
+const COLOR_EXPENSE = 'var(--neutral-600)';
+const COLOR_SAVINGS = 'var(--accent-2)';
+const COLOR_CATEGORY_BAR = 'var(--accent)';
+
+// Spec 010 (rediseño editorial), plan.md §4.4: tipografía de ejes/leyenda a
+// Source Serif 4 (antes la fuente por defecto de Recharts) vía las propias
+// opciones del gráfico, sin CSS global (los `<text>` de un SVG no heredan
+// de `body`).
+const CHART_TICK_STYLE = { fontFamily: 'var(--font-body)', fontSize: 12, fill: 'var(--text)' };
+const CHART_TOOLTIP_STYLE = { fontFamily: 'var(--font-body)', fontSize: 13 };
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -162,9 +174,9 @@ export function DashboardPage() {
 
       <section>
         <h2>Resumen del mes</h2>
-        <div>
+        <div className="field" style={{ maxWidth: 220 }}>
           <label htmlFor="month">Mes</label>
-          <input id="month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+          <input id="month" type="month" className="input" value={month} onChange={(e) => setMonth(e.target.value)} />
         </div>
 
         {monthError && <p role="alert">{monthError}</p>}
@@ -191,30 +203,44 @@ export function DashboardPage() {
                   <ResponsiveContainer>
                     <BarChart data={byCategoryChartData} layout="vertical" margin={{ left: 24 }}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" />
-                      <YAxis type="category" dataKey="name" width={120} />
-                      <Tooltip />
+                      <XAxis type="number" tick={CHART_TICK_STYLE} />
+                      <YAxis type="category" dataKey="name" width={120} tick={CHART_TICK_STYLE} />
+                      <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                       <Bar dataKey="total" name="Gasto" fill={COLOR_CATEGORY_BAR} radius={4} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <table>
-                  <caption>Gastos por categoría (tabla)</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Categoría</th>
-                      <th scope="col">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {byCategoryChartData.map((entry) => (
-                      <tr key={entry.name}>
-                        <td data-label="Categoría">{entry.name}</td>
-                        <td data-label="Total">{entry.total.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {/* Spec 010 (rediseño editorial), plan.md §4.4: sustituye la
+                    `<table data-label>` de spec 009 T6 por una lista con
+                    barra de progreso de 8px (tal cual el handoff) — mismo
+                    dato (categoría + importe), ya no necesita la técnica
+                    responsive de spec 009 porque una lista de `<div>` se
+                    apila sola en cualquier ancho. */}
+                <ul id="dashboard-category-list">
+                  {byCategoryChartData.map((entry) => {
+                    const totalExpense = monthSummary ? parseFloat(monthSummary.expense) : 0;
+                    const percent = totalExpense > 0 ? (entry.total / totalExpense) * 100 : 0;
+                    const amount = formatCurrency(entry.total.toFixed(2));
+                    return (
+                      <li key={entry.name}>
+                        <div>
+                          <span>{entry.name}</span>
+                          <span>{amount}</span>
+                        </div>
+                        <div
+                          className="bar"
+                          role="progressbar"
+                          aria-valuenow={Math.round(percent)}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={`${entry.name}: ${amount}`}
+                        >
+                          <div className="bar-fill" style={{ width: `${Math.min(percent, 100)}%` }} />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               </>
             )}
           </>
@@ -223,9 +249,9 @@ export function DashboardPage() {
 
       <section>
         <h2>Vista anual</h2>
-        <div>
+        <div className="field" style={{ maxWidth: 220 }}>
           <label htmlFor="year">Año</label>
-          <input id="year" type="number" value={year} onChange={(e) => setYear(e.target.value)} />
+          <input id="year" type="number" className="input" value={year} onChange={(e) => setYear(e.target.value)} />
         </div>
 
         {yearError && <p role="alert">{yearError}</p>}
@@ -247,17 +273,17 @@ export function DashboardPage() {
               <ResponsiveContainer>
                 <LineChart data={yearSummary.months} margin={{ left: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
+                  <XAxis dataKey="month" tick={CHART_TICK_STYLE} />
+                  <YAxis tick={CHART_TICK_STYLE} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                  <Legend wrapperStyle={CHART_TOOLTIP_STYLE} />
                   <Line type="monotone" dataKey="income" name="Ingresos" stroke={COLOR_INCOME} strokeWidth={2} dot={{ r: 3 }} />
                   <Line type="monotone" dataKey="expense" name="Gastos" stroke={COLOR_EXPENSE} strokeWidth={2} dot={{ r: 3 }} />
                   <Line type="monotone" dataKey="savings" name="Ahorro" stroke={COLOR_SAVINGS} strokeWidth={2} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <table>
+            <table className="table">
               <caption>Evolución mensual (tabla)</caption>
               <thead>
                 <tr>

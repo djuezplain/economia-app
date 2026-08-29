@@ -11,6 +11,7 @@ import * as dashboardApi from '../api/dashboard';
 import type { Category } from '../api/categories';
 import type { MonthSummary, YearSummary } from '../api/dashboard';
 import { ApiError } from '../api/client';
+import { formatCurrency } from './home-shared';
 
 const INCOME_CATEGORY: Category = {
   id: 'cat-income-1',
@@ -146,16 +147,21 @@ describe('DashboardPage', () => {
     expect(screen.getByText('% de ahorro: 82.50%')).toBeInTheDocument();
     expect(screen.getByText('Ingreso medio/día: 71.43')).toBeInTheDocument();
 
-    // Tabla del desglose por categoría, ordenada por total descendente y con el nombre resuelto.
-    const table = screen.getByRole('table', { name: 'Gastos por categoría (tabla)' });
-    const rows = within(table).getAllByRole('row').slice(1); // sin la fila de cabecera
-    expect(within(rows[0]).getByText('Comida')).toBeInTheDocument();
-    expect(within(rows[0]).getByText('300.00')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('Transporte')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('50.00')).toBeInTheDocument();
+    // Spec 010 (rediseño editorial), T6: la tabla se sustituyó por una lista
+    // con barra de progreso — cada barra expone su nombre accesible y % vía
+    // `role="progressbar"`, ordenada por total descendente igual que antes.
+    // `toHaveAccessibleName` compara el atributo `aria-label` tal cual, sin
+    // el colapso de espacios en blanco que sí aplica `getByText` — aquí se
+    // compara contra `formatCurrency` directamente (con su espacio de no
+    // separación), no contra el `eur()` de arriba (pensado para `getByText`).
+    const bars = screen.getAllByRole('progressbar');
+    expect(bars[0]).toHaveAccessibleName(`Comida: ${formatCurrency('300.00')}`);
+    expect(bars[0]).toHaveAttribute('aria-valuenow', '86'); // 300/350 redondeado
+    expect(bars[1]).toHaveAccessibleName(`Transporte: ${formatCurrency('50.00')}`);
+    expect(bars[1]).toHaveAttribute('aria-valuenow', '14');
   });
 
-  it('sin gastos en el mes, no muestra la tabla y el % de ahorro aparece como "sin datos"', async () => {
+  it('sin gastos en el mes, no muestra la lista de categorías y el % de ahorro aparece como "sin datos"', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY_SIN_GASTOS);
@@ -165,7 +171,7 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('Sin gastos en este mes.')).toBeInTheDocument();
     expect(screen.getByText('% de ahorro: sin datos')).toBeInTheDocument();
-    expect(screen.queryByRole('table', { name: 'Gastos por categoría (tabla)' })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('progressbar')).toHaveLength(0);
   });
 
   it('muestra los acumulados anuales y la tabla de evolución mensual con los 12 meses', async () => {
