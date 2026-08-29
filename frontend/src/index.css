@@ -377,6 +377,14 @@ p {
     transition: transform 0.2s ease;
     background: var(--bg);
     overflow-y: auto;
+    /* Spec 010 (rediseño editorial), plan.md §6/T11 (verificación de
+       H11): `#app-mobile-menu-toggle` es `position:fixed;top:12px` con
+       z-index por encima del panel (para seguir siendo clicable con el
+       menú abierto, spec 009 §1.2) — con el padding-top normal del panel
+       (20px), su propio botón "Cerrar menú" tapaba la marca "Ledger" al
+       abrir. Se sube el hueco superior solo en móvil para dejar sitio al
+       botón fijo; no afecta a escritorio, donde el botón no existe. */
+    padding-top: 56px;
   }
   #app-sidebar[data-mobile-open='true'] {
     transform: translateX(0);
@@ -436,8 +444,11 @@ p {
   }
 }
 
-/* Spec 009 (adaptación a móvil), plan.md §3.2 (H3). Cada fila de
-   Movimientos pasa de 3 bloques en línea a 3 bloques apilados. */
+/* Spec 009 (adaptación a móvil), plan.md §3.2 (H3) — reescrita en spec 010
+   (rediseño editorial), plan.md §6/T11: cada fila de Movimientos pasa de
+   `<li>` suelto a `.card.card-row` (T5), pero el criterio y el selector
+   (por id, no por clase) no cambian — sigue ganando sobre `.card-row` y
+   apilando en columna. */
 @media (max-width: 768px) {
   #movements-list li {
     display: flex;
@@ -447,9 +458,10 @@ p {
   }
 }
 
-/* Spec 009 (adaptación a móvil), plan.md §3.3 (H3). Nombre/badge y acciones
-   de cada categoría, apilados en bloque; `ul li` cubre también las
-   subcategorías anidadas sin necesitar su propio id. */
+/* Spec 009 (adaptación a móvil), plan.md §3.3 (H3) — reescrita en spec 010,
+   plan.md §6/T11: nombre/badge y acciones de cada categoría siguen
+   apilándose en bloque igual (T4 cambió cada `<li>` a `.card`, no la forma
+   de apilar); `ul li` sigue cubriendo las subcategorías anidadas. */
 @media (max-width: 768px) {
   #categories-income-list li,
   #categories-expense-list li,
@@ -462,8 +474,10 @@ p {
   }
 }
 
-/* Spec 009 (adaptación a móvil), plan.md §3.4 (H3). Datos del dispositivo
-   y acción de Dispositivos y sesiones, apilados en bloque. */
+/* Spec 009 (adaptación a móvil), plan.md §3.4 (H3) — reescrita en spec 010,
+   plan.md §6/T11: datos del dispositivo y acción de Dispositivos y
+   sesiones siguen apilándose en bloque igual (T10 cambió cada `<li>` a
+   `.card.card-row`, no la forma de apilar). */
 @media (max-width: 768px) {
   #sessions-list li {
     display: flex;
@@ -664,6 +678,16 @@ main ul li:last-child {
   color: color-mix(in srgb, var(--text) 70%, transparent);
 }
 .input {
+  /* Sin esto, `width:100%` toma el ancho del contenido y el
+     padding/borde se suman por fuera (`content-box`, valor por defecto —
+     el proyecto no trae un reset universal de `box-sizing`) — cada
+     `.input` acaba 22px más ancho que su `.field`. Pasa desapercibido casi
+     siempre (el layout deja margen de sobra alrededor), pero en el móvil
+     de Movimientos (H11/T11), con los filtros ya a 1 columna y a ancho de
+     pantalla completo, ese sobrante empuja scroll horizontal real —
+     encontrado verificando esa pantalla, no algo que dependa de esa
+     rejilla en concreto. */
+  box-sizing: border-box;
   width: 100%;
   min-height: 36px;
   padding: 6px 10px;
@@ -906,6 +930,21 @@ main ul li:last-child {
 #categories-expense-list li {
   border-bottom: none;
 }
+/* Spec 010 (rediseño editorial), plan.md §6/T11 (H11 criterio 3): la
+   cuadrícula de 3 columnas de arriba, pensada para escritorio, deja cada
+   tarjeta demasiado estrecha en móvil — el botón "Renombrar" llega a
+   partirse letra a letra. Se apila a 1 columna, mismo criterio "apilar en
+   bloque" que el resto de listados de esta spec. Va después de la regla de
+   arriba (mismo selector por id, misma especificidad): con `@media` puesto
+   antes en el fichero, el orden de aparición decide el empate y ganaba la
+   regla de escritorio — de ahí que viva aquí, no junto a las demás reglas
+   de spec 009 más arriba. */
+@media (max-width: 768px) {
+  #categories-income-list,
+  #categories-expense-list {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* Spec 010 (rediseño editorial), plan.md §4.3. Filtros de Movimientos en
    rejilla de 4 columnas (el nº real de campos varía: 4 en Ingresos, 5 en
@@ -916,6 +955,16 @@ main ul li:last-child {
   gap: var(--space-3);
   max-width: 900px;
   margin: var(--space-3) 0;
+}
+/* Spec 010 (rediseño editorial), plan.md §6/T11 (H11 criterio 3): mismo
+   caso que la cuadrícula de Categorías de arriba — "Categoría"/"Comercio"
+   quedan tan estrechos en móvil que su propia etiqueta se parte letra a
+   letra. Se apila a 1 columna; va después de la regla de escritorio por el
+   mismo motivo de empate de especificidad explicado arriba. */
+@media (max-width: 768px) {
+  #movements-filters {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Cada movimiento pasa de `main ul li` (borde inferior, pensado para texto)
