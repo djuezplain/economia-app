@@ -228,102 +228,134 @@ export function ProfilePage() {
         <>
           <section>
             <h2>Datos de la cuenta</h2>
-            <p>Email: {profile.email}</p>
-
-            <form onSubmit={handleProfileSubmit} noValidate>
-              <div>
-                <label htmlFor="name">Nombre</label>
-                <input id="name" type="text" required value={name} onChange={(e) => setName(e.target.value)} />
+            <div className="card elev-sm">
+              <div className="field">
+                {/* No `htmlFor`/`id`: no es un control de formulario real (no
+                    editable, ver `constitution.md` T7.1), solo toma el estilo
+                    visual de `.field > label` + `<p>` que pide el handoff. */}
+                <label>Email</label>
+                <p>{profile.email}</p>
               </div>
 
-              <div>
-                <label htmlFor="currency">Moneda</label>
-                <select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                  {CURRENCIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <form onSubmit={handleProfileSubmit} noValidate>
+                <div className="field">
+                  <label htmlFor="name">Nombre</label>
+                  <input
+                    id="name"
+                    type="text"
+                    required
+                    className="input"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
 
-              <div>
-                <label htmlFor="locale">Idioma</label>
-                <select id="locale" value={locale} onChange={(e) => setLocale(e.target.value)}>
-                  {LOCALES.map((l) => (
-                    <option key={l.value} value={l.value}>
-                      {l.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="field">
+                  <label htmlFor="currency">Moneda</label>
+                  <select id="currency" className="input" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                    {CURRENCIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              {profileError && <p role="alert">{profileError}</p>}
-              {profileSaved && <p>Cambios guardados.</p>}
+                <div className="field">
+                  <label htmlFor="locale">Idioma</label>
+                  <select id="locale" className="input" value={locale} onChange={(e) => setLocale(e.target.value)}>
+                    {LOCALES.map((l) => (
+                      <option key={l.value} value={l.value}>
+                        {l.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <button type="submit" disabled={isSavingProfile}>
-                {isSavingProfile ? 'Guardando…' : 'Guardar cambios'}
-              </button>
-            </form>
+                {profileError && <p role="alert">{profileError}</p>}
+                {profileSaved && <p>Cambios guardados.</p>}
+
+                <button type="submit" className="btn btn-primary" disabled={isSavingProfile}>
+                  {isSavingProfile ? 'Guardando…' : 'Guardar cambios'}
+                </button>
+              </form>
+            </div>
           </section>
 
           <section>
             <h2>Cambiar contraseña</h2>
-            <form onSubmit={handlePasswordSubmit} noValidate>
-              <div>
-                <label htmlFor="currentPassword">Contraseña actual</label>
-                <input
-                  id="currentPassword"
-                  type="password"
-                  required
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                />
-              </div>
+            <div className="card elev-sm">
+              <form onSubmit={handlePasswordSubmit} noValidate>
+                <div className="field">
+                  <label htmlFor="currentPassword">Contraseña actual</label>
+                  <input
+                    id="currentPassword"
+                    type="password"
+                    required
+                    className="input"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
+                </div>
 
-              <div>
-                <label htmlFor="newPassword">Contraseña nueva</label>
-                <input
-                  id="newPassword"
-                  type="password"
-                  required
-                  value={newPassword}
-                  onChange={(e) => {
-                    setNewPassword(e.target.value);
-                    if (passwordFieldError) setPasswordFieldError(null);
-                  }}
-                  aria-describedby="new-password-help"
-                />
-                <p id="new-password-help">{PASSWORD_POLICY_MESSAGE}</p>
-                {passwordFieldError && <p role="alert">{passwordFieldError}</p>}
-              </div>
+                <div className="field">
+                  <label htmlFor="newPassword">Contraseña nueva</label>
+                  <input
+                    id="newPassword"
+                    type="password"
+                    required
+                    className="input"
+                    value={newPassword}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      if (passwordFieldError) setPasswordFieldError(null);
+                    }}
+                    aria-describedby="new-password-help"
+                  />
+                  <p id="new-password-help">{PASSWORD_POLICY_MESSAGE}</p>
+                  {passwordFieldError && <p role="alert">{passwordFieldError}</p>}
+                </div>
 
-              {passwordFormError && <p role="alert">{passwordFormError}</p>}
+                {passwordFormError && <p role="alert">{passwordFormError}</p>}
 
-              <button type="submit" disabled={isChangingPassword}>
-                {isChangingPassword ? 'Cambiando…' : 'Cambiar contraseña'}
-              </button>
-            </form>
+                <button type="submit" className="btn btn-primary" disabled={isChangingPassword}>
+                  {isChangingPassword ? 'Cambiando…' : 'Cambiar contraseña'}
+                </button>
+              </form>
+            </div>
           </section>
 
           <section>
             <h2>Mi cuenta</h2>
 
-            <div>
-              <p>Descarga una copia de todos tus datos (perfil y, cuando existan, datos económicos).</p>
+            <div className="card elev-sm">
+              <p className="card-body">Descarga una copia de todos tus datos (perfil y, cuando existan, datos económicos).</p>
               {exportError && <p role="alert">{exportError}</p>}
-              <button type="button" disabled={isExporting} onClick={() => void handleExport()}>
-                {isExporting ? 'Exportando…' : 'Exportar mis datos'}
-              </button>
+              {/* `.btn` es `inline-flex`, pero como hijo directo de `.card`
+                  (flex-column) heredaría `align-items: stretch` y ocuparía
+                  todo el ancho — se envuelve en un `<div>` (mismo patrón que
+                  los botones de acción de Categorías/Movimientos/Objetivos)
+                  para que conserve su ancho natural. */}
+              <div>
+                <button type="button" className="btn btn-secondary" disabled={isExporting} onClick={() => void handleExport()}>
+                  {isExporting ? 'Exportando…' : 'Exportar mis datos'}
+                </button>
+              </div>
             </div>
 
-            <div>
-              <h3>Eliminar cuenta</h3>
+            {/* Spec 010 (rediseño editorial), plan.md §4.7: tarjeta propia y
+                separada de "Mi cuenta" — botón de aspecto discreto (`.btn-ghost`,
+                no `.btn-primary`) a propósito, para no invitar al clic
+                accidental en una acción irreversible. */}
+            <div className="card elev-sm">
+              <h3 className="card-title">Eliminar cuenta</h3>
 
               {!isDeletePanelOpen && (
-                <button type="button" onClick={() => setIsDeletePanelOpen(true)}>
-                  Eliminar cuenta
-                </button>
+                <div>
+                  <button type="button" className="btn btn-ghost" onClick={() => setIsDeletePanelOpen(true)}>
+                    Eliminar cuenta
+                  </button>
+                </div>
               )}
 
               {isDeletePanelOpen && (
@@ -334,18 +366,19 @@ export function ProfilePage() {
                   </p>
 
                   {profile.hasPassword ? (
-                    <div>
+                    <div className="field">
                       <label htmlFor="deletePassword">Repite tu contraseña para confirmar</label>
                       <input
                         id="deletePassword"
                         type="password"
                         required
+                        className="input"
                         value={deletePassword}
                         onChange={(e) => setDeletePassword(e.target.value)}
                       />
                     </div>
                   ) : (
-                    <div>
+                    <div className="field">
                       <label htmlFor="deleteConfirmEmail">
                         Esta cuenta no tiene contraseña (usas Google) — escribe tu email para confirmar
                       </label>
@@ -353,6 +386,7 @@ export function ProfilePage() {
                         id="deleteConfirmEmail"
                         type="email"
                         required
+                        className="input"
                         value={deleteConfirmEmail}
                         onChange={(e) => setDeleteConfirmEmail(e.target.value)}
                       />
@@ -361,11 +395,12 @@ export function ProfilePage() {
 
                   {deleteError && <p role="alert">{deleteError}</p>}
 
-                  <button type="submit" disabled={isDeleting}>
+                  <button type="submit" className="btn btn-ghost" disabled={isDeleting}>
                     {isDeleting ? 'Eliminando…' : 'Eliminar cuenta definitivamente'}
-                  </button>
+                  </button>{' '}
                   <button
                     type="button"
+                    className="btn btn-secondary"
                     disabled={isDeleting}
                     onClick={() => {
                       setIsDeletePanelOpen(false);

@@ -1,22 +1,96 @@
+/* Spec 010 (rediseño editorial), plan.md §1: tipografía del handoff
+   (Source Serif 4 en titulares Y cuerpo — antes spec 008 solo la usaba en
+   titulares). Se carga aquí, no en cada página. */
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
+  /* Spec 010 (rediseño editorial), plan.md §1. Handoff de Claude Design en
+     `design_handoff_gestion_economia/` — valores finales (colores,
+     tipografía, espaciado son "high-fidelity" según su README, no una
+     aproximación como fue spec 008). Se mapean sobre los nombres de
+     variable que el proyecto ya tenía desde spec 008 (el propio README del
+     handoff pide reutilizar tokens existentes en vez de inventar nombres
+     nuevos) — solo `--sans` se renombra a `--font-body` (ya no es
+     sans-serif) y `--accent-2` es nueva (spec 008 solo tenía un acento). */
+  --text: #201e1d;
+  --text-h: #201e1d;
+  --bg: #f3f2f2;
+  --border: color-mix(in srgb, #201e1d 16%, transparent);
+  --code-bg: #eae9e9;
+  --accent: #0088b0;
+  --accent-2: #d6006c;
+  --card-bg: #eae9e9;
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* Rampas tonales de 9 pasos del handoff (nuevas — spec 008 solo tenía
+     --accent-bg/--accent-border, 2 tintas). --accent-bg/--accent-border se
+     mantienen apuntando a la rampa para no romper nada que ya las use. */
+  --neutral-100: #f8f4f4;
+  --neutral-200: #eae7e7;
+  --neutral-300: #d7d3d3;
+  --neutral-400: #bab6b6;
+  --neutral-500: #9b9797;
+  --neutral-600: #7d7979;
+  --neutral-700: #605d5d;
+  --neutral-800: #444141;
+  --neutral-900: #2d2b2b;
+
+  --accent-100: #e9f8ff;
+  --accent-200: #cbeeff;
+  --accent-300: #99e0ff;
+  --accent-400: #62c5ee;
+  --accent-500: #38a6cf;
+  --accent-600: #1186ac;
+  --accent-700: #006786;
+  --accent-800: #004961;
+  --accent-900: #0a303e;
+  --accent-bg: var(--accent-100);
+  --accent-border: var(--accent-400);
+
+  --accent-2-100: #fff1f4;
+  --accent-2-200: #ffdee6;
+  --accent-2-300: #ffc0d0;
+  --accent-2-400: #ff90b1;
+  --accent-2-500: #ff458e;
+  --accent-2-600: #d82071;
+  --accent-2-700: #aa0b56;
+  --accent-2-800: #790e3d;
+  --accent-2-900: #4b1528;
+
+  /* Spec 007 (mejoras visuales), plan.md §1 — sin cambios: rampa de 4
+     niveles para el progreso de objetivos/presupuestos, decisión de
+     negocio ajena al handoff (spec 010 plan.md §5). */
+  --status-green: #1baf7a;
+  --status-amber: #d6a92a;
+  --status-orange: #eb6834;
+  --status-red: #d64545;
+
+  /* Spec 010, plan.md §0. Antes --sans (cuerpo en sans-serif desde
+     siempre); el handoff usa la misma tipografía serif en titulares y
+     cuerpo, así que mantener el nombre "--sans" habría sido confuso. */
+  --font-body: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --heading: 'Source Serif 4', Georgia, 'Times New Roman', serif;
   --mono: ui-monospace, Consolas, monospace;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
+  /* Escala de espaciado del handoff — sustituye a los valores sueltos
+     (16px, 24px, 32px...) usados desde spec 007/008. */
+  --space-1: 5px;
+  --space-2: 10px;
+  --space-3: 15px;
+  --space-4: 20px;
+  --space-6: 30px;
+  --space-8: 40px;
+
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+
+  font: 15px/155% var(--font-body);
+  letter-spacing: normal;
   color-scheme: light dark;
   color: var(--text);
   background: var(--bg);
@@ -26,23 +100,65 @@
   -moz-osx-font-smoothing: grayscale;
 
   @media (max-width: 1024px) {
-    font-size: 16px;
+    font-size: 14px;
   }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
+    /* Spec 010, plan.md §1. El handoff no tiene variante oscura (mismo
+       caso que spec 008) — se deriva con el mismo criterio: invertir
+       luminosidad, mantener el matiz de cada acento. */
+    --text: #d8d5d4;
+    --text-h: #efeceb;
+    --bg: #1c1b1a;
+    --border: color-mix(in srgb, #efeceb 18%, transparent);
+    --code-bg: #28211f;
+    --accent: #5fc3e6;
+    --accent-2: #ff6fa8;
+    --card-bg: #28211f;
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.35);
+
+    --neutral-100: #2d2b2b;
+    --neutral-200: #444141;
+    --neutral-300: #605d5d;
+    --neutral-400: #7d7979;
+    --neutral-500: #9b9797;
+    --neutral-600: #bab6b6;
+    --neutral-700: #d7d3d3;
+    --neutral-800: #eae7e7;
+    --neutral-900: #f8f4f4;
+
+    --accent-100: #0a303e;
+    --accent-200: #004961;
+    --accent-300: #006786;
+    --accent-400: #1186ac;
+    --accent-500: #38a6cf;
+    --accent-600: #62c5ee;
+    --accent-700: #99e0ff;
+    --accent-800: #cbeeff;
+    --accent-900: #e9f8ff;
+    --accent-bg: var(--accent-100);
+    --accent-border: var(--accent-400);
+
+    --accent-2-100: #4b1528;
+    --accent-2-200: #790e3d;
+    --accent-2-300: #aa0b56;
+    --accent-2-400: #d82071;
+    --accent-2-500: #ff458e;
+    --accent-2-600: #ff90b1;
+    --accent-2-700: #ffc0d0;
+    --accent-2-800: #ffdee6;
+    --accent-2-900: #fff1f4;
+
+    --status-green: #34d399;
+    --status-amber: #eab308;
+    --status-orange: #f97316;
+    --status-red: #f87171;
   }
 
   #social .button-icon {
@@ -50,12 +166,11 @@
   }
 }
 
+/* Spec 008 (rediseño Broadsheet), plan.md §2: se quita el ancho fijo
+   (1126px), el centrado y el marco (border-inline) — el menú lateral y el
+   contenido pasan a ocupar el ancho completo de la ventana, como en el
+   mockup. */
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
   min-height: 100svh;
   display: flex;
   flex-direction: column;
@@ -66,30 +181,56 @@ body {
   margin: 0;
 }
 
+/* Spec 008, plan.md §2, corrección encontrada al verificar visualmente
+   (T8): las páginas sin menú lateral (login, registro, verificación de
+   email...) montan su `<main>` directamente bajo #root, sin pasar por
+   `#app-content` — con el contenedor centrado de antes, esto no se notaba
+   (el propio `#root` ya dejaba margen a los lados); al pasar a ancho
+   completo (H2), se quedaban con el contenido pegado al borde de la
+   ventana. Selector de hijo directo: no afecta al `<main>` de las páginas
+   autenticadas, que ya tiene su relleno propio vía `#app-content`. */
+#root > main {
+  padding: 32px 40px;
+}
+
 h1,
-h2 {
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--heading);
-  font-weight: 500;
+  /* Spec 010, plan.md §1: 600 (antes 700 en spec 008) — peso del handoff. */
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
   color: var(--text-h);
+  margin: 0 0 var(--space-2);
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
+  font-size: 42px;
+  margin: var(--space-6) 0;
   @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+    font-size: 32px;
   }
 }
 h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
+  font-size: 32px;
+}
+h3 {
+  font-size: 25px;
+}
+h4 {
+  font-size: 20px;
+}
+h5 {
+  font-size: 16px;
+}
+h6 {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 p {
   margin: 0;
@@ -105,20 +246,67 @@ p {
   text-align: left;
 }
 
+/* Spec 010 (rediseño editorial), plan.md §3: ancho 236px/68px (antes fijo
+   220px, spec 008) con transición — antes `isCollapsed` solo ocultaba el
+   texto sin cambiar el ancho real; ahora el panel se estrecha de verdad,
+   como en el handoff. `overflow: hidden` evita que el texto oculto
+   (`.sr-only`) provoque scroll horizontal durante la animación. */
 #app-sidebar {
   flex-shrink: 0;
-  padding: 16px;
-  border-inline-end: 1px solid var(--border);
+  width: 236px;
+  padding: var(--space-4) var(--space-3);
+  overflow: hidden;
+  transition: width 0.18s ease;
+}
+#app-sidebar[data-collapsed='true'] {
+  width: 68px;
+}
+
+/* Spec 008, plan.md §4 (H4). Marca visual del menú lateral. */
+#app-sidebar-brand {
+  font-family: var(--heading);
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+  margin: 0 0 var(--space-4);
+  white-space: nowrap;
 }
 
 #app-sidebar ul {
   list-style: none;
-  margin: 16px 0 0;
+  margin: var(--space-4) 0 0;
   padding: 0;
 }
 
 #app-sidebar li {
-  margin: 8px 0;
+  margin: var(--space-1) 0;
+}
+
+/* Spec 010, plan.md §3. Base de cada enlace del menú — el color de la
+   sección activa lo sigue decidiendo el selector por descendencia de más
+   abajo (`a[aria-current='page']`), no esta clase. */
+.nav-link {
+  display: flex;
+  align-items: center;
+  padding: 8px 6px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.nav-link:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+/* Spec 008 (rediseño Broadsheet), plan.md §5 (H5), corrección encontrada al
+   verificar visualmente (T8): sin esto, los enlaces del menú heredaban el
+   azul/subrayado por defecto del navegador — nunca se había notado antes
+   porque el resto de la app tampoco tenía una paleta propia con la que
+   contrastara. El mockup solo colorea de acento la sección activa; el
+   resto va en el mismo tono que el texto normal, sin subrayado. */
+#app-sidebar a {
+  color: var(--text-h);
+  text-decoration: none;
 }
 
 #app-sidebar a[aria-current='page'] {
@@ -126,9 +314,800 @@ p {
   font-weight: 600;
 }
 
+/* Spec 008 (rediseño Broadsheet), plan.md §5 (H5). Tercera y cuarta
+   excepción a "sin className" del proyecto (junto a `.progress-bar` y
+   `.sr-only` de spec 007): elemento reutilizable instanciado varias veces
+   por página (una vez por enlace del menú, y de nuevo en la lista de
+   Inicio, `#home-recent-list`) — mismo motivo exacto que `ProgressBar`.
+   El color de "activo" lo decide el CSS por descendencia de
+   `a[aria-current='page']` (mismo patrón que el texto en negrita de arriba),
+   no una prop de React nueva. */
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.dot-accent,
+#app-sidebar a[aria-current='page'] .dot {
+  background: var(--accent);
+}
+
 #app-content {
   flex: 1;
   min-width: 0;
+  /* Spec 008, plan.md §2: antes el contenido no tenía relleno propio (se
+     apoyaba en el margen de #root); con el layout a ancho completo necesita
+     el suyo. */
+  padding: 32px 40px;
+}
+
+/* Spec 009 (adaptación a móvil), plan.md §1. Botón de apertura del menú
+   superpuesto — oculto en escritorio, visible solo por debajo del
+   breakpoint de móvil (regla de abajo). */
+#app-mobile-menu-toggle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  #app-mobile-menu-toggle {
+    display: inline-flex;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 30;
+  }
+
+  /* El botón de plegar/desplegar de escritorio no aplica en móvil: el
+     panel está oculto del todo o abierto a un ancho legible, sin estado
+     intermedio "colapsado". Seleccionado por posición (único `<button>`
+     hijo directo, antes de la lista), sin clase nueva. */
+  #app-sidebar > button {
+    display: none;
+  }
+
+  #app-sidebar {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 25;
+    width: min(280px, 82vw);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    background: var(--bg);
+    overflow-y: auto;
+    /* Spec 010 (rediseño editorial), plan.md §6/T11 (verificación de
+       H11): `#app-mobile-menu-toggle` es `position:fixed;top:12px` con
+       z-index por encima del panel (para seguir siendo clicable con el
+       menú abierto, spec 009 §1.2) — con el padding-top normal del panel
+       (20px), su propio botón "Cerrar menú" tapaba la marca "Ledger" al
+       abrir. Se sube el hueco superior solo en móvil para dejar sitio al
+       botón fijo; no afecta a escritorio, donde el botón no existe. */
+    padding-top: 56px;
+  }
+  #app-sidebar[data-mobile-open='true'] {
+    transform: translateX(0);
+  }
+
+  #app-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 20;
+  }
+
+  /* Deja hueco para el botón de apertura, fijo en la esquina. */
+  #app-content {
+    padding: 72px 20px 20px;
+  }
+}
+
+/* Spec 009 (adaptación a móvil), plan.md §2 (H2). Tipografía, formularios y
+   red de seguridad contra el scroll horizontal en anchos de móvil. */
+@media (max-width: 768px) {
+  h1 {
+    font-size: 28px;
+    letter-spacing: -0.6px;
+    margin: 16px 0;
+  }
+  h2 {
+    font-size: 18px;
+  }
+
+  main form {
+    max-width: none;
+  }
+
+  /* Páginas sin menú lateral (login, registro, verificación...) — spec 008
+     T8 ya les da su propio relleno vía este selector; en móvil, 32px 40px
+     deja muy poco ancho útil. */
+  #root > main {
+    padding: 20px;
+  }
+
+  /* Evita que una cadena sin espacios (URL larga, user-agent, correo largo)
+     fuerce scroll horizontal — no cambia el salto de línea de texto normal,
+     solo actúa cuando una palabra sola no cabe (H2 criterio 1). */
+  main {
+    overflow-wrap: anywhere;
+  }
+
+  /* Encontrado en la revisión visual de esta tarea (no estaba en plan.md
+     §3.1, que solo preveía tocar `#home-recent-list`): con las 3 tarjetas
+     de #home-summary en fila a 390px, cada una queda tan estrecha que la
+     etiqueta ("INGRESOS") y el importe se parten de forma ilegible. Se
+     apilan en vertical, igual criterio que el resto de listados de esta
+     spec (H3, decisión "apilar en bloques"). */
+  #home-summary {
+    flex-direction: column;
+  }
+}
+
+/* Spec 009 (adaptación a móvil), plan.md §3.2 (H3) — reescrita en spec 010
+   (rediseño editorial), plan.md §6/T11: cada fila de Movimientos pasa de
+   `<li>` suelto a `.card.card-row` (T5), pero el criterio y el selector
+   (por id, no por clase) no cambian — sigue ganando sobre `.card-row` y
+   apilando en columna. */
+@media (max-width: 768px) {
+  #movements-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+}
+
+/* Spec 009 (adaptación a móvil), plan.md §3.3 (H3) — reescrita en spec 010,
+   plan.md §6/T11: nombre/badge y acciones de cada categoría siguen
+   apilándose en bloque igual (T4 cambió cada `<li>` a `.card`, no la forma
+   de apilar); `ul li` sigue cubriendo las subcategorías anidadas. */
+@media (max-width: 768px) {
+  #categories-income-list li,
+  #categories-expense-list li,
+  #categories-income-list ul li,
+  #categories-expense-list ul li {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+}
+
+/* Spec 009 (adaptación a móvil), plan.md §3.4 (H3) — reescrita en spec 010,
+   plan.md §6/T11: datos del dispositivo y acción de Dispositivos y
+   sesiones siguen apilándose en bloque igual (T10 cambió cada `<li>` a
+   `.card.card-row`, no la forma de apilar). */
+@media (max-width: 768px) {
+  #sessions-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+  #sessions-list li > div:first-child {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Spec 009 (adaptación a móvil), plan.md §3.5 (H3). Técnica estándar de
+   tabla responsive con `data-label`: cada fila pasa a bloque, cada celda
+   muestra su etiqueta delante vía `::before` — sin tocar la semántica de
+   tabla (`<table>`/`<th scope="col">` no cambian), solo la presentación
+   visual. `main table` cubre las dos tablas de DashboardPage (únicas
+   tablas de la app hoy), sin necesitar un id nuevo. */
+@media (max-width: 768px) {
+  main table thead,
+  main table caption {
+    /* Oculta visualmente la cabecera (y el <caption>, encontrado en la
+       revisión visual de esta tarea: al pasar `table` a `display: block`,
+       el `<caption>` — que sigue siendo `display: table-caption` por
+       defecto — queda con un ancho de cálculo roto y su texto se parte
+       letra a letra) sin quitarlos del árbol de accesibilidad — mismas
+       propiedades que .sr-only (spec 007), pero por selector de
+       descendencia: ninguno de los dos lleva className en ningún
+       componente. El título visible de cada bloque (`h2`/`h3`) ya explica
+       de qué tabla se trata, así que ocultar el `<caption>` no pierde
+       contexto para quien ve la pantalla. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  main table,
+  main table tbody,
+  main table tr {
+    display: block;
+    width: 100%;
+  }
+  main table tr {
+    margin-bottom: 12px;
+  }
+  main table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 4px;
+    border-bottom: none;
+  }
+  main table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-h);
+  }
+}
+
+/* Spec 007 (mejoras visuales), plan.md §4 (H4). Espaciado y agrupación de
+   formularios/tablas/listados resuelto entero por selectores de
+   descendencia dentro de `main` — sin tocar ningún componente ni introducir
+   clases nuevas, mismo criterio de "sin className" que el resto de la app
+   (fuera de `.progress-bar`, ver más abajo). */
+main form {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+  text-align: start;
+  /* Spec 008, plan.md §2 (H2 criterio 2): con el layout a ancho completo,
+     el formulario no se estira a todo el ancho disponible — se acota su
+     ancho de lectura, no el del contenedor general. */
+  max-width: 640px;
+}
+
+main form > div {
+  margin-bottom: 14px;
+}
+main form > div:last-of-type {
+  margin-bottom: 0;
+}
+
+main table {
+  border-collapse: collapse;
+  width: 100%;
+}
+main table th,
+main table td {
+  padding: 10px 12px;
+  text-align: start;
+}
+main table thead th {
+  background: var(--code-bg);
+  border-bottom: 2px solid var(--border);
+}
+main table tbody tr:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+main ul li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+main ul li:last-child {
+  border-bottom: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Spec 010 (rediseño editorial), plan.md §2. Componentes reutilizables del
+   handoff de Claude Design, adoptados como clases CSS — quinta excepción
+   (a partir de aquí, la principal) a la convención "sin className, todo
+   por id" de specs 007-009: estos elementos se repiten decenas de veces
+   por pantalla (una tarjeta por categoría, un botón por fila...), el mismo
+   motivo exacto que ya justificaba `.dot`/`.progress-bar`/`.sr-only`,
+   llevado aquí a todo un sistema en vez de a 2-3 elementos sueltos
+   (spec.md §1 decisión 1, aprobada por Diego). Solo se portan las clases
+   que alguna de las 8 pantallas rediseñadas usa realmente — se excluyen a
+   propósito las clases decorativas de "separación CMYK" del fichero
+   original del handoff (spec.md §5): ninguna pantalla las usa y su
+   comentario pide cargar un script externo no incluido en el handoff.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.hr {
+  height: 1px;
+  border: 0;
+  margin: var(--space-4) 0;
+  background: var(--border);
+}
+
+/* — botones — */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: var(--heading);
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  border-radius: var(--radius-md);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+.btn-primary:hover {
+  background: var(--accent-600);
+}
+.btn-primary:active {
+  background: var(--accent-700);
+}
+.btn-secondary {
+  border-color: var(--border);
+  color: var(--text-h);
+}
+.btn-secondary:hover {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+.btn-secondary:active {
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+.btn-ghost {
+  color: var(--accent);
+  padding-inline: var(--space-1);
+}
+.btn-ghost:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.btn-ghost:active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.btn-block {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+/* — formularios — */
+.field > label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 5px;
+  color: color-mix(in srgb, var(--text) 70%, transparent);
+}
+.input {
+  /* Sin esto, `width:100%` toma el ancho del contenido y el
+     padding/borde se suman por fuera (`content-box`, valor por defecto —
+     el proyecto no trae un reset universal de `box-sizing`) — cada
+     `.input` acaba 22px más ancho que su `.field`. Pasa desapercibido casi
+     siempre (el layout deja margen de sobra alrededor), pero en el móvil
+     de Movimientos (H11/T11), con los filtros ya a 1 columna y a ancho de
+     pantalla completo, ese sobrante empuja scroll horizontal real —
+     encontrado verificando esa pantalla, no algo que dependa de esa
+     rejilla en concreto. */
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-h);
+  caret-color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.input:hover {
+  border-color: color-mix(in srgb, var(--text) 45%, transparent);
+}
+.input:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.seg {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.seg-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.seg-opt input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.seg-opt + .seg-opt {
+  border-left: 1px solid var(--border);
+}
+.seg-opt:has(input:checked) {
+  background: var(--accent);
+  color: var(--bg);
+}
+.seg-opt:not(:has(input:checked)):hover {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+.seg-opt:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* — tarjetas — */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+/* Spec 010 (rediseño editorial), plan.md §4.7 (Tu perfil) y §4.6 (editar
+   presupuesto en línea, T8): la regla global `main form` (spec 007) da a
+   cualquier `<form>` su propio borde/relleno/margen — pensada para
+   formularios sueltos (login, "Añadir presupuesto"...). Cuando el `<form>`
+   vive dentro de una `.card` (el handoff pone los campos directamente en la
+   tarjeta, sin caja propia) ese borde/relleno duplica el de la tarjeta y
+   crea una "caja dentro de otra caja" — se anula aquí, no en cada
+   formulario.  */
+.card form {
+  border: none;
+  padding: 0;
+  margin: 0;
+  max-width: none;
+}
+/* Spec 010 (rediseño editorial), plan.md §4.3/§4.8. Modificador para
+   tarjetas horizontales (una fila de Movimientos, una sesión) en vez de la
+   columna por defecto — mismo `.card`, solo cambia el eje. */
+.card-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+/* Spec 010 (rediseño editorial), plan.md §4.8: en Dispositivos y sesiones
+   el primer bloque (user-agent, sin espacios largos que cortar en algunos
+   tramos) puede ser mucho más largo que la acción — sin esto, el flex por
+   defecto (`flex-shrink:1` en ambos) encoge también el botón hasta partir
+   su propio texto en dos líneas. Se acota al último hijo (la acción),
+   dejando que sea el primer bloque el que ceda espacio. */
+.card-row > *:last-child {
+  flex-shrink: 0;
+}
+.card-kicker {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.card-title {
+  font-family: var(--heading);
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.2;
+}
+/* Spec 010 (rediseño editorial), plan.md §4.1. Importe grande de las
+   tarjetas de resumen de Inicio (`#home-summary`) — clase genérica en vez
+   de una regla `#home-summary > div > p:nth-child(2)` como antes (spec
+   008), por si otra pantalla necesita el mismo tratamiento. */
+.card-amount {
+  font-weight: 700;
+  font-size: 28px;
+  color: var(--text-h);
+}
+.card-body {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.8;
+  flex: 1;
+}
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--text) 50%, transparent);
+}
+.elev-sm {
+  box-shadow: var(--shadow-sm);
+}
+.elev-md {
+  box-shadow: var(--shadow-md);
+}
+
+/* — etiquetas — */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 3px 10px;
+  border-radius: calc(var(--radius-md) * 0.75);
+}
+.tag-accent {
+  background: var(--accent-100);
+  color: var(--accent-800);
+}
+.tag-accent-2 {
+  background: var(--accent-2-100);
+  color: var(--accent-2-800);
+}
+.tag-neutral {
+  background: var(--neutral-100);
+  color: var(--neutral-800);
+}
+
+/* — navegación (pestañas, p. ej. MovementsLayout) — */
+.nav ul {
+  display: flex;
+  gap: var(--space-4);
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+}
+.nav a {
+  color: inherit;
+  text-decoration: none;
+  font-size: 14px;
+}
+.nav a:hover,
+.nav a[aria-current='page'] {
+  color: var(--accent);
+}
+.nav a[aria-current='page'] {
+  font-weight: 600;
+}
+
+/* — tabla (mapeada sobre `main table`, mismo aspecto, nombre explícito para
+   las tablas que además usan el sistema de tarjetas en su misma pantalla) — */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.table th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text) 60%, transparent);
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+/* Spec 010 (rediseño editorial), plan.md §4.1. Las propias tarjetas
+   (fondo, radio, relleno) ya las da `.card.elev-sm`; aquí solo queda la
+   disposición en fila de `#home-summary` como contenedor. */
+#home-summary {
+  display: flex;
+  gap: var(--space-3);
+  margin: var(--space-6) 0;
+}
+#home-summary > .card {
+  flex: 1;
+}
+
+#home-recent-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#home-recent-list li > span:last-child {
+  margin-inline-start: auto;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+/* Spec 010 (rediseño editorial), plan.md §4.2. Cuadrícula de tarjetas de
+   Categorías (antes una lista de texto, spec 009 T4) — se anula el borde de
+   separación de `main ul li` (pensado para listas de texto, no para
+   tarjetas) y su relleno, que ya pone `.card`. */
+#categories-income-list,
+#categories-expense-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  max-width: 900px;
+  list-style: none;
+  margin: var(--space-3) 0 var(--space-6);
+  padding: 0;
+}
+#categories-income-list li,
+#categories-expense-list li {
+  border-bottom: none;
+}
+/* Spec 010 (rediseño editorial), plan.md §6/T11 (H11 criterio 3): la
+   cuadrícula de 3 columnas de arriba, pensada para escritorio, deja cada
+   tarjeta demasiado estrecha en móvil — el botón "Renombrar" llega a
+   partirse letra a letra. Se apila a 1 columna, mismo criterio "apilar en
+   bloque" que el resto de listados de esta spec. Va después de la regla de
+   arriba (mismo selector por id, misma especificidad): con `@media` puesto
+   antes en el fichero, el orden de aparición decide el empate y ganaba la
+   regla de escritorio — de ahí que viva aquí, no junto a las demás reglas
+   de spec 009 más arriba. */
+@media (max-width: 768px) {
+  #categories-income-list,
+  #categories-expense-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Spec 010 (rediseño editorial), plan.md §4.3. Filtros de Movimientos en
+   rejilla de 4 columnas (el nº real de campos varía: 4 en Ingresos, 5 en
+   Gastos por el filtro de Comercio — sobran a la línea siguiente). */
+#movements-filters {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+  max-width: 900px;
+  margin: var(--space-3) 0;
+}
+/* Spec 010 (rediseño editorial), plan.md §6/T11 (H11 criterio 3): mismo
+   caso que la cuadrícula de Categorías de arriba — "Categoría"/"Comercio"
+   quedan tan estrechos en móvil que su propia etiqueta se parte letra a
+   letra. Se apila a 1 columna; va después de la regla de escritorio por el
+   mismo motivo de empate de especificidad explicado arriba. */
+@media (max-width: 768px) {
+  #movements-filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Cada movimiento pasa de `main ul li` (borde inferior, pensado para texto)
+   a `.card.card-row` — mismo motivo que la cuadrícula de Categorías. */
+#movements-list {
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+#movements-list li {
+  border-bottom: none;
+}
+
+/* Spec 010 (rediseño editorial), plan.md §4.4. Lista de "gasto por
+   categoría" del Dashboard (sustituye a la tabla con `data-label` de spec
+   009 T6). `.bar`/`.bar-fill` son nuevas — 8px, un único tono (comparación
+   de magnitud, no identidad, mismo criterio que el `BarChart` de al lado,
+   ver comentario de colores en `DashboardPage.tsx`), a diferencia de
+   `.progress-bar` (10px, colores de estado de objetivos/presupuestos,
+   spec 007) con la que no comparte semántica aunque se parezcan. */
+#dashboard-category-list {
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 640px;
+}
+#dashboard-category-list li {
+  border-bottom: none;
+}
+#dashboard-category-list li > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* Spec 010 (rediseño editorial), plan.md §4.5. Recuadro de "1. Seleccionar
+   fichero" en Importar Excel — valores tal cual el handoff (`Gestion
+   Economia.dc.html`); por `id` porque solo aparece una vez en toda la app
+   (no es una excepción de clase, es la propia convención "sin className,
+   todo por id" del proyecto). */
+#import-dropzone {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  text-align: center;
+  max-width: 560px;
+}
+
+/* Spec 010 (rediseño editorial), plan.md §4.6. Cada presupuesto de gasto
+   pasa de fila de tabla a `.card.elev-sm` (H8 criterio 1) — mismo criterio
+   de reinicio de lista que Categorías/Movimientos. */
+#goals-budget-list {
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 640px;
+}
+#goals-budget-list li {
+  border-bottom: none;
+}
+
+/* Spec 010 (rediseño editorial), plan.md §4.8. Cada sesión pasa de `<li>`
+   suelto a `.card.card-row` — mismo criterio de reinicio de lista que
+   Movimientos/Objetivos. La regla de apilado en móvil (`#sessions-list li`
+   a 768px, spec 009 §3.4) no cambia de sitio ni de selector: como es un
+   selector por id sigue ganando sobre `.card-row` y apila en columna igual
+   que antes, así que no hace falta tocarla aquí (se revisa igualmente en
+   T11 junto con el resto de listados). */
+#sessions-list {
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 680px;
+}
+#sessions-list li {
+  border-bottom: none;
+}
+
+/* Spec 007 (mejoras visuales), plan.md §2. Único componente del proyecto
+   con className propio (ver justificación en ProgressBar.tsx) — se instancia
+   varias veces en la misma página, a diferencia de los elementos con `id`. */
+.progress-bar {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.progress-bar-overflow {
+  display: inline-block;
+  margin-inline-start: 6px;
+  font-size: 13px;
+  color: var(--status-red);
+  font-weight: 600;
+}
+
+/* Spec 007 (mejoras visuales), plan.md §5. Segundo y último uso de
+   className del proyecto (junto a `.progress-bar`): oculta visualmente el
+   texto de un enlace del menú lateral cuando está plegado, sin quitarlo del
+   árbol de accesibilidad — patrón estándar "visually hidden". */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 code,

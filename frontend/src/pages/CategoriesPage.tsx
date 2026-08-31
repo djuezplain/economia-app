@@ -4,13 +4,33 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { createCategory, deleteCategory, listCategories, renameCategory } from '../api/categories';
 import type { Category, MovementType } from '../api/categories';
+import { listTransactions } from '../api/transactions';
 import { ApiError } from '../api/client';
+import { formatCurrency, lastDayOfMonth } from './home-shared';
+
+function currentMonth(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+interface CategoryMonthStats {
+  totalExpense: number;
+  byCategory: Map<string, { count: number; total: number }>;
+}
 
 export function CategoriesPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
 
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Spec 010 (rediseño editorial), plan.md §4.2. "Nº de movimientos/importe/%"
+  // de cada categoría de gasto no lo calcula ningún endpoint dedicado — se
+  // deriva de `GET /transactions` (mismos filtros ya usados por
+  // `MovementsListPage`/`HomePage`, sin inventar un endpoint nuevo). Si falla
+  // o no hay datos, las tarjetas caen a "0 movimientos" / "0,00 €" / "0%" en
+  // vez de mostrar un error — es un adorno de la tarjeta, no bloquea el resto
+  // de la página (mismo criterio que el nombre de categoría en `HomePage`).
+  const [monthStats, setMonthStats] = useState<CategoryMonthStats | null>(null);
 
   // Formulario de creación (H3 criterio 2).
   const [newType, setNewType] = useState<MovementType>('EXPENSE');
@@ -46,6 +66,44 @@ export function CategoriesPage() {
         if (!cancelled) {
           setLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar las categorías.');
         }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const month = currentMonth();
+        const dateFrom = `${month}-01`;
+        const dateTo = `${month}-${String(lastDayOfMonth(month)).padStart(2, '0')}`;
+        // Límite máximo del endpoint (200, ver `ListTransactionsQueryDto`):
+        // el nº de movimientos por categoría se cuenta sobre `items`, así
+        // que en un mes con más de 200 gastos (caso extremo, no visto en la
+        // app hoy) podría quedarse corto — el importe y el % no, porque
+        // salen de `summary`, calculado sobre todo lo filtrado, no solo la
+        // página (`transactions.service.ts`).
+        const result = await listTransactions({ type: 'EXPENSE', dateFrom, dateTo, limit: 200 });
+        if (cancelled) return;
+        const byCategory = new Map<string, { count: number; total: number }>();
+        for (const t of result.items) {
+          const entry = byCategory.get(t.categoryId) ?? { count: 0, total: 0 };
+          entry.count += 1;
+          byCategory.set(t.categoryId, entry);
+        }
+        for (const entry of result.summary.byCategory) {
+          const existing = byCategory.get(entry.categoryId);
+          const total = parseFloat(entry.total);
+          if (existing) existing.total = total;
+          else byCategory.set(entry.categoryId, { count: 0, total });
+        }
+        setMonthStats({ totalExpense: parseFloat(result.summary.total), byCategory });
+      } catch {
+        // Ver comentario del estado: adorno de la tarjeta, no bloquea nada.
       }
     })();
     return () => {
@@ -134,49 +192,86 @@ export function CategoriesPage() {
   const expenseTopLevel = categories?.filter((c) => c.type === 'EXPENSE' && !c.parentId) ?? [];
   const childrenOf = (parentId: string) => categories?.filter((c) => c.parentId === parentId) ?? [];
 
-  function renderCategory(category: Category) {
+  // Spec 010 (rediseño editorial), plan.md §4.2. Una tarjeta por categoría
+  // de nivel superior (`.card.elev-sm`, cuadrícula de 3 columnas vía CSS en
+  // `#categories-income-list`/`#categories-expense-list`); `showStats` solo
+  // se activa para las de gasto — el handoff (`% del gasto total`, H4
+  // criterio 1) no tiene equivalente de sentido para ingresos, y no se
+  // inventa uno. Las subcategorías (solo existen en gasto) se muestran
+  // dentro de la propia tarjeta del padre como `.tag-neutral`, en vez del
+  // `<ul>` anidado de antes (mismo dato, presentación nueva).
+  function renderCategory(category: Category, showStats = false) {
     const isEditing = editingId === category.id;
+    const stats = monthStats?.byCategory.get(category.id);
+    const count = stats?.count ?? 0;
+    const total = stats?.total ?? 0;
+    const percent = monthStats && monthStats.totalExpense > 0 ? Math.round((total / monthStats.totalExpense) * 100) : 0;
+    const children = childrenOf(category.id);
+
     return (
-      <li key={category.id}>
+      <li className="card elev-sm" key={category.id}>
+        <div>
+          <span className={`dot${category.type === 'INCOME' ? ' dot-accent' : ''}`} aria-hidden="true" />{' '}
+          <span className="card-title">{category.name}</span>
+          {category.isDefault && <span className="card-body"> (por defecto)</span>}
+        </div>
+
         {isEditing ? (
           <form onSubmit={handleRename}>
             <label htmlFor={`rename-${category.id}`}>Nuevo nombre</label>
             <input
               id={`rename-${category.id}`}
               type="text"
+              className="input"
               required
               value={editingName}
               onChange={(e) => setEditingName(e.target.value)}
             />
-            <button type="submit" disabled={isRenaming}>
+            <button type="submit" className="btn btn-primary" disabled={isRenaming}>
               {isRenaming ? 'Guardando…' : 'Guardar'}
-            </button>
-            <button type="button" disabled={isRenaming} onClick={() => setEditingId(null)}>
+            </button>{' '}
+            <button type="button" className="btn btn-secondary" disabled={isRenaming} onClick={() => setEditingId(null)}>
               Cancelar
             </button>
           </form>
         ) : (
           <>
-            <span>{category.name}</span>
-            {category.isDefault && <span> (por defecto)</span>}
-            {' · '}
-            <button type="button" onClick={() => startRename(category)}>
-              Renombrar
-            </button>{' '}
-            <button
-              type="button"
-              disabled={pendingDeleteId === category.id}
-              onClick={() => void handleDelete(category.id)}
-            >
-              {pendingDeleteId === category.id ? 'Eliminando…' : 'Eliminar'}
-            </button>
+            {showStats && (
+              <>
+                <p className="card-body">{count === 1 ? '1 movimiento' : `${count} movimientos`}</p>
+                <p className="card-meta" style={{ justifyContent: 'space-between' }}>
+                  <span>{formatCurrency(total.toFixed(2))}</span>
+                  <span>{percent}%</span>
+                </p>
+              </>
+            )}
+
+            {children.length > 0 && (
+              <div className="card-body">
+                {children.map((child) => (
+                  <span className="tag tag-neutral" key={child.id}>
+                    {child.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div>
+              <button type="button" className="btn btn-secondary" onClick={() => startRename(category)}>
+                Renombrar
+              </button>{' '}
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={pendingDeleteId === category.id}
+                onClick={() => void handleDelete(category.id)}
+              >
+                {pendingDeleteId === category.id ? 'Eliminando…' : 'Eliminar'}
+              </button>
+            </div>
           </>
         )}
         {renameError && isEditing && <p role="alert">{renameError}</p>}
-
-        {category.type === 'EXPENSE' && !category.parentId && childrenOf(category.id).length > 0 && (
-          <ul>{childrenOf(category.id).map((child) => renderCategory(child))}</ul>
-        )}
       </li>
     );
   }
@@ -198,25 +293,31 @@ export function CategoriesPage() {
         <>
           <section>
             <h2>Ingresos</h2>
-            {income.length === 0 ? <p>No tienes categorías de ingreso.</p> : <ul>{income.map((c) => renderCategory(c))}</ul>}
+            {income.length === 0 ? (
+              <p>No tienes categorías de ingreso.</p>
+            ) : (
+              <ul id="categories-income-list">{income.map((c) => renderCategory(c))}</ul>
+            )}
           </section>
 
           <section>
             <h2>Gastos</h2>
+            <p className="card-body">Cómo se reparte el gasto de este mes por categoría.</p>
             {expenseTopLevel.length === 0 ? (
               <p>No tienes categorías de gasto.</p>
             ) : (
-              <ul>{expenseTopLevel.map((c) => renderCategory(c))}</ul>
+              <ul id="categories-expense-list">{expenseTopLevel.map((c) => renderCategory(c, true))}</ul>
             )}
           </section>
 
           <section>
             <h2>Crear categoría</h2>
             <form onSubmit={handleCreate} noValidate>
-              <div>
+              <div className="field">
                 <label htmlFor="newType">Tipo</label>
                 <select
                   id="newType"
+                  className="input"
                   value={newType}
                   onChange={(e) => {
                     setNewType(e.target.value as MovementType);
@@ -228,15 +329,22 @@ export function CategoriesPage() {
                 </select>
               </div>
 
-              <div>
+              <div className="field">
                 <label htmlFor="newName">Nombre</label>
-                <input id="newName" type="text" required value={newName} onChange={(e) => setNewName(e.target.value)} />
+                <input
+                  id="newName"
+                  type="text"
+                  className="input"
+                  required
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                />
               </div>
 
               {newType === 'EXPENSE' && (
-                <div>
+                <div className="field">
                   <label htmlFor="newParentId">Categoría padre (opcional, para crear una subcategoría)</label>
-                  <select id="newParentId" value={newParentId} onChange={(e) => setNewParentId(e.target.value)}>
+                  <select id="newParentId" className="input" value={newParentId} onChange={(e) => setNewParentId(e.target.value)}>
                     <option value="">— Ninguna (categoría de nivel superior) —</option>
                     {expenseTopLevel.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -249,7 +357,7 @@ export function CategoriesPage() {
 
               {createError && <p role="alert">{createError}</p>}
 
-              <button type="submit" disabled={isCreating}>
+              <button type="submit" className="btn btn-primary" disabled={isCreating}>
                 {isCreating ? 'Creando…' : 'Crear categoría'}
               </button>
             </form>

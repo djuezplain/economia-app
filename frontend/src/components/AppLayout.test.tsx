@@ -77,7 +77,20 @@ describe('AppLayout', () => {
     expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
   });
 
-  it('con sesión muestra los 8 enlaces y el botón de cerrar sesión', async () => {
+  it('con sesión muestra la marca "Ledger", plegado o no (H4, spec 008)', async () => {
+    mockLoggedIn();
+    const user = userEvent.setup();
+    renderLayout();
+
+    await screen.findByRole('link', { name: 'Inicio' });
+    expect(screen.getByText('Ledger')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
+
+    expect(screen.getByText('Ledger')).toBeInTheDocument();
+  });
+
+  it('con sesión muestra los 8 enlaces y el botón de cerrar sesión, cada uno con su punto de color (H5, spec 008)', async () => {
     mockLoggedIn();
     renderLayout();
 
@@ -92,10 +105,14 @@ describe('AppLayout', () => {
       'Tu perfil',
       'Dispositivos y sesiones',
     ]) {
-      expect(screen.getByRole('link', { name })).toBeInTheDocument();
+      const link = screen.getByRole('link', { name });
+      expect(link).toBeInTheDocument();
+      expect(link.querySelector('.dot')).toBeInTheDocument();
     }
     expect(nav).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
+    const logoutButton = screen.getByRole('button', { name: 'Cerrar sesión' });
+    expect(logoutButton).toBeInTheDocument();
+    expect(logoutButton.querySelector('.dot')).toBeInTheDocument();
   });
 
   it('marca como activo solo el enlace de la ruta actual, incluido "Inicio" solo en la home', async () => {
@@ -107,21 +124,37 @@ describe('AppLayout', () => {
     expect(screen.getByRole('link', { name: 'Inicio' })).not.toHaveAttribute('aria-current');
   });
 
-  it('el botón de plegar oculta los enlaces y el de cerrar sesión, y se puede desplegar de nuevo', async () => {
+  it('el botón de plegar oculta el texto de los enlaces y del botón de cerrar sesión, que siguen siendo accesibles por su punto de color (H5 criterio 2, spec 008), y se puede desplegar de nuevo', async () => {
     mockLoggedIn();
     const user = userEvent.setup();
     renderLayout();
 
-    await screen.findByRole('link', { name: 'Inicio' });
+    const inicioLink = await screen.findByRole('link', { name: 'Inicio' });
+    // Antes de plegar: sin `aria-label` (el nombre accesible viene del
+    // texto visible) y sin la clase `sr-only` en el texto.
+    expect(inicioLink).not.toHaveAttribute('aria-label');
+    expect(inicioLink.querySelector('span:not(.dot)')).not.toHaveClass('sr-only');
+
     await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
 
-    expect(screen.queryByRole('link', { name: 'Inicio' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cerrar sesión' })).not.toBeInTheDocument();
+    // Plegado: el enlace sigue siendo accesible por el mismo nombre (ahora
+    // vía `aria-label`), pero su texto visible queda oculto (`sr-only`) —
+    // ya no desaparece del todo, a diferencia del comportamiento anterior
+    // de spec 005.
+    const collapsedInicioLink = screen.getByRole('link', { name: 'Inicio' });
+    expect(collapsedInicioLink.querySelector('span:not(.dot)')).toHaveClass('sr-only');
+    expect(collapsedInicioLink.querySelector('.dot')).toBeInTheDocument();
+
+    const logoutButton = screen.getByRole('button', { name: 'Cerrar sesión' });
+    expect(logoutButton.querySelector('span:not(.dot)')).toHaveClass('sr-only');
+    expect(logoutButton.querySelector('.dot')).toBeInTheDocument();
 
     const toggle = screen.getByRole('button', { name: 'Mostrar menú' });
     await user.click(toggle);
 
-    expect(await screen.findByRole('link', { name: 'Inicio' })).toBeInTheDocument();
+    const expandedInicioLink = await screen.findByRole('link', { name: 'Inicio' });
+    expect(expandedInicioLink).not.toHaveAttribute('aria-label');
+    expect(expandedInicioLink.querySelector('span:not(.dot)')).not.toHaveClass('sr-only');
   });
 
   it('conserva el estado plegado al navegar entre rutas hijas (AppLayout no se desmonta)', async () => {
@@ -133,14 +166,14 @@ describe('AppLayout', () => {
     await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
     expect(screen.getByRole('button', { name: 'Mostrar menú' })).toBeInTheDocument();
 
-    // Navega con un enlace ajeno al menú lateral (que está oculto mientras
-    // el menú está plegado) — si `AppLayout` se desmontara al cambiar de
-    // ruta, volvería a su estado por defecto (desplegado).
+    // Navega con un enlace ajeno al menú lateral — si `AppLayout` se
+    // desmontara al cambiar de ruta, volvería a su estado por defecto
+    // (desplegado, con el texto de "Categorías" visible de nuevo).
     await user.click(screen.getByRole('link', { name: 'Ir a categorías (test)' }));
 
     expect(await screen.findByText('Contenido de categorías')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mostrar menú' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Categorías' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Categorías' }).querySelector('span:not(.dot)')).toHaveClass('sr-only');
   });
 
   it('pulsar "Cerrar sesión" llama a logout', async () => {
@@ -152,5 +185,72 @@ describe('AppLayout', () => {
     await user.click(await screen.findByRole('button', { name: 'Cerrar sesión' }));
 
     await waitFor(() => expect(authApi.logout).toHaveBeenCalled());
+  });
+
+  describe('menú superpuesto en móvil (spec 009, H1)', () => {
+    it('empieza cerrado y se abre/cierra con el botón dedicado, sin afectar al plegado de escritorio', async () => {
+      mockLoggedIn();
+      const user = userEvent.setup();
+      renderLayout();
+
+      await screen.findByRole('link', { name: 'Inicio' });
+      const toggle = screen.getByRole('button', { name: 'Abrir menú' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.getByRole('navigation', { name: 'Navegación principal' })).toHaveAttribute('data-mobile-open', 'false');
+
+      await user.click(toggle);
+
+      expect(screen.getByRole('button', { name: 'Cerrar menú' })).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('navigation', { name: 'Navegación principal' })).toHaveAttribute('data-mobile-open', 'true');
+      // El botón de plegado de escritorio sigue funcionando igual, sin
+      // interferir con el estado del menú móvil.
+      expect(screen.getByRole('button', { name: 'Ocultar menú' })).toBeInTheDocument();
+    });
+
+    it('se cierra al hacer clic en el fondo (backdrop)', async () => {
+      mockLoggedIn();
+      const user = userEvent.setup();
+      const { container } = renderLayout();
+
+      await screen.findByRole('link', { name: 'Inicio' });
+      await user.click(screen.getByRole('button', { name: 'Abrir menú' }));
+      expect(screen.getByRole('button', { name: 'Cerrar menú' })).toBeInTheDocument();
+
+      const backdrop = container.querySelector('#app-sidebar-backdrop');
+      expect(backdrop).toBeInTheDocument();
+      await user.click(backdrop as Element);
+
+      expect(screen.getByRole('button', { name: 'Abrir menú' })).toBeInTheDocument();
+      expect(container.querySelector('#app-sidebar-backdrop')).not.toBeInTheDocument();
+    });
+
+    it('se cierra al pulsar Escape', async () => {
+      mockLoggedIn();
+      const user = userEvent.setup();
+      renderLayout();
+
+      await screen.findByRole('link', { name: 'Inicio' });
+      await user.click(screen.getByRole('button', { name: 'Abrir menú' }));
+      expect(screen.getByRole('button', { name: 'Cerrar menú' })).toBeInTheDocument();
+
+      await user.keyboard('{Escape}');
+
+      expect(screen.getByRole('button', { name: 'Abrir menú' })).toBeInTheDocument();
+    });
+
+    it('se cierra al pulsar un enlace de navegación', async () => {
+      mockLoggedIn();
+      const user = userEvent.setup();
+      renderLayout();
+
+      await screen.findByRole('link', { name: 'Inicio' });
+      await user.click(screen.getByRole('button', { name: 'Abrir menú' }));
+      expect(screen.getByRole('button', { name: 'Cerrar menú' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('link', { name: 'Categorías' }));
+
+      await screen.findByText('Contenido de categorías');
+      expect(screen.getByRole('button', { name: 'Abrir menú' })).toBeInTheDocument();
+    });
   });
 });

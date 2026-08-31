@@ -17,7 +17,11 @@ import { NavLink, Outlet } from 'react-router-dom';
 export function MovementsLayout() {
   return (
     <>
-      <nav aria-label="Ingresos y gastos">
+      {/* Spec 010 (rediseño editorial), plan.md §4.3. `.nav a` evita el
+          azul/subrayado por defecto del navegador en enlaces sin estilo
+          propio (mismo problema que spec 008 T8 corrigió para el menú
+          lateral, aquí corregido desde el principio). */}
+      <nav className="nav" aria-label="Ingresos y gastos">
         <ul>
           <li>
             <NavLink to="/movements" end>
