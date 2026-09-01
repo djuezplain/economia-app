@@ -1,6 +1,4 @@
-import 'fake-indexeddb/auto';
-import { IDBFactory } from 'fake-indexeddb';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   clearAll,
   deleteCachedTransaction,
@@ -16,7 +14,6 @@ import {
   putTransaction,
   putTransactions,
   removeQueueEntry,
-  resetDBConnection,
   setMeta,
   updateQueueEntry,
 } from './db';
@@ -70,12 +67,9 @@ function queueEntry(overrides: Partial<NewSyncQueueEntry> = {}): NewSyncQueueEnt
   };
 }
 
-// Cada test necesita una base de datos limpia: `fake-indexeddb` persiste
-// dentro del proceso de test, no entre ficheros reales de navegador.
-beforeEach(async () => {
-  indexedDB = new IDBFactory();
-  resetDBConnection();
-});
+// `setupTests.ts` resetea `indexedDB` (fake-indexeddb) y la conexión de
+// `offline/db.ts` antes de cada test, así que cada uno arranca con una base
+// de datos limpia sin necesidad de repetirlo aquí.
 
 describe('transactions store', () => {
   it('guarda y recupera un movimiento cacheado', async () => {

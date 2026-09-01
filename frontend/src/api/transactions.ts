@@ -1,4 +1,5 @@
 import { api } from './client';
+import { putTransaction, putTransactions } from '../offline/db';
 
 export type MovementType = 'INCOME' | 'EXPENSE';
 export type PaymentMethod = 'CARD' | 'DIRECT_DEBIT' | 'CASH' | 'TRANSFER';
@@ -69,15 +70,23 @@ function buildQuery(filters: ListTransactionsFilters): string {
   return qs ? `?${qs}` : '';
 }
 
-export function listTransactions(filters: ListTransactionsFilters = {}): Promise<ListTransactionsResult> {
-  return api.get<ListTransactionsResult>(`/transactions${buildQuery(filters)}`);
+// Spec 011 (modo offline), plan.md §4: "escritura de paso" — cualquier GET
+// real que ya se pide durante el uso normal de la app también actualiza la
+// caché local, sin esperar a la siguiente hidratación completa
+// (`offline/sync.ts`). No cambia el valor devuelto a quien llama.
+export async function listTransactions(filters: ListTransactionsFilters = {}): Promise<ListTransactionsResult> {
+  const result = await api.get<ListTransactionsResult>(`/transactions${buildQuery(filters)}`);
+  void putTransactions(result.items.map((item) => ({ ...item, pending: false, pendingAction: null })));
+  return result;
 }
 
 // Spec 006 (páginas de movimientos), plan.md §3: necesario para que
 // "Registrar" en modo edición cargue el movimiento a partir del `:id` de la
 // URL, sea cual sea la forma en que se llegó a esa página (recarga incluida).
-export function getTransaction(id: string): Promise<Transaction> {
-  return api.get<Transaction>(`/transactions/${id}`);
+export async function getTransaction(id: string): Promise<Transaction> {
+  const transaction = await api.get<Transaction>(`/transactions/${id}`);
+  void putTransaction({ ...transaction, pending: false, pendingAction: null });
+  return transaction;
 }
 
 export function createTransaction(input: CreateTransactionInput): Promise<Transaction> {

@@ -5,6 +5,8 @@ import type { AuthUser } from '../api/auth';
 import { getProfile } from '../api/users';
 import { registerRefreshHandler, registerTokenGetter } from '../api/client';
 import { getAccessToken, setAccessToken } from './token-store';
+import { clearAll, ensureUserScope } from '../offline/db';
+import { syncFullHistory } from '../offline/sync';
 import { AuthContext } from './auth-context';
 import type { AuthContextValue } from './auth-context';
 
@@ -27,8 +29,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const profile = await getProfile();
       setUser({ id: profile.id, email: profile.email, name: profile.name, status: profile.status });
+      void syncUserCache(profile.id);
     } catch {
       // Ver comentario de arriba: se deja `user` como estaba (probablemente `null`).
+    }
+  }
+
+  /**
+   * Spec 011 (modo offline), plan.md §3-§4: en cuanto se sabe qué usuario
+   * está autenticado, se garantiza que la caché local es la suya
+   * (`ensureUserScope`, vacía cualquier resto de otro usuario) y se lanza
+   * una hidratación completa del histórico. "Fire and forget", igual que
+   * `hydrateUser`: sin conexión, `syncFullHistory` simplemente falla y no
+   * actualiza nada — no bloquea el arranque de la app ni el login.
+   */
+  async function syncUserCache(userId: string): Promise<void> {
+    try {
+      await ensureUserScope(userId);
+      await syncFullHistory();
+    } catch {
+      // Ver comentario de arriba: sin conexión (o sin IndexedDB disponible
+      // en el navegador), simplemente no se actualiza la caché.
     }
   }
 
@@ -81,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(res.accessToken);
     setUser(res.user);
     setIsAuthenticated(true);
+    void syncUserCache(res.user.id);
   }
 
   async function logout(): Promise<void> {
@@ -94,6 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(null);
       setUser(null);
       setIsAuthenticated(false);
+      // Spec 011 (modo offline), plan.md §3: no deja datos económicos en
+      // IndexedDB tras cerrar sesión en este dispositivo.
+      void clearAll();
     }
   }
 

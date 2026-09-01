@@ -1,4 +1,5 @@
 import { api } from './client';
+import { putCategories } from '../offline/db';
 
 export type MovementType = 'INCOME' | 'EXPENSE';
 
@@ -19,8 +20,15 @@ export interface CreateCategoryInput {
   parentId?: string;
 }
 
-export function listCategories(type?: MovementType): Promise<Category[]> {
-  return api.get<Category[]>(type ? `/categories?type=${type}` : '/categories');
+// Spec 011 (modo offline), plan.md §4: escritura de paso hacia la caché
+// local, igual que `listTransactions`/`getTransaction`
+// (`api/transactions.ts`). Como aquí `type` es un filtro, no se sustituye
+// toda la caché de categorías por esta respuesta parcial — solo se
+// actualizan (upsert) las que vienen en ella.
+export async function listCategories(type?: MovementType): Promise<Category[]> {
+  const categoriesList = await api.get<Category[]>(type ? `/categories?type=${type}` : '/categories');
+  void putCategories(categoriesList);
+  return categoriesList;
 }
 
 export function createCategory(input: CreateCategoryInput): Promise<Category> {
