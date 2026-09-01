@@ -7,6 +7,7 @@ import { registerRefreshHandler, registerTokenGetter } from '../api/client';
 import { getAccessToken, setAccessToken } from './token-store';
 import { clearAll, ensureUserScope } from '../offline/db';
 import { syncFullHistory } from '../offline/sync';
+import { retrySessionExpiredEntries } from '../offline/queueProcessor';
 import { AuthContext } from './auth-context';
 import type { AuthContextValue } from './auth-context';
 
@@ -42,6 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * una hidratación completa del histórico. "Fire and forget", igual que
    * `hydrateUser`: sin conexión, `syncFullHistory` simplemente falla y no
    * actualiza nada — no bloquea el arranque de la app ni el login.
+   *
+   * H5 criterio 5 (`spec.md`): también reintenta los cambios pendientes
+   * bloqueados por sesión caducada (T5.3) — cualquier camino por el que se
+   * llega aquí implica que se acaba de establecer una sesión válida.
    */
   async function syncUserCache(userId: string): Promise<void> {
     try {
@@ -50,6 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ver comentario de arriba: sin conexión (o sin IndexedDB disponible
       // en el navegador), simplemente no se actualiza la caché.
+    }
+    try {
+      await retrySessionExpiredEntries();
+    } catch {
+      // Best-effort, igual que el resto de esta función.
     }
   }
 

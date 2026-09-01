@@ -40,23 +40,25 @@
 
 ## Grupo 4 — Frontend: escritura offline de movimientos (`plan.md` §5)
 
-- [ ] **T4.1** — `createTransaction`/`updateTransaction`/`deleteTransaction` (`frontend/src/api/transactions.ts`) pasan a ser offline-aware: online, sin cambios de comportamiento (además de actualizar la caché, T3.2). Offline: `createTransaction` genera `id = crypto.randomUUID()`, guarda un registro optimista (`pending: true`, `pendingAction: 'CREATE'`) y encola la entrada; `update`/`delete` actualizan el registro local y encolan igual.
-  *Verificación:* tests unitarios de las 3 funciones en ambos estados (online/offline, mockeando `connectivity`), confirmando el registro optimista y la entrada de cola resultante.
-- [ ] **T4.2** — Marcador visual "pendiente de sincronizar" en `MovementsListPage` para los registros con `pending: true` (reutiliza `.tag` de spec 010, sin componente nuevo). `RegisterMovementPage` no cambia su lógica (sigue llamando a las mismas funciones de `api/transactions.ts`).
-  *Verificación:* los tests existentes de estas páginas siguen en verde sin modificarse; test nuevo que crea/edita/borra en estado offline simulado y comprueba la etiqueta en el listado.
+- [x] **T4.1** — `createTransaction`/`updateTransaction`/`deleteTransaction` (`frontend/src/api/transactions.ts`) pasan a ser offline-aware: online, sin cambios de comportamiento (además de actualizar la caché, T3.2). Offline: `createTransaction` genera `id = crypto.randomUUID()`, guarda un registro optimista (`pending: true`, `pendingAction: 'CREATE'`) y encola la entrada; `update`/`delete` actualizan el registro local y encolan igual.
+  *Verificación:* 12 tests unitarios (`api/transactions.test.ts`, nuevo) de las 3 funciones en ambos estados. ✅ 219/219 tests, lint y build limpios.
+- [x] **T4.2** — Marcador visual "pendiente de sincronizar" en `MovementsListPage` para los registros con `pending: true` (reutiliza `.tag` de spec 010, sin componente nuevo). `RegisterMovementPage` no cambia su lógica (sigue llamando a las mismas funciones de `api/transactions.ts`).
+  *Verificación:* los tests existentes de estas páginas siguen en verde sin modificarse; test nuevo confirma la etiqueta en el listado. ✅ 220/220 tests, lint y build limpios.
 
 ## Grupo 5 — Frontend: procesador de la cola (`plan.md` §5)
 
-- [ ] **T5.1** — Orden de procesamiento por `queueId` y colapso de `CREATE`+`DELETE` del mismo `transactionId` cuando ninguno de los dos se ha sincronizado (sin llamar al servidor).
-  *Verificación:* tests unitarios del procesador con una cola simulada — casos límite 1 y 2 de `plan.md §8`.
-- [ ] **T5.2** — Ejecución secuencial contra la API (mockeada): `CREATE`→`POST`, `UPDATE`→`PATCH`, `DELETE`→`DELETE` (un 404 en `DELETE` se trata como éxito). Actualización de estado por ítem (`pending`→`syncing`→aplicado/`failed`) y borrado de la cola al aplicar con éxito.
-  *Verificación:* test con varios ítems y distintas respuestas simuladas (200, 404 en `DELETE`, 400 en `UPDATE`), confirmando el estado final de cada uno — casos límite 3, 4 y 5.
-- [ ] **T5.3** — Fallo por sesión caducada: un 401 que persiste tras el reintento automático ya existente (`api/client.ts`) detiene el resto de la cola (marcada como bloqueada, no fallida ítem a ítem). Tras un `login()` con éxito, `AuthContext` dispara el reprocesado automático de esas entradas.
-  *Verificación:* test del procesador simulando 401 persistente, confirmando que el resto de la cola queda bloqueada sin marcarse `failed` una a una; test de `AuthContext` confirmando el reprocesado tras login — caso límite 6.
-- [ ] **T5.4** — Coordinación entre pestañas con `navigator.locks` (`navigator.locks.request('sync-queue', ...)`), para que solo una ejecute el procesador a la vez.
-  *Verificación:* test que simula dos invocaciones solapadas del procesador (misma pestaña — no es posible levantar dos pestañas reales en Vitest, se documenta como limitación del test) y confirma que la segunda espera a que la primera termine — caso límite 7.
-- [ ] **T5.5** — Reintentar/descartar un ítem individual (H5 criterios 3-4 de `spec.md`), con confirmación explícita antes de descartar.
-  *Verificación:* tests de las funciones de reintento/descarte (borran o vuelven a poner en `pending` la entrada correspondiente, sin tocar el resto de la cola).
+- [x] **T5.1** — Orden de procesamiento por `queueId` y colapso de `CREATE`+`DELETE` del mismo `transactionId` cuando ninguno de los dos se ha sincronizado (sin llamar al servidor).
+  *Verificación:* tests unitarios del procesador con una cola simulada — casos límite 1 y 2 de `plan.md §8`. ✅
+- [x] **T5.2** — Ejecución secuencial contra la API (mockeada): `CREATE`→`POST`, `UPDATE`→`PATCH`, `DELETE`→`DELETE` (un 404 en `DELETE` se trata como éxito). Actualización de estado por ítem (`pending`→`syncing`→aplicado/`failed`) y borrado de la cola al aplicar con éxito.
+  *Verificación:* test con varios ítems y distintas respuestas simuladas (200, 404 en `DELETE`, 400 en `UPDATE`), confirmando el estado final de cada uno — casos límite 3, 4 y 5. ✅
+- [x] **T5.3** — Fallo por sesión caducada: un 401 que persiste tras el reintento automático ya existente (`api/client.ts`) detiene el resto de la cola (marcada como bloqueada, no fallida ítem a ítem). Tras un `login()` con éxito, `AuthContext` dispara el reprocesado automático de esas entradas.
+  *Verificación:* test del procesador simulando 401 persistente — caso límite 6; test de integración en `LoginPage.test.tsx` confirmando el reprocesado tras login. ✅
+- [x] **T5.4** — Coordinación entre pestañas con `navigator.locks` (`navigator.locks.request(...)`, con fallback si el navegador no lo soporta), para que solo una ejecute el procesador a la vez. Dentro de la misma pestaña, varias llamadas solapadas a `processQueue()` comparten la misma ejecución (`processingPromise`).
+  *Verificación:* test que simula dos invocaciones solapadas del procesador (misma pestaña — no es posible levantar dos pestañas reales en Vitest ni comprobar `navigator.locks`, que jsdom no implementa; se documenta como limitación del test, no del código) y confirma que la API real solo se llama una vez — caso límite 7. ✅
+- [x] **T5.5** — Reintentar/descartar un ítem individual (H5 criterios 3-4 de `spec.md`). La confirmación explícita antes de descartar es UI (grupo 7); `discardQueueEntry`/`retryQueueEntry` son las funciones de datos que esa UI llamará.
+  *Verificación:* tests de las funciones de reintento/descarte (borran o vuelven a poner en `pending` la entrada correspondiente, sin tocar el resto de la cola). ✅
+
+  **Nota de implementación:** `afterSyncSuccess` (helper interno, no listado como tarea propia) tenía un bug real encontrado por su propio test: al calcular si un movimiento seguía `pending` tras sincronizar una entrada, contaba la propia entrada que se acababa de aplicar como "trabajo pendiente" (todavía no se había borrado de la cola en ese momento), así que un movimiento con una sola entrada en la cola nunca dejaba de marcarse `pending`. Corregido excluyendo explícitamente el `queueId` de la entrada en curso al contar lo que queda. Suite completa del frontend tras el grupo 5: 239/239 (32 ficheros); lint y build limpios.
 
 ## Grupo 6 — Frontend: conectividad y arranque sin conexión (`plan.md` §6)
 
