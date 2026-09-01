@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
+import { useSyncQueue } from '../hooks/useSyncQueue';
+import { SyncStatusPanel } from './SyncStatusPanel';
 
 // Spec 008 (rediseño Broadsheet), plan.md §5. Sustituye a los iconos de
 // `lucide-react` de spec 007 H5 (retirados en T7) por un punto de color
@@ -43,6 +45,11 @@ export function AppLayout() {
   // `isMobileMenuOpen` ya vale `false` de por sí, sin que nadie haya
   // cerrado nada) — solo debe mover el foco en una transición real.
   const isFirstRender = useRef(true);
+  // Spec 011 (modo offline), T7.3: confirmación antes de cerrar sesión si
+  // hay cambios sin sincronizar (se perderían de la vista al vaciarse la
+  // caché en el logout, `AuthContext.logout` → `clearAll`).
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const syncQueue = useSyncQueue();
 
   // H1 criterio 4: sin menú mientras no se sabe si hay sesión (evita
   // parpadeo) ni cuando no la hay — mismo criterio que ya usaba `HomePage`.
@@ -50,6 +57,16 @@ export function AppLayout() {
 
   function closeMobileMenu() {
     setIsMobileMenuOpen(false);
+  }
+
+  function handleLogoutClick() {
+    if (syncQueue.length > 0 && !confirmLogout) {
+      setConfirmLogout(true);
+      return;
+    }
+    setConfirmLogout(false);
+    closeMobileMenu();
+    void logout();
   }
 
   // Spec 009, plan.md §1.4. Foco ligero (sin trap completo, fuera de
@@ -150,22 +167,27 @@ export function AppLayout() {
               </li>
             ))}
             <li>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  closeMobileMenu();
-                  void logout();
-                }}
-                {...collapsedLabel('Cerrar sesión')}
-              >
+              <button type="button" className="btn btn-secondary" onClick={handleLogoutClick} {...collapsedLabel('Cerrar sesión')}>
                 <span className="dot" aria-hidden="true" />{' '}
                 <span className={isCollapsed ? 'sr-only' : undefined}>Cerrar sesión</span>
               </button>
+              {confirmLogout && (
+                <p role="alert">
+                  Tienes {syncQueue.length} cambio{syncQueue.length === 1 ? '' : 's'} sin sincronizar que se dejarán de
+                  mostrar al cerrar sesión.{' '}
+                  <button type="button" className="btn btn-ghost" onClick={handleLogoutClick}>
+                    Cerrar sesión de todos modos
+                  </button>{' '}
+                  <button type="button" className="btn btn-ghost" onClick={() => setConfirmLogout(false)}>
+                    Cancelar
+                  </button>
+                </p>
+              )}
             </li>
           </ul>
         </nav>
       )}
+      {showSidebar && <SyncStatusPanel />}
       <div id="app-content">
         <Outlet />
       </div>

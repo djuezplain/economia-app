@@ -73,12 +73,14 @@
 
 ## Grupo 7 — Frontend: UI del aviso y del listado de pendientes (`plan.md` §7)
 
-- [ ] **T7.1** — Franja de estado en `AppLayout` (H1 de `spec.md`): visible cuando hay algo que mostrar (offline, o hay pendientes/fallidos), con el número de cambios pendientes; colapsada si no hay nada que decir.
-  *Verificación:* `AppLayout.test.tsx` ampliado — franja ausente sin pendientes y online; presente offline; presente con N pendientes.
-- [ ] **T7.2** — Panel desplegable (al pulsar la franja, o automáticamente mientras se procesa) con el listado de cambios pendientes/fallidos: tipo de movimiento, acción, datos principales, estado, motivo de fallo, botones reintentar/descartar (usa T5.5).
-  *Verificación:* test de componente dedicado cubriendo cada estado visual (pendiente, sincronizando, fallido con motivo) y las acciones de reintentar/descartar.
-- [ ] **T7.3** — Confirmación al cerrar sesión con cambios pendientes sin sincronizar (evita perderlos en silencio al vaciar la caché, T2.2).
-  *Verificación:* test de logout con cola no vacía — caso límite 8.
+- [x] **T7.1** — Franja de estado (`SyncStatusPanel`, nuevo) dentro de `AppLayout` (H1 de `spec.md`): visible cuando hay algo que mostrar (offline, o hay pendientes/fallidos), con el número de cambios pendientes; colapsada (no renderiza nada) si no hay nada que decir. También dispara `processQueue()` sola al recuperar conexión y al montar si ya hay conexión (H4 criterio 1).
+  *Verificación:* 8 tests en `SyncStatusPanel.test.tsx` — ausente online sin pendientes; presente offline; presente con N pendientes y arranca el procesador; dispara el procesador al recuperar conexión. ✅
+- [x] **T7.2** — Panel desplegable (al pulsar la franja, o automáticamente mientras algo está `syncing`) con el listado de cambios pendientes/fallidos: acción, datos principales (concepto/importe si están en el payload), estado, motivo de fallo, botones reintentar/descartar (usa T5.5, con confirmación explícita inline antes de descartar).
+  *Verificación:* mismo fichero — estados pendiente/fallido, reintentar, descartar con confirmación/cancelación, varios bloqueados por sesión caducada mostrados a la vez. ✅
+- [x] **T7.3** — Confirmación al cerrar sesión con cambios pendientes sin sincronizar (evita perderlos de vista en silencio al vaciar la caché, T2.2).
+  *Verificación:* 2 tests nuevos en `AppLayout.test.tsx` — pide confirmación y no cierra sesión hasta confirmar; cancelar no cierra sesión — caso límite 8. ✅ 252/252 tests, lint y build limpios (un test preexistente y no relacionado, `RegisterMovementPage` "Cancelar edición", sigue siendo flaky bajo paralelismo — misma condición de carrera ya documentada en T3.2, confirmada de nuevo como preexistente).
+
+  **Nota de implementación:** se extrajo `hooks/useSyncQueue.ts` (estado en vivo de la cola) para que `SyncStatusPanel` y `AppLayout` (necesita el recuento para T7.3) no dupliquen la misma suscripción. Se encontró y corrigió un problema real de aislamiento entre tests (no de producción): `offline/connectivity.ts` y `offline/queueProcessor.ts` guardan estado en variables de módulo (estado de conexión, ejecución en curso, listeners) que sobrevivía entre tests del mismo fichero si no se reseteaba explícitamente — un test que dejaba una ejecución de `processQueue()` a medias hacía que el siguiente test del mismo fichero recibiera esa misma ejecución en vez de una nueva. Añadido `resetForTests()` a `queueProcessor.ts` (mismo patrón que `connectivity.ts`/`RateLimitGuard` del backend) y ambos resets movidos a `setupTests.ts` global, junto al de IndexedDB.
 
 ## Grupo 8 — Service Worker / PWA (`plan.md` §1)
 

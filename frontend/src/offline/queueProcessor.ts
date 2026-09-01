@@ -35,6 +35,12 @@ async function notify(): Promise<void> {
 
 let processingPromise: Promise<void> | null = null;
 
+/** Solo para tests: descarta cualquier ejecución en curso y los listeners suscritos (cada test debe partir de un estado limpio). Nunca se llama desde código de producción. */
+export function resetForTests(): void {
+  processingPromise = null;
+  listeners.clear();
+}
+
 /**
  * Punto de entrada público. Varias llamadas solapadas dentro de la misma
  * pestaña comparten la misma ejecución en vez de procesar la cola dos

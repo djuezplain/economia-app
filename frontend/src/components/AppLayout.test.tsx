@@ -8,6 +8,7 @@ import * as authApi from '../api/auth';
 import * as usersApi from '../api/users';
 import { ApiError } from '../api/client';
 import { resetForTests } from '../offline/connectivity';
+import { enqueue, ensureUserScope, putTransaction } from '../offline/db';
 
 const PROFILE: usersApi.UserProfile = {
   id: 'user-1',
@@ -187,6 +188,75 @@ describe('AppLayout', () => {
     await user.click(await screen.findByRole('button', { name: 'Cerrar sesión' }));
 
     await waitFor(() => expect(authApi.logout).toHaveBeenCalled());
+  });
+
+  describe('confirmación al cerrar sesión con cambios pendientes (T7.3, spec 011)', () => {
+    it('con cambios pendientes, pide confirmación en vez de cerrar sesión directamente', async () => {
+      mockLoggedIn();
+      await ensureUserScope('user-1');
+      await putTransaction({
+        id: 'tx-1',
+        userId: 'user-1',
+        type: 'EXPENSE',
+        date: '2026-08-01',
+        categoryId: 'cat-1',
+        subcategoryId: null,
+        concept: 'Café',
+        merchant: null,
+        amount: '3.50',
+        paymentMethod: null,
+        createdAt: '2026-08-01T00:00:00.000Z',
+        updatedAt: '2026-08-01T00:00:00.000Z',
+        pending: true,
+        pendingAction: 'CREATE',
+      });
+      await enqueue({
+        entity: 'transaction',
+        action: 'CREATE',
+        transactionId: 'tx-1',
+        payload: { id: 'tx-1', concept: 'Café' },
+        createdAt: '2026-08-01T00:00:00.000Z',
+        status: 'failed',
+        failureReason: 'x',
+        failureKind: 'validation',
+      });
+      const logoutSpy = vi.spyOn(authApi, 'logout').mockResolvedValue({ message: 'Sesión cerrada.' });
+      const user = userEvent.setup();
+      renderLayout();
+
+      await user.click(await screen.findByRole('button', { name: 'Cerrar sesión' }));
+
+      expect(await screen.findByText(/1 cambio sin sincronizar/)).toBeInTheDocument();
+      expect(logoutSpy).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+      expect(screen.queryByText(/sin sincronizar/)).not.toBeInTheDocument();
+      expect(logoutSpy).not.toHaveBeenCalled();
+    });
+
+    it('confirmando "cerrar sesión de todos modos", cierra sesión', async () => {
+      mockLoggedIn();
+      await ensureUserScope('user-1');
+      await enqueue({
+        entity: 'transaction',
+        action: 'DELETE',
+        transactionId: 'tx-1',
+        payload: null,
+        createdAt: '2026-08-01T00:00:00.000Z',
+        status: 'failed',
+        failureReason: 'x',
+        failureKind: 'validation',
+      });
+      const logoutSpy = vi.spyOn(authApi, 'logout').mockResolvedValue({ message: 'Sesión cerrada.' });
+      const user = userEvent.setup();
+      renderLayout();
+
+      await user.click(await screen.findByRole('button', { name: 'Cerrar sesión' }));
+      await screen.findByText(/sin sincronizar/);
+      await user.click(screen.getByRole('button', { name: 'Cerrar sesión de todos modos' }));
+
+      await waitFor(() => expect(logoutSpy).toHaveBeenCalled());
+    });
   });
 
   describe('menú superpuesto en móvil (spec 009, H1)', () => {
