@@ -4,32 +4,36 @@
 **Fase:** 3 de 4 (Spec ✅ → Plan ✅ → Tasks → Implementación)
 **Regla:** una tarea = un commit enfocado (Conventional Commits). No se marca `[x]` una tarea sin que su verificación pase.
 
+**Nota de coordinación (no es una tarea, es contexto para cuando se implemente):** T3.3 necesita saber si hay conexión, pero eso no se construye hasta **T6.1** (`offline/connectivity.ts`). Al implementar, T6.1 se adelanta y se hace antes que T3.3 (mismo criterio que la nota de spec 006 sobre `MovementsLayout`/spec 005: una dependencia real entre tareas de grupos distintos, no un motivo para bloquear nada) — el propio T3.3, al completarse, se marcará citando T6.1 como ya hecho.
+
+**Nota de implementación (T3.1-T3.2, grupo 3):** `plan.md` §4 no especificaba si `syncFullHistory` debía reutilizar `listTransactions`/`listCategories` de `api/*.ts` o llamar a `api.get` directamente. Se optó por llamar a `api.get` directamente: reutilizar los wrappers habría hecho que la hidratación de fondo (disparada automáticamente desde `AuthContext` en cualquier página autenticada) consumiera, de forma no determinista, las mismas respuestas mockeadas (`vi.spyOn(...).mockResolvedValueOnce(...)`) que cada página ya tenía preparadas para sus propias llamadas, rompiendo varios tests existentes (`CategoriesPage.test.tsx`, entre otros) por una carrera entre la sincronización de fondo y la petición propia de la página. Ambas llamadas siguen siendo dos fuentes independientes de la misma información — no hay pérdida de funcionalidad ni de escritura de paso, `syncFullHistory` sigue escribiendo directamente en la caché.
+
 ## Grupo 0 — Dependencias y esqueleto
 
-- [ ] **T0.1** — Añadir `idb` y `vite-plugin-pwa` a `frontend/package.json`. Crear `frontend/src/offline/` vacío (sin lógica todavía).
-  *Verificación:* `npm run build` y `npm run test` en `frontend` siguen en verde, sin cambio de comportamiento (nada nuevo se importa aún).
+- [x] **T0.1** — Añadir `idb` y `vite-plugin-pwa` a `frontend/package.json`. Crear `frontend/src/offline/` vacío (sin lógica todavía).
+  *Verificación:* `npm run build` y `npm run test` en `frontend` siguen en verde, sin cambio de comportamiento (nada nuevo se importa aún). ✅ 159/159 tests, build limpio.
 
 ## Grupo 1 — Backend: creación idempotente de movimientos (`plan.md` §2)
 
-- [ ] **T1.1** — `CreateTransactionDto`: campo opcional `id` (`@IsOptional() @IsUUID()`). `TransactionsService.create` usa ese `id` si viene informado; si no, genera uno como hoy (sin cambio de comportamiento para las llamadas existentes).
-  *Verificación (e2e, ampliando `transactions.e2e-spec.ts`):* crear sin `id` (comportamiento actual, regresión); crear con `id` explícito → el movimiento se crea con ese `id` exacto.
-- [ ] **T1.2** — Manejo de colisión de PK: helper `isUniqueViolation` (mismo patrón que `isForeignKeyViolation`, código Postgres `23505`, comprobando tanto el nivel superior del error como `.cause`). Mismo `id` + mismo `userId` → devuelve el existente (200, idempotente). Mismo `id` + otro `userId` → 409, sin exponer el registro ajeno.
-  *Verificación (e2e):* reintento del mismo `POST` con igual `id` y mismo usuario no duplica el movimiento (se comprueba contando filas); el mismo `id` desde un segundo usuario → 409, y el movimiento del primer usuario no se modifica.
+- [x] **T1.1** — `CreateTransactionDto`: campo opcional `id` (`@IsOptional() @IsUUID()`). `TransactionsService.create` usa ese `id` si viene informado; si no, genera uno como hoy (sin cambio de comportamiento para las llamadas existentes).
+  *Verificación (e2e, ampliando `transactions.e2e-spec.ts`):* crear sin `id` (comportamiento actual, regresión); crear con `id` explícito → el movimiento se crea con ese `id` exacto. ✅
+- [x] **T1.2** — Manejo de colisión de PK: helper `isUniqueViolation` (mismo patrón que `isForeignKeyViolation`, código Postgres `23505`, comprobando tanto el nivel superior del error como `.cause`). Mismo `id` + mismo `userId` → devuelve el existente (200, idempotente). Mismo `id` + otro `userId` → 409, sin exponer el registro ajeno.
+  *Verificación (e2e):* reintento del mismo `POST` con igual `id` y mismo usuario no duplica el movimiento (se comprueba contando filas); el mismo `id` desde un segundo usuario → 409, y el movimiento del primer usuario no se modifica. ✅ 97/97 unitarios + 191/191 e2e, lint y build limpios.
 
 ## Grupo 2 — Frontend: capa IndexedDB (`plan.md` §3)
 
-- [ ] **T2.1** — `frontend/src/offline/db.ts`: apertura de la base `economia-offline` (vía `idb`) con los stores `transactions`, `categories`, `syncQueue` (autoincremental), `meta`, y funciones CRUD mínimas tipadas sobre cada uno.
-  *Verificación (Vitest + `fake-indexeddb` como devDependency nueva, jsdom no implementa IndexedDB):* test por store cubriendo alta/lectura/borrado y el autoincremento de `queueId`.
-- [ ] **T2.2** — Vaciado de la caché al hacer logout y al detectar un `meta.userId` distinto del usuario ya autenticado (evita que datos económicos de un usuario queden en IndexedDB tras cambiar de cuenta en el mismo navegador — `plan.md` §3, `constitution.md §2`).
-  *Verificación:* test que puebla la caché, simula logout y confirma que los 4 stores quedan vacíos; test que puebla la caché con `userId` A y simula login de `userId` B, confirmando el vaciado antes de la siguiente hidratación.
+- [x] **T2.1** — `frontend/src/offline/db.ts`: apertura de la base `economia-offline` (vía `idb`) con los stores `transactions`, `categories`, `syncQueue` (autoincremental), `meta`, y funciones CRUD mínimas tipadas sobre cada uno.
+  *Verificación (Vitest + `fake-indexeddb` como devDependency nueva, jsdom no implementa IndexedDB):* test por store cubriendo alta/lectura/borrado y el autoincremento de `queueId`. ✅ 14 tests nuevos.
+- [x] **T2.2** — Vaciado de la caché al hacer logout y al detectar un `meta.userId` distinto del usuario ya autenticado (evita que datos económicos de un usuario queden en IndexedDB tras cambiar de cuenta en el mismo navegador — `plan.md` §3, `constitution.md §2`).
+  *Verificación:* test que puebla la caché, simula logout y confirma que los 4 stores quedan vacíos; test que puebla la caché con `userId` A y simula login de `userId` B, confirmando el vaciado antes de la siguiente hidratación. ✅ (el propio `AuthContext.logout()` se conectó a `clearAll()` en T3.2, ver nota).
 
 ## Grupo 3 — Frontend: lectura offline (`plan.md` §4)
 
-- [ ] **T3.1** — `syncFullHistory()`: pagina `GET /transactions` (límite 200) y `GET /categories` hasta agotarlas, vuelca todo en IndexedDB y actualiza `meta.lastFullSyncAt`.
-  *Verificación:* test con `api` mockeada devolviendo 3 páginas de movimientos, confirma que las 3 quedan en la store y que se detiene correctamente al recibir una página incompleta.
-- [ ] **T3.2** — Disparo de `syncFullHistory()` al arrancar la app con sesión y conexión (hook en `AuthProvider`, tras `hydrateUser()`). Write-through: los wrappers de `api/transactions.ts`/`api/categories.ts` (grupo 4) actualizan IndexedDB con cada respuesta real de `GET`, no solo en la hidratación completa.
-  *Verificación:* test de `AuthProvider` confirmando la llamada a `syncFullHistory()` tras un arranque con sesión válida; tests de los wrappers de api confirmando el efecto de escritura en caché tras cada `GET`.
-- [ ] **T3.3** — `MovementsListPage`, `MovementsSummaryPage`, `CategoriesPage`, `DashboardPage`: cuando `connectivity` (grupo 6) indica offline, leen de IndexedDB en vez de llamar a la API, y muestran un aviso "datos de la última sincronización" (`meta.lastFullSyncAt`).
+- [x] **T3.1** — `syncFullHistory()`: pagina `GET /transactions` (límite 200) y `GET /categories` hasta agotarlas, vuelca todo en IndexedDB y actualiza `meta.lastFullSyncAt`.
+  *Verificación:* test con `api` mockeada devolviendo 3 páginas de movimientos, confirma que las 3 quedan en la store y que se detiene correctamente al recibir una página incompleta. ✅ 4 tests en `sync.test.ts`.
+- [x] **T3.2** — Disparo de `syncFullHistory()` al arrancar la app con sesión y conexión (hook en `AuthProvider`, tras `hydrateUser()` — y también en `login()`/`setSessionToken()`, los otros dos sitios donde se establece sesión). Write-through: los wrappers de `api/transactions.ts`/`api/categories.ts` actualizan IndexedDB con cada respuesta real de `GET`, no solo en la hidratación completa. `logout()` vacía la caché (cierra T2.2).
+  *Verificación:* ver nota de implementación arriba. Suite completa del frontend: 177/177 en verde sin paralelismo de ficheros (un test preexistente y no relacionado, `RegisterMovementPage` "Cancelar edición", es flaky bajo paralelismo por una condición de carrera de temporización ya presente antes de este grupo — no es una regresión). Lint y build limpios.
+- [ ] **T3.3** — `MovementsListPage`, `MovementsSummaryPage`, `CategoriesPage`, `DashboardPage`: cuando `connectivity` (grupo 6, adelantado — ver nota de coordinación) indica offline, leen de IndexedDB en vez de llamar a la API, y muestran un aviso "datos de la última sincronización" (`meta.lastFullSyncAt`).
   *Verificación:* un test por página, forzando `connectivity` a offline y confirmando que se muestran los datos cacheados (poblados de antemano en el test) en vez de un estado de error.
 
 ## Grupo 4 — Frontend: escritura offline de movimientos (`plan.md` §5)
