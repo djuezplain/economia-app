@@ -255,4 +255,16 @@ describe('MovementsListPage', () => {
     expect(screen.getByText(/Sin conexión/)).toBeInTheDocument();
     expect(listSpy).not.toHaveBeenCalled();
   });
+
+  it('un movimiento con pending:true en la caché se marca "pendiente de sincronizar" (T4.2, spec 011)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+    await putTransactions([{ ...EXPENSE_TX, pending: true, pendingAction: 'CREATE' }]);
+    resetForTests(false);
+
+    renderPage();
+
+    expect(await screen.findByText('Depósito gasolina')).toBeInTheDocument();
+    expect(screen.getByText('pendiente de sincronizar')).toBeInTheDocument();
+  });
 });

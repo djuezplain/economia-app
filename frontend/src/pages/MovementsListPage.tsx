@@ -7,6 +7,7 @@ import { deleteTransaction, listTransactions } from '../api/transactions';
 import type { MovementType } from '../api/transactions';
 import { ApiError } from '../api/client';
 import { getAllCachedTransactions, getMeta } from '../offline/db';
+import type { CachedTransaction } from '../offline/db';
 import { buildOfflineListResult } from '../offline/queries';
 import { LAST_FULL_SYNC_AT_KEY } from '../offline/sync';
 import { categoryName, PAYMENT_METHOD_LABELS } from './movements-shared';
@@ -246,6 +247,11 @@ export function MovementsListPage() {
                   {t.subcategoryId && (
                     <span className="tag tag-neutral">{categoryName(categories, t.subcategoryId)}</span>
                   )}
+                  {/* Spec 011 (modo offline), H2 criterio 2/3: un movimiento
+                      creado/editado/borrado sin conexión se marca así hasta
+                      que se sincroniza (grupo 5 procesa la cola y lo quita
+                      de la caché con `pending: false`). */}
+                  {(t as CachedTransaction).pending && <span className="tag tag-accent">pendiente de sincronizar</span>}
                   <p className="card-meta">
                     {[t.merchant, t.paymentMethod ? PAYMENT_METHOD_LABELS[t.paymentMethod] : null, t.date]
                       .filter((part): part is string => Boolean(part))
