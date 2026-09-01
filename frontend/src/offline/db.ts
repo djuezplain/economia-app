@@ -187,3 +187,13 @@ export async function ensureUserScope(userId: string): Promise<void> {
   }
   await setMeta(USER_ID_KEY, userId);
 }
+
+/**
+ * Spec 011 (modo offline), plan.md §5: el `userId` del usuario autenticado,
+ * para poder rellenar ese campo en un movimiento creado offline (la capa de
+ * API, `api/transactions.ts`, no tiene acceso directo al contexto de auth).
+ * `null` si `ensureUserScope` todavía no se ha llamado en esta sesión.
+ */
+export async function getCachedUserId(): Promise<string | null> {
+  return (await getMeta(USER_ID_KEY)) ?? null;
+}

@@ -1,5 +1,7 @@
 import { api } from './client';
-import { putTransaction, putTransactions } from '../offline/db';
+import { deleteCachedTransaction, enqueue, getCachedTransaction, getCachedUserId, putTransaction, putTransactions } from '../offline/db';
+import type { CachedTransaction } from '../offline/db';
+import { isOnline } from '../offline/connectivity';
 
 export type MovementType = 'INCOME' | 'EXPENSE';
 export type PaymentMethod = 'CARD' | 'DIRECT_DEBIT' | 'CASH' | 'TRANSFER';
@@ -89,14 +91,116 @@ export async function getTransaction(id: string): Promise<Transaction> {
   return transaction;
 }
 
-export function createTransaction(input: CreateTransactionInput): Promise<Transaction> {
-  return api.post<Transaction>('/transactions', input);
+/**
+ * Spec 011 (modo offline), plan.md §5. Online: sin cambios de comportamiento
+ * (además de escribir en la caché, igual que los `GET`). Offline: genera un
+ * `id` (aceptado por el backend como creación idempotente, ver
+ * `backend/src/transactions/transactions.service.ts`), guarda un registro
+ * optimista marcado `pending` y encola la creación — la página que llama no
+ * necesita distinguir los dos casos, recibe en ambos un `Transaction` con
+ * los mismos datos que vería si ya estuviera confirmado por el servidor.
+ */
+export async function createTransaction(input: CreateTransactionInput): Promise<Transaction> {
+  if (!isOnline()) return createTransactionOffline(input);
+  const transaction = await api.post<Transaction>('/transactions', input);
+  const cached: CachedTransaction = { ...transaction, pending: false, pendingAction: null };
+  void putTransaction(cached);
+  return cached;
 }
 
-export function updateTransaction(id: string, input: UpdateTransactionInput): Promise<Transaction> {
-  return api.patch<Transaction>(`/transactions/${id}`, input);
+async function createTransactionOffline(input: CreateTransactionInput): Promise<Transaction> {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const transaction: CachedTransaction = {
+    id,
+    userId: (await getCachedUserId()) ?? '',
+    type: input.type,
+    date: input.date,
+    categoryId: input.categoryId,
+    subcategoryId: input.subcategoryId ?? null,
+    concept: input.concept,
+    merchant: input.merchant ?? null,
+    amount: input.amount,
+    paymentMethod: input.paymentMethod ?? null,
+    createdAt: now,
+    updatedAt: now,
+    pending: true,
+    pendingAction: 'CREATE',
+  };
+  await putTransaction(transaction);
+  await enqueue({
+    entity: 'transaction',
+    action: 'CREATE',
+    transactionId: id,
+    payload: { id, ...input },
+    createdAt: now,
+    status: 'pending',
+    failureReason: null,
+    failureKind: null,
+  });
+  return transaction;
 }
 
-export function deleteTransaction(id: string): Promise<void> {
-  return api.delete<void>(`/transactions/${id}`);
+export async function updateTransaction(id: string, input: UpdateTransactionInput): Promise<Transaction> {
+  if (!isOnline()) return updateTransactionOffline(id, input);
+  const transaction = await api.patch<Transaction>(`/transactions/${id}`, input);
+  const cached: CachedTransaction = { ...transaction, pending: false, pendingAction: null };
+  void putTransaction(cached);
+  return cached;
+}
+
+async function updateTransactionOffline(id: string, input: UpdateTransactionInput): Promise<Transaction> {
+  const existing = await getCachedTransaction(id);
+  if (!existing) {
+    throw new Error('No se puede editar sin conexión un movimiento que no está en la caché local.');
+  }
+  const now = new Date().toISOString();
+  const updated: CachedTransaction = {
+    ...existing,
+    ...(input.date !== undefined && { date: input.date }),
+    ...(input.categoryId !== undefined && { categoryId: input.categoryId }),
+    ...(input.subcategoryId !== undefined && { subcategoryId: input.subcategoryId }),
+    ...(input.concept !== undefined && { concept: input.concept }),
+    ...(input.merchant !== undefined && { merchant: input.merchant }),
+    ...(input.amount !== undefined && { amount: input.amount }),
+    ...(input.paymentMethod !== undefined && { paymentMethod: input.paymentMethod }),
+    updatedAt: now,
+    pending: true,
+    // Si ya era una creación offline sin sincronizar, se queda como
+    // "creación" (más informativo que "edición" para un movimiento que el
+    // servidor todavía no conoce en absoluto).
+    pendingAction: existing.pendingAction === 'CREATE' ? 'CREATE' : 'UPDATE',
+  };
+  await putTransaction(updated);
+  await enqueue({
+    entity: 'transaction',
+    action: 'UPDATE',
+    transactionId: id,
+    payload: { ...input },
+    createdAt: now,
+    status: 'pending',
+    failureReason: null,
+    failureKind: null,
+  });
+  return updated;
+}
+
+export async function deleteTransaction(id: string): Promise<void> {
+  if (!isOnline()) return deleteTransactionOffline(id);
+  await api.delete<void>(`/transactions/${id}`);
+  void deleteCachedTransaction(id);
+}
+
+async function deleteTransactionOffline(id: string): Promise<void> {
+  await deleteCachedTransaction(id);
+  await enqueue({
+    entity: 'transaction',
+    action: 'DELETE',
+    transactionId: id,
+    payload: null,
+    createdAt: new Date().toISOString(),
+    status: 'pending',
+    failureReason: null,
+    failureKind: null,
+  });
 }
