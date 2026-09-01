@@ -1,7 +1,8 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gte, ilike, lte } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
+import { isUniqueViolation } from '../common/db-errors.util.js';
 import { categories, transactions } from '../db/schema/index.js';
 import { average, distinctMonthsCount, groupByCategory, groupBySubcategory, sumAmounts } from './transactions.calculations.js';
 import type { CreateTransactionDto } from './dto/create-transaction.dto.js';
@@ -41,21 +42,47 @@ export class TransactionsService {
     this.assertExpenseOnlyFields(dto.type, dto);
     await this.validateCategoryAssignment(userId, dto.type, dto.categoryId, dto.subcategoryId);
 
-    const [transaction] = await this.db
-      .insert(transactions)
-      .values({
-        userId,
-        type: dto.type,
-        date: dto.date,
-        categoryId: dto.categoryId,
-        subcategoryId: dto.subcategoryId ?? null,
-        concept: dto.concept,
-        merchant: dto.merchant ?? null,
-        amount: dto.amount,
-        paymentMethod: dto.paymentMethod ?? null,
-      })
-      .returning();
-    return transaction;
+    try {
+      const [transaction] = await this.db
+        .insert(transactions)
+        .values({
+          ...(dto.id !== undefined && { id: dto.id }),
+          userId,
+          type: dto.type,
+          date: dto.date,
+          categoryId: dto.categoryId,
+          subcategoryId: dto.subcategoryId ?? null,
+          concept: dto.concept,
+          merchant: dto.merchant ?? null,
+          amount: dto.amount,
+          paymentMethod: dto.paymentMethod ?? null,
+        })
+        .returning();
+      return transaction;
+    } catch (err) {
+      if (dto.id !== undefined && isUniqueViolation(err)) {
+        return this.resolveIdCollision(userId, dto.id);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Spec 011 (modo offline), plan.md §2: un `id` propio ya insertado solo
+   * puede venir de (a) un reintento del propio cliente tras perder la
+   * respuesta del primer `POST` — idempotente, se devuelve el mismo
+   * movimiento — o (b) una colisión con el `id` de otro usuario, que se
+   * rechaza sin exponer ni tocar ese registro ajeno (aislamiento por
+   * usuario, `constitution.md` §2).
+   */
+  private async resolveIdCollision(userId: string, id: string): Promise<Transaction> {
+    const existing = await this.db.query.transactions.findFirst({
+      where: eq(transactions.id, id),
+    });
+    if (existing?.userId === userId) {
+      return existing;
+    }
+    throw new ConflictException('Ya existe un movimiento con ese identificador.');
   }
 
   /**
