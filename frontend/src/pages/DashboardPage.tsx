@@ -13,6 +13,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useAuth } from '../auth/auth-context';
+import { useConnectivity } from '../hooks/useConnectivity';
 import { listCategories } from '../api/categories';
 import type { Category } from '../api/categories';
 import { getMonthSummary, getYearSummary } from '../api/dashboard';
@@ -78,6 +79,7 @@ function formatPercent(value: string | null): string {
  */
 export function DashboardPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const isOnline = useConnectivity();
 
   const [categories, setCategories] = useState<Category[] | null>(null);
 
@@ -90,7 +92,7 @@ export function DashboardPage() {
   const [yearError, setYearError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     let cancelled = false;
     (async () => {
       try {
@@ -104,10 +106,10 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isOnline]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     let cancelled = false;
     (async () => {
       try {
@@ -120,10 +122,10 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, month]);
+  }, [isAuthenticated, isOnline, month]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     let cancelled = false;
     (async () => {
       try {
@@ -136,7 +138,7 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, year]);
+  }, [isAuthenticated, isOnline, year]);
 
   const byCategoryChartData = useMemo(() => {
     if (!monthSummary) return [];
@@ -164,6 +166,22 @@ export function DashboardPage() {
         <p>
           <Link to="/login">Iniciar sesión</Link>
         </p>
+      </main>
+    );
+  }
+
+  // Spec 011 (modo offline), H6 criterio 1: el dashboard combina varios
+  // cálculos (ahorro, medias diarias, evolución anual) que hoy solo existen
+  // en el backend (`dashboard.service.ts`) — a diferencia de "Movimientos"/
+  // "Resumen"/"Categorías" (H3), replicarlos aquí duplicaría más lógica
+  // financiera de la que esta spec justifica tocar. Se avisa con claridad en
+  // vez de mostrar un dashboard a medias o con datos desactualizados sin
+  // decirlo.
+  if (!isOnline) {
+    return (
+      <main>
+        <h1>Dashboard</h1>
+        <p role="status">Esta página requiere conexión a internet.</p>
       </main>
     );
   }

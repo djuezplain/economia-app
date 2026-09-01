@@ -12,6 +12,8 @@ import * as transactionsApi from '../api/transactions';
 import type { ListTransactionsResult } from '../api/transactions';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
+import { putCategories } from '../offline/db';
+import { resetForTests } from '../offline/connectivity';
 
 // Mismo motivo que `HomePage.test.tsx`: `Intl.NumberFormat` usa un espacio
 // de no separación (U+00A0) que `getByText` normaliza en el DOM pero no en
@@ -64,6 +66,7 @@ const EXPENSE_CHILD: Category = {
 describe('CategoriesPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetForTests(true);
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue({
       id: 'user-1',
       email: 'ana@example.com',
@@ -241,5 +244,21 @@ describe('CategoriesPage', () => {
     expect(await screen.findByText('0 movimientos')).toBeInTheDocument();
     expect(screen.getByText(eur('0.00'))).toBeInTheDocument();
     expect(screen.getByText('0%')).toBeInTheDocument();
+  });
+
+  it('sin conexión (T3.3, spec 011), muestra las categorías cacheadas y deshabilita crear/renombrar/eliminar', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    const listSpy = vi.spyOn(categoriesApi, 'listCategories');
+    await putCategories([INCOME_CATEGORY]);
+    resetForTests(false);
+
+    renderPage();
+
+    expect(await screen.findByText('Nómina')).toBeInTheDocument();
+    expect(screen.getByText(/Sin conexión/)).toBeInTheDocument();
+    expect(listSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Renombrar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Eliminar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Crear categoría' })).toBeDisabled();
   });
 });

@@ -2,9 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useCategoriesForType } from '../hooks/useCategoriesForType';
+import { useConnectivity } from '../hooks/useConnectivity';
 import { listTransactions } from '../api/transactions';
 import type { MovementType, TransactionsSummary } from '../api/transactions';
 import { ApiError } from '../api/client';
+import { getAllCachedTransactions, getMeta } from '../offline/db';
+import { buildOfflineListResult } from '../offline/queries';
+import { LAST_FULL_SYNC_AT_KEY } from '../offline/sync';
 import { categoryName } from './movements-shared';
 
 /**
@@ -17,18 +21,30 @@ import { categoryName } from './movements-shared';
  */
 export function MovementsSummaryPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const isOnline = useConnectivity();
 
   const [type, setType] = useState<MovementType>('EXPENSE');
   const { categories, categoriesError } = useCategoriesForType(type);
 
   const [summary, setSummary] = useState<TransactionsSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Spec 011 (modo offline), H3 criterio 3.
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) return;
     let cancelled = false;
     (async () => {
       try {
+        // Spec 011 (modo offline): sin conexión, mismo resumen calculado
+        // sobre la copia local (`offline/queries.ts`, `offline/calculations.ts`).
+        if (!isOnline) {
+          const result = buildOfflineListResult(await getAllCachedTransactions(), { type });
+          if (cancelled) return;
+          setSummary(result.summary);
+          setLastSyncAt((await getMeta(LAST_FULL_SYNC_AT_KEY)) ?? null);
+          return;
+        }
         const res = await listTransactions({ type });
         if (!cancelled) setSummary(res.summary);
       } catch (err) {
@@ -38,7 +54,7 @@ export function MovementsSummaryPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, type]);
+  }, [isAuthenticated, isOnline, type]);
 
   if (isAuthLoading) {
     return (
@@ -75,6 +91,11 @@ export function MovementsSummaryPage() {
         </label>
       </div>
 
+      {!isOnline && (
+        <p role="status">
+          Sin conexión: mostrando los datos de la última sincronización{lastSyncAt ? ` (${new Date(lastSyncAt).toLocaleString('es-ES')})` : ''}.
+        </p>
+      )}
       {categoriesError && <p role="alert">{categoriesError}</p>}
       {loadError && <p role="alert">{loadError}</p>}
 

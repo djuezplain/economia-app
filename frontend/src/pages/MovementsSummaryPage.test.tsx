@@ -11,6 +11,8 @@ import * as transactionsApi from '../api/transactions';
 import type { Category } from '../api/categories';
 import type { ListTransactionsResult } from '../api/transactions';
 import { ApiError } from '../api/client';
+import { putTransactions } from '../offline/db';
+import { resetForTests } from '../offline/connectivity';
 
 const EXPENSE_PARENT: Category = {
   id: 'cat-expense-1',
@@ -71,6 +73,7 @@ const INCOME_RESULT: ListTransactionsResult = {
 describe('MovementsSummaryPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetForTests(true);
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue({
       id: 'user-1',
       email: 'ana@example.com',
@@ -180,5 +183,36 @@ describe('MovementsSummaryPage', () => {
 
     await waitFor(() => expect(screen.getByText(/Total: 2000\.00/)).toBeInTheDocument());
     expect(screen.getByText('Nómina: 2000.00')).toBeInTheDocument();
+  });
+
+  it('sin conexión (T3.3, spec 011), calcula el resumen sobre la caché local en vez de llamar a la API', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+    const listSpy = vi.spyOn(transactionsApi, 'listTransactions');
+    await putTransactions([
+      {
+        id: 'tx-1',
+        userId: 'user-1',
+        type: 'EXPENSE',
+        date: '2026-08-01',
+        categoryId: 'cat-expense-1',
+        subcategoryId: 'cat-expense-2',
+        concept: 'Depósito gasolina',
+        merchant: 'Repsol',
+        amount: '45.00',
+        paymentMethod: 'CARD',
+        createdAt: '2026-08-01T09:00:00.000Z',
+        updatedAt: '2026-08-01T09:00:00.000Z',
+        pending: false,
+        pendingAction: null,
+      },
+    ]);
+    resetForTests(false);
+
+    renderPage();
+
+    expect(await screen.findByText(/Total: 45\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/Sin conexión/)).toBeInTheDocument();
+    expect(listSpy).not.toHaveBeenCalled();
   });
 });
