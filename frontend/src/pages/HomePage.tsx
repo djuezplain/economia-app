@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
+import { useConnectivity } from '../hooks/useConnectivity';
 import { listCategories } from '../api/categories';
 import type { Category } from '../api/categories';
 import { getMonthSummary } from '../api/dashboard';
@@ -30,6 +31,11 @@ function currentMonth(): string {
  */
 export function HomePage() {
   const { user, isAuthenticated, isLoading } = useAuth();
+  // Spec 011 (modo offline), H6 criterio 1: Inicio combina el resumen del
+  // mes (`getMonthSummary`, mismos cálculos fuera de alcance que Dashboard,
+  // ver spec.md H3 criterio 4) con el progreso del objetivo de ahorro
+  // (fuera de alcance) — se trata igual que `DashboardPage`, no a medias.
+  const isOnline = useConnectivity();
   const month = currentMonth();
 
   const [categories, setCategories] = useState<Category[] | null>(null);
@@ -41,7 +47,7 @@ export function HomePage() {
   const [movementsError, setMovementsError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     let cancelled = false;
     (async () => {
       try {
@@ -56,10 +62,10 @@ export function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isOnline]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     let cancelled = false;
     (async () => {
       try {
@@ -72,10 +78,10 @@ export function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, month]);
+  }, [isAuthenticated, isOnline, month]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     let cancelled = false;
     (async () => {
       try {
@@ -88,10 +94,10 @@ export function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, month]);
+  }, [isAuthenticated, isOnline, month]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     let cancelled = false;
     (async () => {
       try {
@@ -106,7 +112,7 @@ export function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, month]);
+  }, [isAuthenticated, isOnline, month]);
 
   const isEmptyMonth = monthSummary?.income === '0.00' && monthSummary?.expense === '0.00';
 
@@ -116,15 +122,19 @@ export function HomePage() {
 
       {isLoading && <p>Comprobando tu sesión…</p>}
 
-      {!isLoading && isAuthenticated && (
+      {!isLoading && isAuthenticated && user?.status === 'PENDING_VERIFICATION' && (
+        // H2 (spec 001), criterio 3: no bloquea el acceso, pero avisa de
+        // forma persistente — se muestra igual sin conexión, no depende de
+        // ninguna petición de red (ya se conoce `user.status`).
+        <p role="alert">
+          Todavía no has verificado tu email. <Link to="/resend-verification">Reenviar el enlace</Link>
+        </p>
+      )}
+
+      {!isLoading && isAuthenticated && !isOnline && <p role="status">Esta página requiere conexión a internet.</p>}
+
+      {!isLoading && isAuthenticated && isOnline && (
         <>
-          {user?.status === 'PENDING_VERIFICATION' && (
-            // H2 (spec 001), criterio 3: no bloquea el acceso, pero avisa de
-            // forma persistente.
-            <p role="alert">
-              Todavía no has verificado tu email. <Link to="/resend-verification">Reenviar el enlace</Link>
-            </p>
-          )}
           <p>{user ? `Sesión iniciada como ${user.name}.` : 'Sesión iniciada.'}</p>
 
           {monthError && <p role="alert">{monthError}</p>}
