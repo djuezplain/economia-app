@@ -8,6 +8,7 @@ import { getAccessToken, setAccessToken } from './token-store';
 import { clearAll, ensureUserScope } from '../offline/db';
 import { syncFullHistory } from '../offline/sync';
 import { retrySessionExpiredEntries } from '../offline/queueProcessor';
+import { isOnline, subscribe } from '../offline/connectivity';
 import { AuthContext } from './auth-context';
 import type { AuthContextValue } from './auth-context';
 
@@ -15,6 +16,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // Spec 011 (modo offline), plan.md §6.
+  const [isOffline, setIsOffline] = useState(!isOnline());
+
+  useEffect(() => subscribe((online) => setIsOffline(!online)), []);
 
   /**
    * H2 (spec 001), criterio 3: para poder avisar de forma persistente cuando
@@ -139,8 +144,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, isAuthenticated, isLoading, login, logout, setSessionToken }),
-    [user, isAuthenticated, isLoading],
+    () => ({ user, isAuthenticated, isLoading, isOffline, login, logout, setSessionToken }),
+    [user, isAuthenticated, isLoading, isOffline],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

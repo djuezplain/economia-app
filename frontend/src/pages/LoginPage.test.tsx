@@ -7,10 +7,12 @@ import { AuthProvider } from '../auth/AuthContext';
 import * as authApi from '../api/auth';
 import { api, ApiError } from '../api/client';
 import { enqueue, ensureUserScope, getQueue, putTransaction } from '../offline/db';
+import { resetForTests } from '../offline/connectivity';
 
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetForTests(true);
     // AuthProvider intenta un refresco silencioso al montar (tasks.md T3.5);
     // en estos tests se simula que no hay sesión previa, para aislar el
     // comportamiento del formulario de login en sí.
@@ -134,5 +136,16 @@ describe('LoginPage', () => {
     await screen.findByText('Página de inicio');
 
     await waitFor(async () => expect(await getQueue()).toEqual([]));
+  });
+
+  it('sin conexión (T6.3, spec 011), avisa antes de intentar el envío, sin llamar a la API', async () => {
+    resetForTests(false);
+    const loginSpy = vi.spyOn(authApi, 'login');
+
+    renderPage();
+    await fillAndSubmit('ana@example.com', 'Contraseña-Segura-123');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No hay conexión. Vuelve a conectarte para iniciar sesión.');
+    expect(loginSpy).not.toHaveBeenCalled();
   });
 });

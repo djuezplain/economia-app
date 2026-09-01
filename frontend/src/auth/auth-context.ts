@@ -13,6 +13,13 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   /** `true` mientras se intenta el refresco silencioso inicial al cargar la app. */
   isLoading: boolean;
+  /**
+   * Spec 011 (modo offline), plan.md §6. Estado de conectividad en vivo
+   * (`offline/connectivity.ts`) — permite a quien consume el contexto
+   * distinguir "no hay sesión" de "no hay sesión porque no hay red", en
+   * vez de tratar ambos casos igual (H6 criterio 2).
+   */
+  isOffline: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   /**

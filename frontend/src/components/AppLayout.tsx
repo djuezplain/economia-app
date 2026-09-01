@@ -29,7 +29,7 @@ const NAV_ITEMS = [
  * vuelve a montar todo el árbol de React, tal como pide spec.md §4.
  */
 export function AppLayout() {
-  const { isAuthenticated, isLoading, logout } = useAuth();
+  const { isAuthenticated, isLoading, isOffline, logout } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   // Spec 009 (adaptación a móvil), plan.md §1. Estado independiente de
   // `isCollapsed`: en escritorio el menú se pliega a una franja estrecha
@@ -84,6 +84,23 @@ export function AppLayout() {
   // nombre accesible en modo desplegado sigue siendo exactamente el mismo
   // de siempre (el texto visible), sin ningún cambio de comportamiento ahí.
   const collapsedLabel = (label: string) => (isCollapsed ? { 'aria-label': label, title: label } : {});
+
+  /**
+   * Spec 011 (modo offline), plan.md §6, H6 criterio 2. Recargar u abrir la
+   * app sin conexión y sin sesión ya cargada en memoria no tiene forma de
+   * autenticarse (el access token solo vive en memoria, spec 001) — se
+   * avisa con claridad en vez de dejar que cada una de las 8 páginas
+   * muestre su propio "tienes que iniciar sesión" (que llevaría a un
+   * `/login` igual de inútil sin red).
+   */
+  if (!isLoading && isOffline && !isAuthenticated) {
+    return (
+      <main>
+        <h1>Sin conexión</h1>
+        <p role="alert">Vuelve a conectarte para continuar.</p>
+      </main>
+    );
+  }
 
   return (
     <div id="app-shell">

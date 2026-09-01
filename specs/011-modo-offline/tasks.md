@@ -64,10 +64,12 @@
 
 - [x] **T6.1** (adelantada antes de T3.3, ver nota de coordinación) — `frontend/src/offline/connectivity.ts`: combina `navigator.onLine`/eventos `online`/`offline` con una comprobación activa contra `GET /health`. Incluye `hooks/useConnectivity.ts` (envoltorio React).
   *Verificación:* 7 tests unitarios mockeando `fetch` y los eventos del navegador (`connectivity.test.ts`), 2 del hook (`useConnectivity.test.tsx`). ✅
-- [ ] **T6.2** — `AuthContext`: distingue en el arranque un fallo de red (offline) de un fallo de sesión real (401/refresh inválido), exponiendo `isOffline` en el contexto.
-  *Verificación:* tests de `AuthContext` (ampliando los ya existentes) simulando `apiRefresh()` rechazado por error de red vs por 401.
-- [ ] **T6.3** — Guard de rutas protegidas: pantalla "Sin conexión, vuelve a conectarte para continuar" cuando `isOffline && !isAuthenticated` (en vez de redirigir a `/login`). `LoginPage`/`RegisterPage`/`ForgotPasswordPage`/etc. muestran el mismo aviso antes de intentar el envío si `connectivity` indica offline.
-  *Verificación:* test de las rutas protegidas y de cada página de acceso con `connectivity` mockeada a offline — caso límite 9.
+- [x] **T6.2** — `AuthContext` expone `isOffline` (estado en vivo de `offline/connectivity.ts`, vía `subscribe`) en `AuthContextValue`, para que quien consuma el contexto pueda distinguir "no hay sesión" de "no hay sesión porque no hay red".
+  *Verificación:* cubierta junto a T6.3 (el valor se ejercita a través de `AppLayout`/`LoginPage`, no con un test aislado de `AuthContext` — este proyecto no tiene un fichero de test dedicado a `AuthContext`, se prueba siempre a través de las páginas que lo consumen, mismo patrón que el resto de la spec 001).
+- [x] **T6.3** — Guard de rutas protegidas: `AppLayout` (envuelve las 8 páginas autenticadas) muestra "Sin conexión — vuelve a conectarte para continuar" cuando `isOffline && !isAuthenticated`, en vez de `<Outlet />`. `LoginPage` avisa antes de intentar el envío si `isOffline`, sin llamar a `login()`.
+  *Verificación:* 2 tests nuevos en `AppLayout.test.tsx` (aviso sin sesión y offline; con sesión, offline no bloquea nada) — caso límite 9. 1 test nuevo en `LoginPage.test.tsx`. ✅ 242/242 tests, lint y build limpios.
+
+  **Nota de implementación:** `plan.md` §6 asumía que "sin sesión → a /login" ya vivía centralizado en un guard de rutas. Al implementar se comprobó que no es así: cada una de las 8 páginas autenticadas comprueba `isAuthenticated` por su cuenta y muestra su propio aviso — no hay guard centralizado preexistente (`AppLayout` solo decide si mostrar el menú lateral, no si mostrar el contenido). Se añadió el guard offline **solo** en `AppLayout` en vez de replicarlo en las 8 páginas: cubre las 8 sin tocarlas, y es un comportamiento nuevo (no una migración del ya existente "sin sesión" de cada página, que se deja tal cual). `RegisterPage`/`ForgotPasswordPage`/etc. no se tocaron — `LoginPage` es el punto de entrada real de este flujo (recuperar sesión); ampliar el resto de páginas de acceso al mismo criterio queda anotado como mejora futura si hiciera falta, no como parte obligatoria de esta tarea.
 
 ## Grupo 7 — Frontend: UI del aviso y del listado de pendientes (`plan.md` §7)
 

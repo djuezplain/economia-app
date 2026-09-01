@@ -7,6 +7,7 @@ import { AuthProvider } from '../auth/AuthContext';
 import * as authApi from '../api/auth';
 import * as usersApi from '../api/users';
 import { ApiError } from '../api/client';
+import { resetForTests } from '../offline/connectivity';
 
 const PROFILE: usersApi.UserProfile = {
   id: 'user-1',
@@ -22,6 +23,7 @@ const PROFILE: usersApi.UserProfile = {
 describe('AppLayout', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetForTests(true);
     // Mismo motivo que en HomePage.test.tsx: sin esto, AuthProvider
     // intentaría un refresco silencioso real contra la red al montar.
     vi.spyOn(authApi, 'refresh').mockRejectedValue(new ApiError(401, 'No hay sesión.'));
@@ -251,6 +253,29 @@ describe('AppLayout', () => {
 
       await screen.findByText('Contenido de categorías');
       expect(screen.getByRole('button', { name: 'Abrir menú' })).toBeInTheDocument();
+    });
+  });
+
+  describe('sin conexión y sin sesión (T6.3, spec 011)', () => {
+    it('muestra "Sin conexión" en vez del contenido de la página, sin menú lateral', async () => {
+      resetForTests(false);
+      vi.spyOn(authApi, 'refresh').mockRejectedValue(new TypeError('Failed to fetch'));
+
+      renderLayout();
+
+      expect(await screen.findByText('Vuelve a conectarte para continuar.')).toBeInTheDocument();
+      expect(screen.queryByText('Contenido de inicio')).not.toBeInTheDocument();
+      expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
+    });
+
+    it('con sesión, estar offline no bloquea el contenido (el aviso solo aplica sin sesión)', async () => {
+      resetForTests(false);
+      mockLoggedIn();
+
+      renderLayout();
+
+      expect(await screen.findByText('Contenido de inicio')).toBeInTheDocument();
+      expect(screen.queryByText('Vuelve a conectarte para continuar.')).not.toBeInTheDocument();
     });
   });
 });
