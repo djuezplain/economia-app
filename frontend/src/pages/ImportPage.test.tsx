@@ -9,6 +9,7 @@ import * as usersApi from '../api/users';
 import * as importApi from '../api/import';
 import type { ImportConfirmResult, ImportPreviewResult } from '../api/import';
 import { ApiError } from '../api/client';
+import { resetForTests } from '../offline/connectivity';
 
 const PREVIEW_RESULT: ImportPreviewResult = {
   income: { validCount: 2, invalid: [{ rowNumber: 50, reason: 'Fila 50: faltan categoría, concepto y importe.' }] },
@@ -184,5 +185,15 @@ describe('ImportPage', () => {
 
     expect(screen.queryByRole('heading', { name: 'Confirmar' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Validar' })).not.toBeDisabled();
+  });
+
+  it('sin conexión (H6, spec 011), avisa de que la página requiere conexión', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    resetForTests(false);
+
+    renderPage();
+
+    expect(await screen.findByText('Esta página requiere conexión a internet.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Fichero .xlsx')).not.toBeInTheDocument();
   });
 });

@@ -85,7 +85,17 @@ export async function listTransactions(filters: ListTransactionsFilters = {}): P
 // Spec 006 (páginas de movimientos), plan.md §3: necesario para que
 // "Registrar" en modo edición cargue el movimiento a partir del `:id` de la
 // URL, sea cual sea la forma en que se llegó a esa página (recarga incluida).
+//
+// Spec 011 (modo offline), H2 criterio 3: sin conexión, se lee de la copia
+// local — necesario para poder editar un movimiento ya existente (o uno
+// creado offline) sin red; si no está en la caché, falla con un mensaje
+// claro (mismo criterio que `updateTransactionOffline`).
 export async function getTransaction(id: string): Promise<Transaction> {
+  if (!isOnline()) {
+    const cached = await getCachedTransaction(id);
+    if (!cached) throw new Error('No se puede cargar sin conexión un movimiento que no está en la caché local.');
+    return cached;
+  }
   const transaction = await api.get<Transaction>(`/transactions/${id}`);
   void putTransaction({ ...transaction, pending: false, pendingAction: null });
   return transaction;

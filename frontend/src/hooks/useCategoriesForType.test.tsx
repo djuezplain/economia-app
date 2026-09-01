@@ -7,6 +7,8 @@ import * as usersApi from '../api/users';
 import * as categoriesApi from '../api/categories';
 import type { Category, MovementType } from '../api/categories';
 import { ApiError } from '../api/client';
+import { putCategories } from '../offline/db';
+import { resetForTests } from '../offline/connectivity';
 
 const PROFILE: usersApi.UserProfile = {
   id: 'user-1',
@@ -127,5 +129,21 @@ describe('useCategoriesForType', () => {
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent('No se han podido cargar.');
+  });
+
+  it('sin conexión (H2 criterio 4, spec 011), lee del caché local en vez de llamar a la API', async () => {
+    resetForTests(false);
+    await putCategories([category('c1', 'EXPENSE', 'Ocio'), category('c2', 'INCOME', 'Nómina')]);
+    const listCategories = vi.spyOn(categoriesApi, 'listCategories');
+
+    render(
+      <AuthProvider>
+        <Probe type="EXPENSE" label="Gastos" />
+      </AuthProvider>,
+    );
+
+    expect(await screen.findByText('Ocio')).toBeInTheDocument();
+    expect(screen.queryByText('Nómina')).not.toBeInTheDocument();
+    expect(listCategories).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './client';
-import { createTransaction, deleteTransaction, updateTransaction } from './transactions';
+import { createTransaction, deleteTransaction, getTransaction, updateTransaction } from './transactions';
 import type { Transaction } from './transactions';
 import { resetForTests } from '../offline/connectivity';
 import { ensureUserScope, getAllCachedTransactions, getCachedTransaction, getQueue, putTransaction } from '../offline/db';
@@ -151,5 +151,32 @@ describe('deleteTransaction (T4.1)', () => {
 
     const remaining = await getAllCachedTransactions();
     expect(remaining.map((t) => t.id)).toEqual(['tx-b']);
+  });
+});
+
+describe('getTransaction (H2 criterio 3, spec 011)', () => {
+  it('online: llama a la API y escribe el resultado en la caché', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue(serverTx());
+
+    const result = await getTransaction('server-id');
+
+    expect(result).toEqual(serverTx());
+    expect(await getCachedTransaction('server-id')).toMatchObject({ pending: false });
+  });
+
+  it('offline: lee de la caché local en vez de llamar a la API (necesario para poder editar sin conexión)', async () => {
+    await putTransaction({ ...serverTx(), concept: 'Café (ya cacheado)', pending: false, pendingAction: null });
+    resetForTests(false);
+    const getSpy = vi.spyOn(api, 'get');
+
+    const result = await getTransaction('server-id');
+
+    expect(getSpy).not.toHaveBeenCalled();
+    expect(result.concept).toBe('Café (ya cacheado)');
+  });
+
+  it('offline: si el movimiento no está en la caché, falla con un mensaje claro', async () => {
+    resetForTests(false);
+    await expect(getTransaction('no-cacheado')).rejects.toThrow(/no está en la caché local/);
   });
 });

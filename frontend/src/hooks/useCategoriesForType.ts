@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { listCategories } from '../api/categories';
 import type { Category, MovementType } from '../api/categories';
 import { useAuth } from '../auth/auth-context';
+import { useConnectivity } from './useConnectivity';
 import { ApiError } from '../api/client';
+import { getAllCachedCategories } from '../offline/db';
 
 export interface UseCategoriesForTypeResult {
   categories: Category[] | null;
@@ -21,6 +23,11 @@ export interface UseCategoriesForTypeResult {
  */
 export function useCategoriesForType(type: MovementType): UseCategoriesForTypeResult {
   const { isAuthenticated } = useAuth();
+  // Spec 011 (modo offline), H2 criterio 4/H3: sin conexión, las 3 páginas
+  // que usan este hook (incluida "Registrar", para poder elegir categoría
+  // al crear un movimiento offline) necesitan la caché local igual que
+  // `CategoriesPage`, no solo las páginas de solo lectura.
+  const isOnline = useConnectivity();
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
 
@@ -29,6 +36,11 @@ export function useCategoriesForType(type: MovementType): UseCategoriesForTypeRe
     let cancelled = false;
     (async () => {
       try {
+        if (!isOnline) {
+          const cached = await getAllCachedCategories();
+          if (!cancelled) setCategories(cached.filter((c) => c.type === type));
+          return;
+        }
         const list = await listCategories(type);
         if (!cancelled) setCategories(list);
       } catch (err) {
@@ -38,7 +50,7 @@ export function useCategoriesForType(type: MovementType): UseCategoriesForTypeRe
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, type]);
+  }, [isAuthenticated, isOnline, type]);
 
   return { categories, categoriesError };
 }

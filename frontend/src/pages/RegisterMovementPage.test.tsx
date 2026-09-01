@@ -10,7 +10,9 @@ import * as categoriesApi from '../api/categories';
 import * as transactionsApi from '../api/transactions';
 import type { Category } from '../api/categories';
 import type { Transaction } from '../api/transactions';
-import { ApiError } from '../api/client';
+import { api, ApiError } from '../api/client';
+import { putCategories, putTransaction } from '../offline/db';
+import { resetForTests } from '../offline/connectivity';
 
 const INCOME_CATEGORY: Category = {
   id: 'cat-income-1',
@@ -267,5 +269,30 @@ describe('RegisterMovementPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Movimiento no encontrado.');
     expect(screen.queryByLabelText('Concepto')).not.toBeInTheDocument();
+  });
+
+  it('sin conexión (H2 criterio 3, spec 011), edita un movimiento ya cacheado — carga y guarda desde la caché local', async () => {
+    await putCategories([INCOME_CATEGORY, EXPENSE_PARENT, EXPENSE_CHILD]);
+    await putTransaction({ ...EXPENSE_TX, pending: false, pendingAction: null });
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    resetForTests(false);
+    const apiGetSpy = vi.spyOn(api, 'get');
+    const listCategoriesSpy = vi.spyOn(categoriesApi, 'listCategories');
+
+    renderPage('/movements/register/tx-1');
+
+    expect(await screen.findByDisplayValue('Depósito gasolina')).toBeInTheDocument();
+    // No se comprueba "cero llamadas a `api.get`" en general: `AuthContext`
+    // intenta su propia hidratación de fondo (`syncFullHistory`) sin mirar
+    // `isOnline` de antemano (falla sola si no hay red) — lo relevante aquí
+    // es que la propia carga del movimiento no pase por la red.
+    expect(apiGetSpy).not.toHaveBeenCalledWith('/transactions/tx-1');
+    expect(listCategoriesSpy).not.toHaveBeenCalled();
+
+    await userEvent.clear(screen.getByLabelText('Concepto'));
+    await userEvent.type(screen.getByLabelText('Concepto'), 'Gasolina (editado offline)');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(await screen.findByText('Página de movimientos (destino de la navegación)')).toBeInTheDocument();
   });
 });

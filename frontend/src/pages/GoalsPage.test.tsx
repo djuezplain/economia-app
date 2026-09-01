@@ -15,6 +15,7 @@ import type { SavingsGoal } from '../api/savings-goals';
 import type { ExpenseBudget } from '../api/expense-budgets';
 import type { MonthProgress, YearProgress } from '../api/goals-progress';
 import { ApiError } from '../api/client';
+import { resetForTests } from '../offline/connectivity';
 
 const FOOD_CATEGORY: Category = {
   id: 'cat-food',
@@ -339,5 +340,16 @@ describe('GoalsPage', () => {
     renderPage();
 
     expect(await screen.findByText('Error del servidor.')).toBeInTheDocument();
+  });
+
+  it('sin conexión (H6, spec 011), avisa de que la página requiere conexión sin llamar a la API', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    resetForTests(false);
+    const listGoalsSpy = vi.spyOn(savingsGoalsApi, 'listSavingsGoals');
+
+    renderPage();
+
+    expect(await screen.findByText('Esta página requiere conexión a internet.')).toBeInTheDocument();
+    expect(listGoalsSpy).not.toHaveBeenCalled();
   });
 });

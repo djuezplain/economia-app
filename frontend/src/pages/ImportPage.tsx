@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
+import { useConnectivity } from '../hooks/useConnectivity';
 import { confirmImport, previewImport } from '../api/import';
 import type { ImportConfirmResult, ImportPreviewResult, InvalidImportRow } from '../api/import';
 import { ApiError } from '../api/client';
@@ -14,6 +15,7 @@ import { ApiError } from '../api/client';
  */
 export function ImportPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const isOnline = useConnectivity();
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
@@ -79,6 +81,17 @@ export function ImportPage() {
         <p>
           <Link to="/login">Iniciar sesión</Link>
         </p>
+      </main>
+    );
+  }
+
+  // Spec 011 (modo offline), H6 criterio 1, spec.md §2: importar desde
+  // Excel queda fuera de alcance de esta spec.
+  if (!isOnline) {
+    return (
+      <main>
+        <h1>Importar desde Excel</h1>
+        <p role="status">Esta página requiere conexión a internet.</p>
       </main>
     );
   }
