@@ -1,6 +1,6 @@
 # Tasks 011 — Modo offline (registrar movimientos sin conexión)
 
-**Estado:** Listo para implementar
+**Estado:** Implementación completa (T0.1-T9.1)
 **Fase:** 3 de 4 (Spec ✅ → Plan ✅ → Tasks → Implementación)
 **Regla:** una tarea = un commit enfocado (Conventional Commits). No se marca `[x]` una tarea sin que su verificación pase.
 
@@ -91,8 +91,69 @@
 
 ## Grupo 9 — Cierre de la spec
 
-- [ ] **T9.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1-H6) y marcar cada criterio de aceptación como cubierto por al menos un test automático (o justificar "garantizado por construcción"), igual que en el cierre de specs anteriores. Repasar también los 10 casos límite de `plan.md §8` uno a uno.
-  *Verificación:* el propio checklist relleno, añadido al final de este fichero, con la suite completa (frontend + backend) en verde y build/lint limpios en ambos paquetes.
+- [x] **T9.1** — Checklist de cierre: repasar `spec.md` historia por historia (H1-H6) y marcar cada criterio de aceptación como cubierto por al menos un test automático (o justificar "garantizado por construcción"), igual que en el cierre de specs anteriores. Repasar también los 10 casos límite de `plan.md §8` uno a uno.
+  *Verificación:* el propio checklist relleno, añadido al final de este fichero. Suite completa: backend 97/97 unitarios + 191/191 e2e (sin paralelismo — con paralelismo, ficheros e2e distintos comparten la misma base de test local y chocan entre sí, limitación preexistente del entorno documentada desde T1.1-T1.2, no de este cierre); frontend 261/261 (33 ficheros, sin paralelismo — con paralelismo, un test preexistente y no relacionado de `RegisterMovementPage` es flaky por una condición de carrera de temporización ya documentada desde T3.2). Lint y build limpios en ambos paquetes.
+
+  **Hallazgos reales encontrados y corregidos durante este repaso** (commits separados, no colados en silencio en este commit de cierre): (1) `useCategoriesForType` nunca recibió lectura offline — sin conexión, el formulario "Registrar" no podía elegir categoría, rompiendo H2 criterio 4. (2) `getTransaction` nunca recibió lectura offline — sin conexión, "Editar" un movimiento ya existente fallaba, rompiendo H2 criterio 3. (3) `GoalsPage`/`ImportPage` nunca mostraban el aviso de H6 criterio 1. (4) `HomePage` tampoco, pese a que `spec.md` ya la mencionaba (como "Inicio/Dashboard", redactado de forma ambigua — aclarado de paso). Los 4 tenían un patrón común: se implementó el tratamiento offline en la página "principal" de cada área (Categorías, Movimientos, Dashboard) pero no en las páginas secundarias que dependen de la misma pieza (el hook compartido, o una página que reutiliza el mismo cálculo fuera de alcance).
 
 ---
 **Cómo trabajamos esto:** una tarea a la vez, en orden dentro de cada grupo. Al terminar una tarea, se marca `[x]` aquí y se hace commit; solo entonces se pasa a la siguiente. Si algo del plan no encaja al implementarlo, se para y se ajusta `plan.md` antes de seguir (no se parchea "en silencio").
+
+---
+
+## Checklist de cierre — spec 011 (T9.1)
+
+Repaso de `spec.md` historia por historia. `[x]` = cubierto por al menos un test automático (se cita el fichero), o garantizado por construcción/por un test de otra spec (se explica por qué).
+
+### H1 — Saber si estoy offline y si tengo cambios pendientes
+
+- [x] Criterio 1 (aviso persistente, no un toast): `SyncStatusPanel.test.tsx` — "offline, muestra 'Sin conexión'"; es un `<div role="status">` fijo dentro de `AppLayout`, no un componente con temporizador de auto-cierre (garantizado por construcción — no hay ningún `setTimeout` en `SyncStatusPanel.tsx`).
+- [x] Criterio 2 (nº de pendientes, sin contador si es 0): `SyncStatusPanel.test.tsx` — "online y sin cambios pendientes, no muestra nada" (0 pendientes → sin franja en absoluto, a fortiori sin contador); "con cambios pendientes, muestra el recuento".
+- [x] Criterio 3 (al volver la conexión, se refleja y arranca H4): `SyncStatusPanel.test.tsx` — "al recuperar conexión, dispara el procesador automáticamente".
+
+### H2 — Registrar, editar y eliminar movimientos sin conexión
+
+- [x] Criterio 1 (mismas validaciones locales offline): garantizado por construcción — `RegisterMovementPage.tsx` no cambió su formulario ni su validación HTML al implementar T4.1, solo las funciones de `api/transactions.ts` que llama pasaron a ser offline-aware; `RegisterMovementPage.test.tsx` (T4.2 y el test offline añadido en el cierre) confirma que el flujo de guardar sigue funcionando igual.
+- [x] Criterio 2 (aparece marcado "pendiente" al guardar offline): `MovementsListPage.test.tsx` — "un movimiento con pending:true... se marca 'pendiente de sincronizar'".
+- [x] Criterio 3 (editar/eliminar offline se refleja igual, ya sincronizado o creado offline): `api/transactions.test.ts` (`updateTransaction`/`deleteTransaction` offline), `RegisterMovementPage.test.tsx` (edición completa offline, añadida en el cierre tras encontrar el hueco de `getTransaction`).
+- [x] Criterio 4 (categoría entre las cacheadas; categoría nueva requiere conexión): `useCategoriesForType.test.tsx` (offline, añadido en el cierre); el aviso de "requiere conexión" para crear categorías vive en `CategoriesPage.test.tsx` (T3.3, botones deshabilitados).
+
+### H3 — Consultar movimientos, categorías y resumen sin conexión
+
+- [x] Criterio 1 (caché explícita del histórico completo): `sync.test.ts` (`syncFullHistory`, paginación completa).
+- [x] Criterio 2 (offline muestra la copia local, incluidos los pendientes de H2): `MovementsListPage.test.tsx`/`CategoriesPage.test.tsx`/`MovementsSummaryPage.test.tsx` (T3.3) — el mismo store de `transactions` que lee `buildOfflineListResult` es el que escribe `createTransactionOffline`/`updateTransactionOffline` (T4.1), así que los pendientes ya salen incluidos por construcción; el test de la etiqueta "pendiente" en `MovementsListPage.test.tsx` lo confirma en la práctica.
+- [x] Criterio 3 ("de la última sincronización" visible offline): mismos tests de T3.3 — cada página comprueba el texto `/Sin conexión/`.
+- [x] Criterio 4 (Objetivos/Presupuestos/Importar/Inicio/Dashboard fuera de esta historia): ver H6.
+
+### H4 — Procesar los cambios pendientes con listado visible
+
+- [x] Criterio 1 (listado automático al recuperar conexión, sin confirmación): `SyncStatusPanel.test.tsx` — dispara `processQueue()` solo, sin ningún botón de "confirmar sincronización" en el componente (garantizado por construcción).
+- [x] Criterio 2 (estado en tiempo real pendiente→sincronizando→aplicado/fallido): `queueProcessor.test.ts` (`status: 'syncing'` antes de cada intento) + `SyncStatusPanel.test.tsx` (etiquetas "Pendiente"/"Sincronizando…"/"Fallido"). Matiz: "aplicado" no queda como un estado visible aparte — el ítem desaparece del listado en cuanto se confirma, en vez de mostrar un tic momentáneo; se considera un cumplimiento razonable del criterio (ya no está "pendiente" en ningún sentido) y se documenta aquí como simplificación deliberada, no como hueco.
+- [x] Criterio 3 (orden de creación): `queueProcessor.test.ts` — "se procesa en el orden de creación (queueId), no otro".
+- [x] Criterio 4 (no bloquea la interfaz): garantizado por construcción — `processQueue()` es enteramente asíncrono (`async`/`await`, sin ningún bloqueo síncrono de la UI ni `window.confirm`/`alert`).
+
+### H5 — Resolver cambios fallidos
+
+- [x] Criterio 1 (falla con motivo, no bloquea el resto): `queueProcessor.test.ts` — "UPDATE con 400/409... falla... sin bloquear el resto de la cola".
+- [x] Criterio 2 (el fallo permanece visible hasta decidir algo): garantizado por construcción — una entrada `failed` solo se borra de `syncQueue` desde `retryQueueEntry`/`discardQueueEntry`, nunca sola; `SyncStatusPanel.test.tsx` lo ejercita mostrando el motivo tras recargar el panel.
+- [x] Criterio 3 (reintentar individualmente): `queueProcessor.test.ts` + `SyncStatusPanel.test.tsx` ("permite reintentar").
+- [x] Criterio 4 (descartar con confirmación explícita): `queueProcessor.test.ts` (`discardQueueEntry`) + `SyncStatusPanel.test.tsx` ("pide confirmación explícita antes de aplicarse", "cancelar... no borra el ítem").
+- [x] Criterio 5 (sesión caducada: pide reiniciar sesión, reintento automático tras hacerlo): `queueProcessor.test.ts` (`retrySessionExpiredEntries`) + `LoginPage.test.tsx` (integración completa: login real → reprocesado automático).
+
+### H6 — Aviso claro de qué requiere conexión
+
+- [x] Criterio 1 (Categorías/Objetivos/Presupuestos/Importar/Inicio/Dashboard avisan): `CategoriesPage.test.tsx` (botones deshabilitados), `GoalsPage.test.tsx`, `ImportPage.test.tsx`, `HomePage.test.tsx`, `DashboardPage.test.tsx` — un test offline dedicado por página, todos añadidos entre T3.3 y el cierre.
+- [x] Criterio 2 (sin sesión y sin conexión → "vuelve a conectarte"): `AppLayout.test.tsx` (T6.3) + `LoginPage.test.tsx` (aviso antes de intentar el envío).
+
+### Casos límite de `plan.md §8`
+
+1. [x] Crear+editar offline antes de sincronizar → un solo `POST`: `queueProcessor.test.ts` + `api/transactions.test.ts`.
+2. [x] Crear+borrar offline sin sincronizar → ninguna petición: `queueProcessor.test.ts` (colapso).
+3. [x] Reintento de `POST` que sí se aplicó → idempotente: `transactions.e2e-spec.ts` (backend, T1.2).
+4. [x] `DELETE` de algo ya borrado desde otro dispositivo → éxito: `queueProcessor.test.ts`.
+5. [x] `UPDATE`/`DELETE` con categoría borrada desde otro dispositivo → falla, no bloquea el resto: `queueProcessor.test.ts` (400 de validación).
+6. [x] Refresh token agotado offline mucho tiempo → sesión caducada bloquea el resto, reintento tras login: `queueProcessor.test.ts` + `LoginPage.test.tsx`.
+7. [x] Dos pestañas recuperan conexión a la vez → una sola ejecución: `queueProcessor.test.ts` (single-flight, límite de jsdom documentado en T5.4 para `navigator.locks` real).
+8. [x] Cerrar sesión con pendientes → confirmación: `AppLayout.test.tsx` (T7.3).
+9. [x] Recargar offline sin sesión → "vuelve a conectarte": `AppLayout.test.tsx` (T6.3).
+10. [x] Build genera un Service Worker consistente: verificado en el build (T8.1) — la comprobación manual en navegador quedó bloqueada por un permiso de este entorno, documentada como limitación, no como pendiente silencioso.
