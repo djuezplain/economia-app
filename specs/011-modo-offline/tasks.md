@@ -33,8 +33,10 @@
   *Verificación:* test con `api` mockeada devolviendo 3 páginas de movimientos, confirma que las 3 quedan en la store y que se detiene correctamente al recibir una página incompleta. ✅ 4 tests en `sync.test.ts`.
 - [x] **T3.2** — Disparo de `syncFullHistory()` al arrancar la app con sesión y conexión (hook en `AuthProvider`, tras `hydrateUser()` — y también en `login()`/`setSessionToken()`, los otros dos sitios donde se establece sesión). Write-through: los wrappers de `api/transactions.ts`/`api/categories.ts` actualizan IndexedDB con cada respuesta real de `GET`, no solo en la hidratación completa. `logout()` vacía la caché (cierra T2.2).
   *Verificación:* ver nota de implementación arriba. Suite completa del frontend: 177/177 en verde sin paralelismo de ficheros (un test preexistente y no relacionado, `RegisterMovementPage` "Cancelar edición", es flaky bajo paralelismo por una condición de carrera de temporización ya presente antes de este grupo — no es una regresión). Lint y build limpios.
-- [ ] **T3.3** — `MovementsListPage`, `MovementsSummaryPage`, `CategoriesPage`, `DashboardPage`: cuando `connectivity` (grupo 6, adelantado — ver nota de coordinación) indica offline, leen de IndexedDB en vez de llamar a la API, y muestran un aviso "datos de la última sincronización" (`meta.lastFullSyncAt`).
-  *Verificación:* un test por página, forzando `connectivity` a offline y confirmando que se muestran los datos cacheados (poblados de antemano en el test) en vez de un estado de error.
+- [x] **T3.3** — `MovementsListPage`, `MovementsSummaryPage`, `CategoriesPage`: cuando `connectivity` (T6.1, adelantada) indica offline, leen de IndexedDB en vez de llamar a la API, y muestran un aviso "datos de la última sincronización" (`meta.lastFullSyncAt`). `DashboardPage`: ver nota de implementación.
+  *Verificación:* un test offline por página (4, incluido `DashboardPage`), confirmando que no se llama a la API real y que se muestran/avisan los datos correctos. ✅ Suite completa: 210/210, lint y build limpios.
+
+  **Nota de implementación:** `tasks.md` (redactado antes de implementar) incluía `DashboardPage` en esta tarea, igual que `spec.md` H3 la incluía originalmente. Al implementarlo se decidió, con el mismo criterio de "no duplicar más lógica financiera de la necesaria", **no** replicar offline los cálculos del dashboard (ahorro, medias diarias, evolución mensual anual — `dashboard.service.ts`/`dashboard.calculations.ts`, más superficie que las funciones de resumen ya portadas en `offline/calculations.ts` para Movimientos/Resumen). `DashboardPage` pasa a mostrar "Esta página requiere conexión a internet" sin conexión (mismo criterio que H6), sin disparar peticiones de fondo. `spec.md` (H3 criterio 4, H6 criterio 1, decisión 3) y `plan.md` (§1, §3) se actualizaron para reflejarlo, con la nota completa en `spec.md`.
 
 ## Grupo 4 — Frontend: escritura offline de movimientos (`plan.md` §5)
 
@@ -58,8 +60,8 @@
 
 ## Grupo 6 — Frontend: conectividad y arranque sin conexión (`plan.md` §6)
 
-- [ ] **T6.1** — `frontend/src/offline/connectivity.ts`: combina `navigator.onLine`/eventos `online`/`offline` con una comprobación activa contra `GET /health`.
-  *Verificación:* tests unitarios mockeando `fetch` y los eventos del navegador.
+- [x] **T6.1** (adelantada antes de T3.3, ver nota de coordinación) — `frontend/src/offline/connectivity.ts`: combina `navigator.onLine`/eventos `online`/`offline` con una comprobación activa contra `GET /health`. Incluye `hooks/useConnectivity.ts` (envoltorio React).
+  *Verificación:* 7 tests unitarios mockeando `fetch` y los eventos del navegador (`connectivity.test.ts`), 2 del hook (`useConnectivity.test.tsx`). ✅
 - [ ] **T6.2** — `AuthContext`: distingue en el arranque un fallo de red (offline) de un fallo de sesión real (401/refresh inválido), exponiendo `isOffline` en el contexto.
   *Verificación:* tests de `AuthContext` (ampliando los ya existentes) simulando `apiRefresh()` rechazado por error de red vs por 401.
 - [ ] **T6.3** — Guard de rutas protegidas: pantalla "Sin conexión, vuelve a conectarte para continuar" cuando `isOffline && !isAuthenticated` (en vez de redirigir a `/login`). `LoginPage`/`RegisterPage`/`ForgotPasswordPage`/etc. muestran el mismo aviso antes de intentar el envío si `connectivity` indica offline.

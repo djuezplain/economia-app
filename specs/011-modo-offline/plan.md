@@ -7,7 +7,7 @@
 Tres piezas nuevas en el frontend, ningún cambio de infraestructura en el backend salvo uno puntual (§2):
 
 1. **Service Worker** (precache del shell de la app) → hace que la app cargue sin red (H6 criterio 2 aparte, ver §4).
-2. **Caché local en IndexedDB** (copia de movimientos y categorías + cola de cambios pendientes) → hace que Movimientos/Categorías/Resumen/Dashboard se puedan leer offline (H3) y que los cambios offline sobre movimientos sean posibles (H2).
+2. **Caché local en IndexedDB** (copia de movimientos y categorías + cola de cambios pendientes) → hace que Movimientos/Categorías/Resumen se puedan leer offline (H3) y que los cambios offline sobre movimientos sean posibles (H2). Dashboard queda fuera (ver nota de implementación de T3.3 en `tasks.md`, y `spec.md` H3 criterio 4).
 3. **Procesador de cola** que, al recuperar conexión, aplica los cambios pendientes contra la API real en orden, y expone su estado a la UI (H4/H5).
 
 Librerías nuevas propuestas (ninguna toca `constitution.md §3`, que fija framework/BD/ORM/auth/testing, no cada dependencia puntual):
@@ -36,7 +36,7 @@ No se expone el origen del `id` (si lo puso el cliente o el servidor) en la resp
 Una base de datos por navegador, `economia-offline`, con estos object stores:
 
 - **`transactions`** — key path `id`. Espejo de `Transaction` (`frontend/src/api/transactions.ts`), más dos campos locales: `pending: boolean` (tiene algún cambio en la cola sin confirmar) y `pendingAction: 'CREATE' | 'UPDATE' | 'DELETE' | null`.
-- **`categories`** — key path `id`. Espejo de `Category` (necesarias para el desplegable del formulario de movimiento y para pintar Categorías/Dashboard offline).
+- **`categories`** — key path `id`. Espejo de `Category` (necesarias para el desplegable del formulario de movimiento y para pintar Categorías/Movimientos/Resumen offline).
 - **`syncQueue`** — key path `queueId` (autoincremental, para que el orden de inserción sea el de procesamiento, H4 criterio 3). Cada entrada:
   ```
   {
