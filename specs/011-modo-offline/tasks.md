@@ -84,8 +84,10 @@
 
 ## Grupo 8 — Service Worker / PWA (`plan.md` §1)
 
-- [ ] **T8.1** — Configurar `vite-plugin-pwa` en `vite.config.ts`: manifest mínimo (nombre, iconos existentes, colores del tema de spec 010), `registerType: 'autoUpdate'`, sin runtime caching de la API (solo shell de la app).
-  *Verificación:* `npm run build` genera `sw.js` y el manifest; comprobación manual (no automatizable con Vitest/jsdom) de que la app carga con la red desactivada tras servir un build de producción — documentada aquí igual que la limitación de T5.4, no como test automático.
+- [x] **T8.1** — Configurar `vite-plugin-pwa` en `vite.config.ts`: manifest mínimo (nombre "Mi Economía", icono existente `favicon.svg`, `background_color`/`theme_color` de los tokens de spec 010 — papel `#f3f2f2`/acento cian `#0088b0`), `registerType: 'autoUpdate'`, sin runtime caching de la API (solo shell de la app — el plugin no configura ningún `runtimeCaching`, esa parte la resuelve `offline/db.ts`, no el Service Worker).
+  *Verificación:* `npm run build` genera `sw.js`, `workbox-*.js`, `manifest.webmanifest` y `registerSW.js` inyectado en `index.html` (precache de 6 entradas, ~735 KiB). Comprobación manual con la red desactivada (limitación ya documentada en T5.4: no automatizable con Vitest/jsdom) intentada sirviendo el build con `vite preview` y el navegador de la sesión — bloqueada por un permiso de navegación pendiente en este entorno, no verificada de forma interactiva; la generación correcta del Service Worker por parte de `vite-plugin-pwa` en el build (arriba) es la evidencia disponible en su lugar. Lint y suite completa del frontend en verde (252/252 sin paralelismo) tras el cambio de configuración.
+
+  **Nota:** se añadió `.claude/launch.json` (nuevo) con una configuración `frontend-preview` (`vite preview`) para poder servir el build de producción y probarlo en el navegador — utilidad de desarrollo, no parte del código de producción de la spec.
 
 ## Grupo 9 — Cierre de la spec
 
