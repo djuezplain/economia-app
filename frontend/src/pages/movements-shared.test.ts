@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { categoryName, emptyForm, PAYMENT_METHOD_LABELS, todayIso } from './movements-shared';
+import { categoryIcon, categoryName, emptyForm, PAYMENT_METHOD_LABELS, todayIso } from './movements-shared';
 import type { Category } from '../api/categories';
 
 const CATEGORY: Category = {
@@ -9,6 +9,7 @@ const CATEGORY: Category = {
   name: 'Ocio',
   parentId: null,
   isDefault: false,
+  icon: '🎉',
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
@@ -45,6 +46,15 @@ describe('movements-shared', () => {
   it('categoryName devuelve el propio id si la categoría no está en la lista (todavía cargando, o desconocida)', () => {
     expect(categoryName([CATEGORY], 'cat-ajena')).toBe('cat-ajena');
     expect(categoryName(null, 'cat-1')).toBe('cat-1');
+  });
+
+  it('categoryIcon devuelve el icono si la categoría está en la lista', () => {
+    expect(categoryIcon([CATEGORY], 'cat-1')).toBe('🎉');
+  });
+
+  it('categoryIcon cae a un icono genérico si la categoría no está en la lista (todavía cargando, o desconocida)', () => {
+    expect(categoryIcon([CATEGORY], 'cat-ajena')).toBe('🏷️');
+    expect(categoryIcon(null, 'cat-1')).toBe('🏷️');
   });
 
   it('PAYMENT_METHOD_LABELS cubre los 4 tipos de pago', () => {
