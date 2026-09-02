@@ -100,7 +100,17 @@ docker compose ps                        # los 3 servicios en estado "running"/"
 curl http://localhost:3000/health         # {"status":"ok","db":"ok",...}
 ```
 
-Y abre `http://<ip-o-hostname-de-la-pi>` desde el navegador de otro dispositivo de tu red — deberías ver la pantalla de login. Regístrate, y saca el enlace de verificación de `docker compose logs backend` (ver §0).
+Y abre `http://<ip-o-hostname-de-la-pi>` desde el navegador de otro dispositivo de tu red — deberías ver la pantalla de login. Regístrate, y saca el enlace de verificación de `docker compose logs backend` (ver §0):
+
+```bash
+# Log completo del email (destinatario, asunto y el texto con el enlace):
+docker compose logs backend | grep -A5 "DEV EMAIL"
+
+# O directamente la URL, sin buscar a mano:
+docker compose logs backend | grep -o 'http://[^ ]*verify-email[^ ]*' | tail -1
+```
+
+Copia esa URL en el navegador (o ábrela desde el móvil si está en la misma red) para confirmar la cuenta. El mismo truco sirve para el email de "olvidé mi contraseña" (busca `reset-password` en vez de `verify-email`).
 
 ## 5. Automatizar la actualización al hacer `git push`
 
