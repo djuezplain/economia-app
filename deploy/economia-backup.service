@@ -5,6 +5,8 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-# Ajusta esta ruta a donde hayas clonado el repo en la Pi (ver deploy/README.md).
+# Ajusta usuario y ruta a los tuyos (ver deploy/README.md) — tu usuario ya
+# está en el grupo `docker` (paso 2 de la guía), no hace falta root.
+User=pi
 WorkingDirectory=/home/pi/economia-app
 ExecStart=/home/pi/economia-app/deploy/backup.sh

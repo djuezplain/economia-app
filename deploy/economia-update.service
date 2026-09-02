@@ -5,6 +5,11 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-# Ajusta esta ruta a donde hayas clonado el repo en la Pi (ver deploy/README.md).
+# Ajusta usuario y ruta a los tuyos (ver deploy/README.md). Importante que
+# sea tu propio usuario, no root: si el repo pertenece a un usuario y el
+# servicio corre como otro, `git` se niega a operar ("posesión dudosa").
+# Además, tu usuario ya está en el grupo `docker` (paso 2 de la guía), así
+# que no hace falta root para `docker compose` tampoco.
+User=pi
 WorkingDirectory=/home/pi/economia-app
 ExecStart=/home/pi/economia-app/deploy/update.sh

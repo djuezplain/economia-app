@@ -120,7 +120,14 @@ Un temporizador de `systemd` en la propia Pi comprueba cada 10 minutos si hay co
 chmod +x deploy/update.sh deploy/backup.sh
 ```
 
-Los ficheros `deploy/economia-update.service`/`.timer` asumen que el repo está clonado en `/home/pi/economia-app` — si tu usuario o la ruta son distintos, edítalos antes de copiarlos (cambia `WorkingDirectory` y `ExecStart` en ambos `.service`).
+Los ficheros `deploy/economia-update.service`/`economia-backup.service` asumen usuario `pi` y el repo clonado en `/home/pi/economia-app` — si tu usuario o la ruta son distintos (por ejemplo si elegiste otro usuario al flashear la tarjeta), edítalos antes de copiarlos: cambia `User`, `WorkingDirectory` y `ExecStart` en los dos ficheros. Una forma rápida de hacerlo con tu usuario real:
+
+```bash
+sed -i "s#/home/pi/economia-app#$HOME/economia-app#g; s#^User=pi#User=$USER#" \
+  deploy/economia-update.service deploy/economia-backup.service
+```
+
+Importante que `User` sea tu propio usuario, no `root`: si el repo pertenece a un usuario y el servicio corre como otro, `git` se niega a operar con un error de "posesión dudosa" (`detected dubious ownership`).
 
 ```bash
 sudo cp deploy/economia-update.service deploy/economia-update.timer /etc/systemd/system/
