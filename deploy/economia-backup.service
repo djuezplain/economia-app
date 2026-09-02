@@ -1,0 +1,10 @@
+[Unit]
+Description=Copia de seguridad de la base de datos de economia-app
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Ajusta esta ruta a donde hayas clonado el repo en la Pi (ver deploy/README.md).
+WorkingDirectory=/home/pi/economia-app
+ExecStart=/home/pi/economia-app/deploy/backup.sh

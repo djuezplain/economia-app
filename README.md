@@ -48,6 +48,10 @@ npm run dev                 # http://localhost:5173
 npm run test
 ```
 
+## Despliegue en Raspberry Pi
+
+Guía paso a paso (Docker Compose, arranque automático, actualización automática al hacer `git push` y copias de seguridad diarias) en [`deploy/README.md`](deploy/README.md).
+
 ## Estado actual
 
 - [x] Documento de requisitos completo de la app

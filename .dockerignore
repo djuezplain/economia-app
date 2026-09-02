@@ -1,0 +1,20 @@
+# Contexto de build de backend/Dockerfile y frontend/Dockerfile
+# (docker-compose.yml usa `context: .`, la raíz del monorepo).
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+backend/dist/
+frontend/dist/
+**/*.tsbuildinfo
+
+.git/
+.github/
+
+.env
+.env.*
+!.env.example
+
+backups/
+specs/
+docs/
+*.md

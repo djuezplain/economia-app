@@ -1,0 +1,16 @@
+:80 {
+	root * /srv
+	encode gzip
+
+	# El Service Worker (spec 011, modo offline) necesita que su propio
+	# fichero nunca se sirva desde una caché HTTP intermedia — Caddy ya
+	# manda `Cache-Control` correcto para el resto de estáticos con
+	# hash en el nombre, pero sw.js/registerSW.js no lo llevan.
+	@sw path /sw.js /registerSW.js
+	header @sw Cache-Control "no-cache"
+
+	# Enrutado de cliente (React Router, spec 005): cualquier ruta que no
+	# sea un fichero real cae a index.html.
+	try_files {path} /index.html
+	file_server
+}
