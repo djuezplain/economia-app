@@ -129,10 +129,12 @@ export function ImportPage() {
           <h2>2. Vista previa</h2>
           <ul>
             <li>
-              Ingresos: {preview.income.validCount} válidos, {preview.income.invalid.length} con problemas.
+              Ingresos: {preview.income.validCount} válidos ({preview.income.validCount - preview.income.duplicates.length}{' '}
+              nuevos, {preview.income.duplicates.length} ya registrados), {preview.income.invalid.length} con problemas.
             </li>
             <li>
-              Gastos: {preview.expense.validCount} válidos, {preview.expense.invalid.length} con problemas.
+              Gastos: {preview.expense.validCount} válidos ({preview.expense.validCount - preview.expense.duplicates.length}{' '}
+              nuevos, {preview.expense.duplicates.length} ya registrados), {preview.expense.invalid.length} con problemas.
             </li>
           </ul>
 
@@ -146,6 +148,13 @@ export function ImportPage() {
               </ul>
             </div>
           )}
+
+          {/* Spec 012 (detección de duplicados): estas filas ya no se
+              importan al confirmar — se muestran para que Diego pueda
+              revisarlas antes, con el mismo componente de tabla que las
+              filas con problemas. */}
+          <InvalidRowsTable title="Ingresos ya registrados" rows={preview.income.duplicates} />
+          <InvalidRowsTable title="Gastos ya registrados" rows={preview.expense.duplicates} />
 
           <InvalidRowsTable title="Ingresos con problemas" rows={preview.income.invalid} />
           <InvalidRowsTable title="Gastos con problemas" rows={preview.expense.invalid} />
@@ -166,10 +175,12 @@ export function ImportPage() {
           <h2>Importación completada</h2>
           <ul>
             <li>
-              Ingresos importados: {confirmResult.income.importedCount} (descartados: {confirmResult.income.invalid.length})
+              Ingresos importados: {confirmResult.income.importedCount} (descartados: {confirmResult.income.invalid.length},
+              ya registrados: {confirmResult.income.skippedDuplicateCount})
             </li>
             <li>
-              Gastos importados: {confirmResult.expense.importedCount} (descartados: {confirmResult.expense.invalid.length})
+              Gastos importados: {confirmResult.expense.importedCount} (descartados: {confirmResult.expense.invalid.length},
+              ya registrados: {confirmResult.expense.skippedDuplicateCount})
             </li>
           </ul>
 

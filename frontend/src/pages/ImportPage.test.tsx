@@ -12,21 +12,45 @@ import { ApiError } from '../api/client';
 import { resetForTests } from '../offline/connectivity';
 
 const PREVIEW_RESULT: ImportPreviewResult = {
-  income: { validCount: 2, invalid: [{ rowNumber: 50, reason: 'Fila 50: faltan categoría, concepto y importe.' }] },
-  expense: { validCount: 1, invalid: [] },
+  income: {
+    validCount: 2,
+    invalid: [{ rowNumber: 50, reason: 'Fila 50: faltan categoría, concepto y importe.' }],
+    duplicates: [],
+  },
+  expense: { validCount: 1, invalid: [], duplicates: [] },
   newCategories: ['Bancos', 'Peluqueria'],
 };
 
 const PREVIEW_RESULT_SIN_PROBLEMAS: ImportPreviewResult = {
-  income: { validCount: 3, invalid: [] },
-  expense: { validCount: 5, invalid: [] },
+  income: { validCount: 3, invalid: [], duplicates: [] },
+  expense: { validCount: 5, invalid: [], duplicates: [] },
+  newCategories: [],
+};
+
+const PREVIEW_RESULT_CON_DUPLICADOS: ImportPreviewResult = {
+  income: {
+    validCount: 3,
+    invalid: [],
+    duplicates: [{ rowNumber: 4, reason: 'Fila 4: ya existe un movimiento igual en tu histórico.' }],
+  },
+  expense: { validCount: 2, invalid: [], duplicates: [] },
   newCategories: [],
 };
 
 const CONFIRM_RESULT: ImportConfirmResult = {
-  income: { importedCount: 2, invalid: [{ rowNumber: 50, reason: 'Fila 50: faltan categoría, concepto y importe.' }] },
-  expense: { importedCount: 1, invalid: [] },
+  income: {
+    importedCount: 2,
+    invalid: [{ rowNumber: 50, reason: 'Fila 50: faltan categoría, concepto y importe.' }],
+    skippedDuplicateCount: 0,
+  },
+  expense: { importedCount: 1, invalid: [], skippedDuplicateCount: 0 },
   categoriesCreated: ['Bancos', 'Peluqueria'],
+};
+
+const CONFIRM_RESULT_CON_DUPLICADOS: ImportConfirmResult = {
+  income: { importedCount: 2, invalid: [], skippedDuplicateCount: 1 },
+  expense: { importedCount: 2, invalid: [], skippedDuplicateCount: 0 },
+  categoriesCreated: [],
 };
 
 function buildXlsxFile(name = 'movimientos.xlsx'): File {
@@ -91,8 +115,8 @@ describe('ImportPage', () => {
     await userEvent.upload(input, file);
     await userEvent.click(screen.getByRole('button', { name: 'Validar' }));
 
-    expect(await screen.findByText('Ingresos: 2 válidos, 1 con problemas.')).toBeInTheDocument();
-    expect(screen.getByText('Gastos: 1 válidos, 0 con problemas.')).toBeInTheDocument();
+    expect(await screen.findByText('Ingresos: 2 válidos (2 nuevos, 0 ya registrados), 1 con problemas.')).toBeInTheDocument();
+    expect(screen.getByText('Gastos: 1 válidos (1 nuevos, 0 ya registrados), 0 con problemas.')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Categorías nuevas que se crearían' })).toBeInTheDocument();
     expect(screen.getByText('Bancos')).toBeInTheDocument();
     expect(screen.getByText('Peluqueria')).toBeInTheDocument();
@@ -114,7 +138,7 @@ describe('ImportPage', () => {
     await userEvent.upload(await screen.findByLabelText('Fichero .xlsx'), buildXlsxFile());
     await userEvent.click(screen.getByRole('button', { name: 'Validar' }));
 
-    expect(await screen.findByText('Ingresos: 3 válidos, 0 con problemas.')).toBeInTheDocument();
+    expect(await screen.findByText('Ingresos: 3 válidos (3 nuevos, 0 ya registrados), 0 con problemas.')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Categorías nuevas que se crearían' })).not.toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
@@ -147,8 +171,8 @@ describe('ImportPage', () => {
 
     expect(confirmSpy).toHaveBeenCalledWith(file); // mismo fichero, no se ha vuelto a pedir
     expect(await screen.findByRole('heading', { name: 'Importación completada' })).toBeInTheDocument();
-    expect(screen.getByText(/Ingresos importados: 2 \(descartados: 1\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Gastos importados: 1 \(descartados: 0\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Ingresos importados: 2 \(descartados: 1, ya registrados: 0\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Gastos importados: 1 \(descartados: 0, ya registrados: 0\)/)).toBeInTheDocument();
     expect(screen.getByText(/Categorías nuevas creadas: Bancos, Peluqueria\./)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ver movimientos' })).toHaveAttribute('href', '/movements');
     expect(screen.getByRole('link', { name: 'Ver dashboard' })).toHaveAttribute('href', '/dashboard');
@@ -185,6 +209,39 @@ describe('ImportPage', () => {
 
     expect(screen.queryByRole('heading', { name: 'Confirmar' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Validar' })).not.toBeDisabled();
+  });
+
+  it('con filas ya registradas, la vista previa las muestra aparte y no cuenta como error (spec 012)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(importApi, 'previewImport').mockResolvedValue(PREVIEW_RESULT_CON_DUPLICADOS);
+
+    renderPage();
+    await userEvent.upload(await screen.findByLabelText('Fichero .xlsx'), buildXlsxFile());
+    await userEvent.click(screen.getByRole('button', { name: 'Validar' }));
+
+    expect(await screen.findByText('Ingresos: 3 válidos (2 nuevos, 1 ya registrados), 0 con problemas.')).toBeInTheDocument();
+
+    const table = screen.getByRole('table', { name: 'Ingresos ya registrados' });
+    const row = within(table).getAllByRole('row')[1];
+    expect(within(row).getByText('4')).toBeInTheDocument();
+    expect(within(row).getByText(/ya existe un movimiento igual/)).toBeInTheDocument();
+
+    // Sin duplicados de gasto, esa tabla no se muestra.
+    expect(screen.queryByRole('table', { name: 'Gastos ya registrados' })).not.toBeInTheDocument();
+  });
+
+  it('el resultado de confirmar indica cuántas filas se saltaron por ya existir (spec 012)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(importApi, 'previewImport').mockResolvedValue(PREVIEW_RESULT_CON_DUPLICADOS);
+    vi.spyOn(importApi, 'confirmImport').mockResolvedValue(CONFIRM_RESULT_CON_DUPLICADOS);
+
+    renderPage();
+    await userEvent.upload(await screen.findByLabelText('Fichero .xlsx'), buildXlsxFile());
+    await userEvent.click(screen.getByRole('button', { name: 'Validar' }));
+    await screen.findByRole('heading', { name: 'Confirmar' });
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar importación' }));
+
+    expect(await screen.findByText(/Ingresos importados: 2 \(descartados: 0, ya registrados: 1\)/)).toBeInTheDocument();
   });
 
   it('sin conexión (H6, spec 011), avisa de que la página requiere conexión', async () => {

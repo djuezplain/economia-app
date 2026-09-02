@@ -10,6 +10,8 @@ export interface InvalidImportRow {
 export interface ImportSideSummary {
   validCount: number;
   invalid: InvalidImportRow[];
+  /** Spec 012 (detección de duplicados): subconjunto de las válidas que ya existen como movimiento — `validCount` no cambia de significado. */
+  duplicates: InvalidImportRow[];
 }
 
 export interface ImportPreviewResult {
@@ -20,8 +22,8 @@ export interface ImportPreviewResult {
 }
 
 export interface ImportConfirmResult {
-  income: { importedCount: number; invalid: InvalidImportRow[] };
-  expense: { importedCount: number; invalid: InvalidImportRow[] };
+  income: { importedCount: number; invalid: InvalidImportRow[]; skippedDuplicateCount: number };
+  expense: { importedCount: number; invalid: InvalidImportRow[]; skippedDuplicateCount: number };
   categoriesCreated: string[];
 }
 
