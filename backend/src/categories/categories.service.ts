@@ -4,6 +4,7 @@ import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { categories } from '../db/schema/index.js';
 import { isForeignKeyViolation } from '../common/db-errors.util.js';
+import { inferCategoryIcon, resolveCategoryIcon } from './category-icons.js';
 import type { CreateCategoryDto } from './dto/create-category.dto.js';
 import type { UpdateCategoryDto } from './dto/update-category.dto.js';
 
@@ -52,7 +53,11 @@ export class CategoriesService {
 
   async list(userId: string, type?: MovementType): Promise<Category[]> {
     const conditions = type ? and(eq(categories.userId, userId), eq(categories.type, type)) : eq(categories.userId, userId);
-    return this.db.query.categories.findMany({ where: conditions, orderBy: [asc(categories.name)] });
+    const found = await this.db.query.categories.findMany({ where: conditions, orderBy: [asc(categories.name)] });
+    // Sin persistir nada: cubre categorías creadas antes de esta
+    // funcionalidad (icon = null en la fila real) sin necesitar una
+    // migración de datos — ver comentario de la columna en el esquema.
+    return found.map((category) => ({ ...category, icon: resolveCategoryIcon(category) }));
   }
 
   /**
@@ -80,21 +85,31 @@ export class CategoriesService {
       }
     }
 
+    // Icono elegido por el usuario, o inferido del nombre — "crear
+    // automáticamente" (petición de Diego) se persiste ya en la creación,
+    // no solo como fallback de lectura (a diferencia de las categorías
+    // anteriores a esta funcionalidad, que solo lo reciben vía `list()`).
+    const icon = dto.icon?.trim() || inferCategoryIcon(dto.name, dto.type);
     const [category] = await this.db
       .insert(categories)
-      .values({ userId, type: dto.type, name: dto.name, parentId: dto.parentId ?? null })
+      .values({ userId, type: dto.type, name: dto.name, parentId: dto.parentId ?? null, icon })
       .returning();
     return category;
   }
 
   async update(userId: string, id: string, dto: UpdateCategoryDto): Promise<Category> {
     await this.findOwnOrThrow(userId, id);
+    // `dto.icon === undefined` → no se tocó el selector, se deja el icono
+    // como estaba. Cadena vacía ("Automático" en el selector) → se guarda
+    // `null` explícitamente, para que vuelva a inferirse del nombre en
+    // cada lectura en vez de quedarse fijo en lo que fuera el nombre hoy.
+    const icon = dto.icon === undefined ? undefined : dto.icon.trim() || null;
     const [updated] = await this.db
       .update(categories)
-      .set({ name: dto.name })
+      .set({ name: dto.name, ...(icon !== undefined && { icon }) })
       .where(eq(categories.id, id))
       .returning();
-    return updated;
+    return { ...updated, icon: resolveCategoryIcon(updated) };
   }
 
   /**
@@ -127,8 +142,20 @@ export class CategoriesService {
    */
   async seedDefaults(userId: string): Promise<void> {
     await this.db.insert(categories).values([
-      ...DEFAULT_INCOME_CATEGORIES.map((name) => ({ userId, type: 'INCOME' as const, name, isDefault: true })),
-      ...DEFAULT_EXPENSE_CATEGORIES.map((name) => ({ userId, type: 'EXPENSE' as const, name, isDefault: true })),
+      ...DEFAULT_INCOME_CATEGORIES.map((name) => ({
+        userId,
+        type: 'INCOME' as const,
+        name,
+        isDefault: true,
+        icon: inferCategoryIcon(name, 'INCOME'),
+      })),
+      ...DEFAULT_EXPENSE_CATEGORIES.map((name) => ({
+        userId,
+        type: 'EXPENSE' as const,
+        name,
+        isDefault: true,
+        icon: inferCategoryIcon(name, 'EXPENSE'),
+      })),
     ]);
   }
 

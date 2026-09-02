@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
-import { createCategory, deleteCategory, listCategories, renameCategory } from '../api/categories';
+import { createCategory, deleteCategory, listCategories, updateCategory } from '../api/categories';
 import type { Category, MovementType } from '../api/categories';
 import { listTransactions } from '../api/transactions';
 import { ApiError } from '../api/client';
@@ -11,6 +11,18 @@ import { getAllCachedCategories, getAllCachedTransactions, getMeta } from '../of
 import { buildOfflineListResult } from '../offline/queries';
 import { LAST_FULL_SYNC_AT_KEY } from '../offline/sync';
 import { formatCurrency, lastDayOfMonth } from './home-shared';
+import { CATEGORY_ICON_OPTIONS } from './category-icons';
+
+// Valor del <select> para "que el backend lo infiera del nombre" — nunca un
+// icono real (todos los de `CATEGORY_ICON_OPTIONS` son un único emoji).
+const AUTO_ICON = '';
+// Respaldo solo para el caso, no esperado contra el backend real (que
+// siempre manda un icono resuelto), de un fixture de test o una respuesta
+// antigua sin el campo — evita mostrar "undefined" en la tarjeta.
+const FALLBACK_ICON = '🏷️';
+function categoryIcon(category: Category): string {
+  return category.icon || FALLBACK_ICON;
+}
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
@@ -43,12 +55,14 @@ export function CategoriesPage() {
   const [newType, setNewType] = useState<MovementType>('EXPENSE');
   const [newName, setNewName] = useState('');
   const [newParentId, setNewParentId] = useState('');
+  const [newIcon, setNewIcon] = useState(AUTO_ICON);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Renombrar (solo una categoría a la vez).
+  // Editar (nombre e icono, una categoría a la vez).
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [editingIcon, setEditingIcon] = useState(AUTO_ICON);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
 
@@ -133,9 +147,11 @@ export function CategoriesPage() {
         type: newType,
         name: newName,
         parentId: newType === 'EXPENSE' && newParentId ? newParentId : undefined,
+        icon: newIcon || undefined,
       });
       setNewName('');
       setNewParentId('');
+      setNewIcon(AUTO_ICON);
       await reload();
     } catch (err) {
       setCreateError(err instanceof ApiError ? err.message : 'No se ha podido crear la categoría.');
@@ -148,6 +164,10 @@ export function CategoriesPage() {
     setRenameError(null);
     setEditingId(category.id);
     setEditingName(category.name);
+    // `category.icon` ya viene resuelto por el backend (nunca vacío) — se
+    // preselecciona tal cual, no como "Automático", para que guardar sin
+    // tocar el selector conserve el mismo icono que ya se veía.
+    setEditingIcon(categoryIcon(category));
   }
 
   async function handleRename(event: FormEvent<HTMLFormElement>) {
@@ -156,7 +176,7 @@ export function CategoriesPage() {
     setRenameError(null);
     setIsRenaming(true);
     try {
-      await renameCategory(editingId, editingName);
+      await updateCategory(editingId, { name: editingName, icon: editingIcon });
       setEditingId(null);
       await reload();
     } catch (err) {
@@ -224,22 +244,46 @@ export function CategoriesPage() {
     return (
       <li className="card elev-sm" key={category.id}>
         <div>
-          <span className={`dot${category.type === 'INCOME' ? ' dot-accent' : ''}`} aria-hidden="true" />{' '}
+          <span className={`category-icon${category.type === 'INCOME' ? ' category-icon-accent' : ''}`} aria-hidden="true">
+            {categoryIcon(category)}
+          </span>{' '}
           <span className="card-title">{category.name}</span>
           {category.isDefault && <span className="card-body"> (por defecto)</span>}
         </div>
 
         {isEditing ? (
           <form onSubmit={handleRename}>
-            <label htmlFor={`rename-${category.id}`}>Nuevo nombre</label>
-            <input
-              id={`rename-${category.id}`}
-              type="text"
-              className="input"
-              required
-              value={editingName}
-              onChange={(e) => setEditingName(e.target.value)}
-            />
+            <div className="field">
+              <label htmlFor={`rename-${category.id}`}>Nuevo nombre</label>
+              <input
+                id={`rename-${category.id}`}
+                type="text"
+                className="input"
+                required
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              {/* "Nuevo icono" (no "Icono"), mismo motivo que "Nuevo nombre"
+                  arriba: el formulario de creación, siempre visible, ya
+                  tiene su propio campo "Icono" — un nombre distinto evita
+                  dos controles con el mismo nombre accesible a la vez. */}
+              <label htmlFor={`rename-icon-${category.id}`}>Nuevo icono</label>
+              <select
+                id={`rename-icon-${category.id}`}
+                className="input"
+                value={editingIcon}
+                onChange={(e) => setEditingIcon(e.target.value)}
+              >
+                <option value={AUTO_ICON}>Automático (según el nombre)</option>
+                {CATEGORY_ICON_OPTIONS.map(({ icon, label }) => (
+                  <option key={icon} value={icon}>
+                    {icon} {label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button type="submit" className="btn btn-primary" disabled={isRenaming}>
               {isRenaming ? 'Guardando…' : 'Guardar'}
             </button>{' '}
@@ -358,6 +402,18 @@ export function CategoriesPage() {
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                 />
+              </div>
+
+              <div className="field">
+                <label htmlFor="newIcon">Icono</label>
+                <select id="newIcon" className="input" value={newIcon} onChange={(e) => setNewIcon(e.target.value)}>
+                  <option value={AUTO_ICON}>Automático (según el nombre)</option>
+                  {CATEGORY_ICON_OPTIONS.map(({ icon, label }) => (
+                    <option key={icon} value={icon}>
+                      {icon} {label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {newType === 'EXPENSE' && (

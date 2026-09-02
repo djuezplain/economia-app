@@ -335,6 +335,25 @@ p {
   background: var(--accent);
 }
 
+/* Insignia circular con el emoji de una categoría (CategoriesPage) — mismo
+   criterio de excepción a "sin className" que `.dot`: se repite una vez por
+   tarjeta de categoría. `.category-icon-accent` distingue ingresos de
+   gastos (mismo criterio de color que `.dot-accent`), sin depender del
+   propio emoji para transmitirlo. */
+.category-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 16px;
+  background: var(--neutral-100);
+}
+.category-icon-accent {
+  background: var(--accent-100);
+}
+
 #app-content {
   flex: 1;
   min-width: 0;

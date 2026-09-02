@@ -43,6 +43,13 @@
       "when": 1787922462346,
       "tag": "0005_youthful_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788379421241,
+      "tag": "0006_add_category_icon",
+      "breakpoints": true
     }
   ]
 }
