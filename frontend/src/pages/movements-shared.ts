@@ -34,3 +34,15 @@ export function emptyForm() {
 export function categoryName(categories: Category[] | null, id: string): string {
   return categories?.find((c) => c.id === id)?.name ?? id;
 }
+
+// Respaldo mientras las categorías no han cargado, o si el id no está en la
+// lista (mismo caso límite que `categoryName`, pero un icono no puede
+// "mostrar el propio id" — usa un genérico en su lugar). Mismo valor que
+// `CategoriesPage.tsx` (`FALLBACK_ICON`), sin importarlo de ahí para no
+// crear una dependencia entre páginas por una constante de un carácter.
+const FALLBACK_ICON = '🏷️';
+
+/** Resuelve un id de categoría a su icono (ver `categoryName`). */
+export function categoryIcon(categories: Category[] | null, id: string): string {
+  return categories?.find((c) => c.id === id)?.icon || FALLBACK_ICON;
+}

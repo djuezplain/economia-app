@@ -10,7 +10,7 @@ import { getAllCachedTransactions, getMeta } from '../offline/db';
 import type { CachedTransaction } from '../offline/db';
 import { buildOfflineListResult } from '../offline/queries';
 import { LAST_FULL_SYNC_AT_KEY } from '../offline/sync';
-import { categoryName, PAYMENT_METHOD_LABELS } from './movements-shared';
+import { categoryIcon, categoryName, PAYMENT_METHOD_LABELS } from './movements-shared';
 import { formatCurrency } from './home-shared';
 
 /**
@@ -242,7 +242,9 @@ export function MovementsListPage() {
             {result.items.map((t) => (
               <li className="card card-row" key={t.id}>
                 <div>
-                  <span className={`dot${type === 'INCOME' ? ' dot-accent' : ''}`} aria-hidden="true" />{' '}
+                  <span className={`category-icon${type === 'INCOME' ? ' category-icon-accent' : ''}`} aria-hidden="true">
+                    {categoryIcon(categories, t.categoryId)}
+                  </span>{' '}
                   <strong>{t.concept}</strong> <span className="tag tag-neutral">{categoryName(categories, t.categoryId)}</span>
                   {t.subcategoryId && (
                     <span className="tag tag-neutral">{categoryName(categories, t.subcategoryId)}</span>

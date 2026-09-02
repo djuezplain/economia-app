@@ -21,6 +21,7 @@ const INCOME_CATEGORY: Category = {
   name: 'Nómina',
   parentId: null,
   isDefault: true,
+  icon: '💼',
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
@@ -31,6 +32,7 @@ const EXPENSE_PARENT: Category = {
   name: 'Transporte',
   parentId: null,
   isDefault: true,
+  icon: '🚌',
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
@@ -167,6 +169,17 @@ describe('MovementsListPage', () => {
     expect(screen.getByText(/Repsol/)).toBeInTheDocument();
     expect(screen.getByText(/Tarjeta/, { selector: 'span' })).toBeInTheDocument();
     expect(screen.queryByText(/Total:/)).not.toBeInTheDocument();
+  });
+
+  it('muestra el icono de la categoría de cada movimiento', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+    vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(EXPENSE_RESULT);
+
+    renderPage();
+
+    await screen.findByText('Depósito gasolina');
+    expect(screen.getByText('🚌')).toBeInTheDocument();
   });
 
   it('no muestra el resumen ni el formulario de registro a la vez (H1 criterio 2)', async () => {
