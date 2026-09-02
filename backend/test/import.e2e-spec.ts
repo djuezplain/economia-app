@@ -163,14 +163,64 @@ describe('Importación de Excel (e2e) — spec 003 H1/H2', () => {
 
       expect(res.body.income.validCount).toBe(2);
       expect(res.body.income.invalid).toHaveLength(1);
+      expect(res.body.income.duplicates).toHaveLength(0); // caso límite 5 (plan.md §6): sin histórico, ningún duplicado
       expect(res.body.expense.validCount).toBe(1);
       expect(res.body.expense.invalid).toHaveLength(0);
+      expect(res.body.expense.duplicates).toHaveLength(0);
       expect(res.body.newCategories.sort()).toEqual(['Bancos', 'Comida']);
 
       const allCategories = await db.query.categories.findMany({ where: eq(categories.userId, user.id) });
       const allTransactions = await db.query.transactions.findMany({ where: eq(transactions.userId, user.id) });
       expect(allCategories).toHaveLength(1); // solo la que ya existía
       expect(allTransactions).toHaveLength(0);
+    });
+
+    // Spec 012, H2: la vista previa señala cuántas de las válidas ya
+    // existen, sin cambiar el significado de `validCount` (caso límite 6).
+    it('señala en la vista previa las filas que ya existen, sin cambiar el significado de validCount', async () => {
+      const user = await createUser('preview-duplicados@example.com');
+      const token = await login(user.email);
+      const [category] = await db.insert(categories).values({ userId: user.id, type: 'INCOME', name: 'Otros' }).returning();
+      await db.insert(transactions).values({
+        userId: user.id,
+        type: 'INCOME',
+        date: '2026-06-01',
+        categoryId: category.id,
+        concept: 'Ya existente',
+        amount: '100.00',
+      });
+
+      const buffer = await buildWorkbookBuffer({
+        incomeRows: [
+          { fecha: new Date('2026-06-01'), tipo: 'Otros', concepto: 'Ya existente', valor: 100 }, // duplicado
+          { fecha: new Date('2026-06-02'), tipo: 'Otros', concepto: 'Nuevo de verdad', valor: 50 }, // no duplicado
+        ],
+      });
+
+      const res = await attach('/import/excel/preview', token, buffer).expect(201);
+
+      expect(res.body.income.validCount).toBe(2); // sigue contando las 2, duplicada o no (H2 criterio 2)
+      expect(res.body.income.duplicates).toHaveLength(1);
+      expect(res.body.income.duplicates[0].reason).toMatch(/ya existe un movimiento igual/);
+
+      // Nada se ha escrito de verdad: la vista previa no inserta.
+      const allTransactions = await db.query.transactions.findMany({ where: eq(transactions.userId, user.id) });
+      expect(allTransactions).toHaveLength(1); // solo la que ya existía de antes
+    });
+
+    it('una fila cuya categoría todavía no existe nunca se marca como duplicado (caso límite 3)', async () => {
+      const user = await createUser('categoria-nueva-nunca-duplicado@example.com');
+      const token = await login(user.email);
+
+      const buffer = await buildWorkbookBuffer({
+        incomeRows: [{ fecha: new Date('2026-06-03'), tipo: 'Categoría Totalmente Nueva', concepto: 'Algo', valor: 20 }],
+      });
+
+      const res = await attach('/import/excel/preview', token, buffer).expect(201);
+
+      expect(res.body.income.validCount).toBe(1);
+      expect(res.body.income.duplicates).toHaveLength(0);
+      expect(res.body.newCategories).toEqual(['Categoría Totalmente Nueva']);
     });
   });
 
@@ -209,7 +259,9 @@ describe('Importación de Excel (e2e) — spec 003 H1/H2', () => {
       const res = await attach('/import/excel/confirm', token, buffer).expect(201);
 
       expect(res.body.income.importedCount).toBe(2);
+      expect(res.body.income.skippedDuplicateCount).toBe(0); // caso límite 5 (plan.md §6): sin histórico previo
       expect(res.body.expense.importedCount).toBe(2);
+      expect(res.body.expense.skippedDuplicateCount).toBe(0);
       expect(res.body.categoriesCreated.sort()).toEqual(['Bancos', 'Peluqueria']);
 
       const allCategories = await db.query.categories.findMany({ where: eq(categories.userId, user.id) });
@@ -267,7 +319,12 @@ describe('Importación de Excel (e2e) — spec 003 H1/H2', () => {
       expect(allTransactions).toHaveLength(1);
     });
 
-    it('confirmar dos veces con el mismo fichero no duplica las categorías nuevas (sí duplica los movimientos)', async () => {
+    // Spec 012 (detección de duplicados): esta spec invierte a propósito lo
+    // que spec 003 dejaba documentado como comportamiento esperado — antes,
+    // confirmar dos veces duplicaba los movimientos (no las categorías);
+    // ahora tampoco duplica los movimientos. Caso límite 1 de plan.md §6
+    // (el caso real que motivó la spec: reimportar el mismo fichero).
+    it('confirmar dos veces con el mismo fichero no duplica ni las categorías nuevas ni los movimientos', async () => {
       const user = await createUser('doble-confirm@example.com');
       const token = await login(user.email);
 
@@ -277,16 +334,73 @@ describe('Importación de Excel (e2e) — spec 003 H1/H2', () => {
         ],
       });
 
-      await attach('/import/excel/confirm', token, buffer).expect(201);
-      await attach('/import/excel/confirm', token, buffer).expect(201);
+      const first = await attach('/import/excel/confirm', token, buffer).expect(201);
+      expect(first.body.expense.importedCount).toBe(1);
+      expect(first.body.expense.skippedDuplicateCount).toBe(0);
+
+      const second = await attach('/import/excel/confirm', token, buffer).expect(201);
+      expect(second.body.expense.importedCount).toBe(0);
+      expect(second.body.expense.skippedDuplicateCount).toBe(1);
 
       const allCategories = await db.query.categories.findMany({
         where: and(eq(categories.userId, user.id), eq(categories.name, 'Bancos')),
       });
-      expect(allCategories).toHaveLength(1); // no duplicada
+      expect(allCategories).toHaveLength(1); // no duplicada (sin cambios respecto a spec 003)
 
       const allTransactions = await db.query.transactions.findMany({ where: eq(transactions.userId, user.id) });
-      expect(allTransactions).toHaveLength(2); // comportamiento esperado y documentado (spec.md §3)
+      expect(allTransactions).toHaveLength(1); // spec 012: ya no se duplica
+    });
+
+    it('una fila con los mismos datos pero otra categoría no se detecta como duplicado (H1 criterio 1: coincidencia exacta)', async () => {
+      const user = await createUser('duplicado-otra-categoria@example.com');
+      const token = await login(user.email);
+      await db.insert(categories).values([
+        { userId: user.id, type: 'EXPENSE', name: 'Comida' },
+        { userId: user.id, type: 'EXPENSE', name: 'Ocio' },
+      ]);
+      await db.insert(transactions).values({
+        userId: user.id,
+        type: 'EXPENSE',
+        date: '2026-04-01',
+        categoryId: (await db.query.categories.findFirst({ where: and(eq(categories.userId, user.id), eq(categories.name, 'Comida')) }))!.id,
+        concept: 'Cena',
+        amount: '20.00',
+        paymentMethod: 'CARD',
+      });
+
+      const buffer = await buildWorkbookBuffer({
+        expenseRows: [{ fecha: new Date('2026-04-01'), tipo: 'Tarjeta', subtipo: 'Ocio', concepto: 'Cena', valor: 20 }],
+      });
+
+      const res = await attach('/import/excel/confirm', token, buffer).expect(201);
+      expect(res.body.expense.importedCount).toBe(1); // categoría distinta → no es duplicado
+      expect(res.body.expense.skippedDuplicateCount).toBe(0);
+    });
+
+    it('un ingreso y un gasto con los mismos datos no se consideran duplicados entre sí (caso límite 4)', async () => {
+      const user = await createUser('ingreso-vs-gasto@example.com');
+      const token = await login(user.email);
+      // Categoría "Otros" existente para AMBOS tipos (no una categoría
+      // nueva) — así el gasto sí llega a compararse de verdad en vez de
+      // saltarse la comprobación por tener una categoría por crear.
+      const [incomeCategory] = await db.insert(categories).values({ userId: user.id, type: 'INCOME', name: 'Otros' }).returning();
+      await db.insert(categories).values({ userId: user.id, type: 'EXPENSE', name: 'Otros' });
+      await db.insert(transactions).values({
+        userId: user.id,
+        type: 'INCOME',
+        date: '2026-04-05',
+        categoryId: incomeCategory.id,
+        concept: 'Ajuste',
+        amount: '10.00',
+      });
+
+      const buffer = await buildWorkbookBuffer({
+        expenseRows: [{ fecha: new Date('2026-04-05'), tipo: 'Tarjeta', subtipo: 'Otros', concepto: 'Ajuste', valor: 10 }],
+      });
+
+      const res = await attach('/import/excel/confirm', token, buffer).expect(201);
+      expect(res.body.expense.importedCount).toBe(1);
+      expect(res.body.expense.skippedDuplicateCount).toBe(0);
     });
 
     it('todo lo creado pertenece al usuario autenticado (aislamiento)', async () => {

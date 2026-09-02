@@ -4,6 +4,7 @@ import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { categories, transactions } from '../db/schema/index.js';
 import type { Category } from '../categories/categories.service.js';
+import type { Transaction } from '../transactions/transactions.service.js';
 import {
   InvalidWorkbookError,
   normalizeCategoryName,
@@ -17,6 +18,8 @@ import type { InvalidRow, ParsedWorkbook, ValidatedExpenseRow, ValidatedIncomeRo
 export interface ImportSideSummary {
   validCount: number;
   invalid: InvalidRow[];
+  /** Spec 012 (detección de duplicados): subconjunto de las válidas que ya existen como movimiento — `validCount` no cambia de significado, sigue contando todas las válidas. */
+  duplicates: InvalidRow[];
 }
 
 export interface ImportPreviewResult {
@@ -27,8 +30,8 @@ export interface ImportPreviewResult {
 }
 
 export interface ImportConfirmResult {
-  income: { importedCount: number; invalid: InvalidRow[] };
-  expense: { importedCount: number; invalid: InvalidRow[] };
+  income: { importedCount: number; invalid: InvalidRow[]; skippedDuplicateCount: number };
+  expense: { importedCount: number; invalid: InvalidRow[]; skippedDuplicateCount: number };
   categoriesCreated: string[];
 }
 
@@ -41,6 +44,9 @@ interface ClassifiedRows {
   invalidExpense: InvalidRow[];
   /** clave `${type}:${categoryName normalizado}` → nombre tal cual del Excel, para las categorías que faltan. */
   missingCategories: Map<string, string>;
+  /** Spec 012, plan.md §3: subconjunto de `validIncome`/`validExpense` que ya existe como movimiento (mismo `InvalidRow` que las filas inválidas, con `reason` explicando el motivo). */
+  duplicateIncome: InvalidRow[];
+  duplicateExpense: InvalidRow[];
 }
 
 /**
@@ -65,11 +71,12 @@ export class ImportService {
   async preview(userId: string, buffer: Buffer): Promise<ImportPreviewResult> {
     const workbook = await this.parseOrThrow(buffer);
     const existingCategories = await this.db.query.categories.findMany({ where: eq(categories.userId, userId) });
-    const classified = this.classify(workbook, existingCategories);
+    const existingTransactions = await this.db.query.transactions.findMany({ where: eq(transactions.userId, userId) });
+    const classified = this.classify(workbook, existingCategories, existingTransactions);
 
     return {
-      income: { validCount: classified.validIncome.length, invalid: classified.invalidIncome },
-      expense: { validCount: classified.validExpense.length, invalid: classified.invalidExpense },
+      income: { validCount: classified.validIncome.length, invalid: classified.invalidIncome, duplicates: classified.duplicateIncome },
+      expense: { validCount: classified.validExpense.length, invalid: classified.invalidExpense, duplicates: classified.duplicateExpense },
       newCategories: Array.from(classified.missingCategories.values()),
     };
   }
@@ -79,7 +86,8 @@ export class ImportService {
 
     return this.db.transaction(async (tx) => {
       const existingCategories = await tx.query.categories.findMany({ where: eq(categories.userId, userId) });
-      const classified = this.classify(workbook, existingCategories);
+      const existingTransactions = await tx.query.transactions.findMany({ where: eq(transactions.userId, userId) });
+      const classified = this.classify(workbook, existingCategories, existingTransactions);
 
       // Índice `${type}:${categoryName normalizado}` → id de categoría,
       // arrancando con las que ya existen...
@@ -100,31 +108,48 @@ export class ImportService {
         categoryIdByKey.set(key, created.id);
       }
 
-      const incomeValues = classified.validIncome.map((row) => ({
-        userId,
-        type: 'INCOME' as const,
-        date: row.date,
-        categoryId: mustGetCategoryId(categoryIdByKey, 'INCOME', row.categoryName),
-        concept: row.concept,
-        amount: row.amount,
-      }));
-      const expenseValues = classified.validExpense.map((row) => ({
-        userId,
-        type: 'EXPENSE' as const,
-        date: row.date,
-        categoryId: mustGetCategoryId(categoryIdByKey, 'EXPENSE', row.categoryName),
-        concept: row.concept,
-        merchant: row.merchant,
-        amount: row.amount,
-        paymentMethod: row.paymentMethod,
-      }));
+      // Spec 012, plan.md §4: las filas detectadas como duplicado (mismo
+      // `rowNumber` que `classify` ya identificó) no se insertan.
+      const duplicateIncomeRowNumbers = new Set(classified.duplicateIncome.map((d) => d.rowNumber));
+      const duplicateExpenseRowNumbers = new Set(classified.duplicateExpense.map((d) => d.rowNumber));
+
+      const incomeValues = classified.validIncome
+        .filter((row) => !duplicateIncomeRowNumbers.has(row.rowNumber))
+        .map((row) => ({
+          userId,
+          type: 'INCOME' as const,
+          date: row.date,
+          categoryId: mustGetCategoryId(categoryIdByKey, 'INCOME', row.categoryName),
+          concept: row.concept,
+          amount: row.amount,
+        }));
+      const expenseValues = classified.validExpense
+        .filter((row) => !duplicateExpenseRowNumbers.has(row.rowNumber))
+        .map((row) => ({
+          userId,
+          type: 'EXPENSE' as const,
+          date: row.date,
+          categoryId: mustGetCategoryId(categoryIdByKey, 'EXPENSE', row.categoryName),
+          concept: row.concept,
+          merchant: row.merchant,
+          amount: row.amount,
+          paymentMethod: row.paymentMethod,
+        }));
 
       if (incomeValues.length > 0) await tx.insert(transactions).values(incomeValues);
       if (expenseValues.length > 0) await tx.insert(transactions).values(expenseValues);
 
       return {
-        income: { importedCount: incomeValues.length, invalid: classified.invalidIncome },
-        expense: { importedCount: expenseValues.length, invalid: classified.invalidExpense },
+        income: {
+          importedCount: incomeValues.length,
+          invalid: classified.invalidIncome,
+          skippedDuplicateCount: classified.duplicateIncome.length,
+        },
+        expense: {
+          importedCount: expenseValues.length,
+          invalid: classified.invalidExpense,
+          skippedDuplicateCount: classified.duplicateExpense.length,
+        },
         categoriesCreated: Array.from(classified.missingCategories.values()),
       };
     });
@@ -142,7 +167,11 @@ export class ImportService {
     }
   }
 
-  private classify(workbook: ParsedWorkbook, existingCategories: Category[]): ClassifiedRows {
+  private classify(
+    workbook: ParsedWorkbook,
+    existingCategories: Category[],
+    existingTransactions: Transaction[],
+  ): ClassifiedRows {
     const incomeCategoryMap = normalizedCategoryMap(existingCategories.filter((c) => c.type === 'INCOME'));
     const expenseCategoryMap = normalizedCategoryMap(existingCategories.filter((c) => c.type === 'EXPENSE'));
 
@@ -176,8 +205,59 @@ export class ImportService {
       }
     }
 
-    return { validIncome, invalidIncome, validExpense, invalidExpense, missingCategories };
+    // Spec 012, plan.md §3: coincidencia exacta contra todo el histórico
+    // del usuario — tipo + fecha + categoría ya resuelta + concepto +
+    // importe (+ comercio/forma de pago en gastos). El `categoryId` es el
+    // resuelto (mismo mapa de arriba), no el nombre de texto del Excel: así
+    // sigue detectando la reimportación aunque la categoría se haya
+    // renombrado desde entonces.
+    const existingKeys = new Set(existingTransactions.map((t) => transactionKey(t)));
+
+    const duplicateIncome: InvalidRow[] = [];
+    for (const row of validIncome) {
+      const categoryId = incomeCategoryMap.get(row.categoryName)?.id;
+      // Categoría nueva (todavía no existe) → ningún movimiento previo
+      // puede referenciarla, así que nunca es duplicado.
+      if (!categoryId) continue;
+      const key = transactionKey({ type: 'INCOME', date: row.date, categoryId, concept: row.concept, amount: row.amount, merchant: null, paymentMethod: null });
+      if (existingKeys.has(key)) {
+        duplicateIncome.push({ rowNumber: row.rowNumber, reason: `Fila ${row.rowNumber}: ya existe un movimiento igual en tu histórico.` });
+      }
+    }
+
+    const duplicateExpense: InvalidRow[] = [];
+    for (const row of validExpense) {
+      const categoryId = expenseCategoryMap.get(row.categoryName)?.id;
+      if (!categoryId) continue;
+      const key = transactionKey({
+        type: 'EXPENSE',
+        date: row.date,
+        categoryId,
+        concept: row.concept,
+        amount: row.amount,
+        merchant: row.merchant,
+        paymentMethod: row.paymentMethod,
+      });
+      if (existingKeys.has(key)) {
+        duplicateExpense.push({ rowNumber: row.rowNumber, reason: `Fila ${row.rowNumber}: ya existe un movimiento igual en tu histórico.` });
+      }
+    }
+
+    return { validIncome, invalidIncome, validExpense, invalidExpense, missingCategories, duplicateIncome, duplicateExpense };
   }
+}
+
+/** Spec 012, plan.md §3: clave de comparación exacta, misma forma para una fila validada (con `categoryId` ya resuelto) y para un movimiento ya guardado. */
+function transactionKey(fields: {
+  type: MovementType;
+  date: string;
+  categoryId: string;
+  concept: string;
+  amount: string;
+  merchant: string | null;
+  paymentMethod: string | null;
+}): string {
+  return [fields.type, fields.date, fields.categoryId, fields.concept, fields.amount, fields.merchant ?? '', fields.paymentMethod ?? ''].join('|');
 }
 
 function categoryKey(type: MovementType, normalizedCategoryName: string): string {
