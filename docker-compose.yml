@@ -35,8 +35,18 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?falta JWT_REFRESH_SECRET en .env}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-}
-      MAIL_FROM: ${MAIL_FROM:-no-reply@economia-app.local}
+      # `backend/src/config/env.validation.ts`: a diferencia de
+      # GOOGLE_CLIENT_ID/SECRET, este campo no admite cadena vacía (solo
+      # `.uri()`) — sin Google configurado da igual qué URL lleve (el
+      # guard de Google ya bloquea con 503 antes de usarla), pero tiene
+      # que ser sintácticamente válida. Mismo valor por defecto que el
+      # propio esquema de validación.
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3000/auth/google/callback}
+      # `.email()` de Joi valida el dominio contra una lista de TLD reales
+      # — un dominio `.local`/`.internal` lo rechaza aunque el formato sea
+      # correcto. `.dev` sí es un TLD real (mismo valor que
+      # backend/.env.example).
+      MAIL_FROM: ${MAIL_FROM:-no-reply@economia-app.dev}
       FRONTEND_URL: ${FRONTEND_URL:?falta FRONTEND_URL en .env}
       PORT: 3000
     ports:

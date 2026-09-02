@@ -83,7 +83,7 @@ Edita `.env` y rellena, como mínimo:
 - `FRONTEND_URL` — la IP o el `raspberrypi.local` de tu Pi, sin puerto (el frontend se sirve por el 80). Ejemplo: `http://192.168.1.50` o `http://raspberrypi.local`.
 - `VITE_API_BASE_URL` — lo mismo pero con el puerto del backend, `:3000`. Ejemplo: `http://192.168.1.50:3000`.
 
-Dejas vacíos `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_CALLBACK_URL` si no vas a usar login con Google (el backend responde 503 de forma controlada en ese caso, sin errores raros).
+Dejas vacíos `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` si no vas a usar login con Google (el backend responde 503 de forma controlada en ese caso, sin errores raros) — `GOOGLE_CALLBACK_URL` déjalo con el valor de ejemplo tal cual (el backend sí exige que tenga formato de URL válido, aunque no se use).
 
 ## 4. Primer arranque
 
