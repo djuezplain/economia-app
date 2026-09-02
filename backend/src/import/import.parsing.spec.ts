@@ -295,6 +295,7 @@ describe('import.parsing', () => {
       expect(result.valid).toBe(true);
       if (result.valid) {
         expect(result.row).toEqual({
+          rowNumber: 2,
           date: '2026-03-10',
           categoryName: 'nomina',
           rawCategoryName: 'Nomina',
@@ -302,6 +303,14 @@ describe('import.parsing', () => {
           amount: '1500.00',
         });
       }
+    });
+
+    // Spec 012 (detección de duplicados), plan.md §2: necesario para poder
+    // señalar la fila exacta de un duplicado en la vista previa.
+    it('conserva el número de fila original en una fila válida', () => {
+      const result = validateIncomeRow(incomeRow({ rowNumber: 42 }));
+      expect(result.valid).toBe(true);
+      if (result.valid) expect(result.row.rowNumber).toBe(42);
     });
 
     it('resuelve el alias de "Acciones" de principio a fin', () => {
@@ -343,6 +352,7 @@ describe('import.parsing', () => {
       expect(result.valid).toBe(true);
       if (result.valid) {
         expect(result.row).toEqual({
+          rowNumber: 2,
           date: '2026-03-10',
           paymentMethod: 'CARD',
           categoryName: 'comida',
@@ -352,6 +362,12 @@ describe('import.parsing', () => {
           amount: '45.50',
         });
       }
+    });
+
+    it('conserva el número de fila original en una fila válida', () => {
+      const result = validateExpenseRow(expenseRow({ rowNumber: 99 }));
+      expect(result.valid).toBe(true);
+      if (result.valid) expect(result.row.rowNumber).toBe(99);
     });
 
     it('el comercio es opcional — vacío no invalida la fila (plan.md §4)', () => {

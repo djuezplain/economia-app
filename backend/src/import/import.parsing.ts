@@ -315,6 +315,10 @@ export function parseText(value: CellPrimitive): string | null {
 // --- Validación de filas (plan.md §6) -------------------------------------
 
 export interface ValidatedIncomeRow {
+  // Spec 012 (detección de duplicados), plan.md §2: necesario para poder
+  // señalar "Fila N" de un duplicado detectado en la vista previa — antes
+  // solo lo conservaban las filas inválidas.
+  rowNumber: number;
   date: string;
   categoryName: string;
   rawCategoryName: string;
@@ -323,6 +327,7 @@ export interface ValidatedIncomeRow {
 }
 
 export interface ValidatedExpenseRow {
+  rowNumber: number;
   date: string;
   paymentMethod: PaymentMethod;
   categoryName: string;
@@ -379,6 +384,7 @@ export function validateIncomeRow(raw: RawIncomeRow): IncomeRowResult {
   return {
     valid: true,
     row: {
+      rowNumber: raw.rowNumber,
       date: date!,
       categoryName: normalizeCategoryName(rawCategoryName!),
       rawCategoryName: rawCategoryName!,
@@ -430,6 +436,7 @@ export function validateExpenseRow(raw: RawExpenseRow): ExpenseRowResult {
   return {
     valid: true,
     row: {
+      rowNumber: raw.rowNumber,
       date: date!,
       paymentMethod,
       categoryName: normalizeCategoryName(rawCategoryName!),
