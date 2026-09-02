@@ -57,6 +57,13 @@ export const categories = pgTable(
     // §4/§6 decisión 4) — no cambia ningún comportamiento, es informativo
     // (el usuario puede renombrarlas o borrarlas igual que las suyas).
     isDefault: boolean('is_default').notNull().default(false),
+    // Emoji que representa la categoría (p. ej. "🚗" para "Coche"). Nullable
+    // a propósito: si el usuario no elige uno explícito, `CategoriesService`
+    // lo infiere del nombre en el momento de crear/listar en vez de forzar
+    // un valor en el esquema — así una categoría creada antes de que
+    // existiera esta columna también recibe un icono sin necesitar una
+    // migración de datos que recorra filas existentes.
+    icon: varchar('icon', { length: 8 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('categories_user_type_idx').on(table.userId, table.type)],

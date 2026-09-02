@@ -40,6 +40,7 @@ const INCOME_CATEGORY: Category = {
   name: 'Nómina',
   parentId: null,
   isDefault: true,
+  icon: '💼',
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
@@ -50,6 +51,7 @@ const EXPENSE_PARENT: Category = {
   name: 'Transporte',
   parentId: null,
   isDefault: true,
+  icon: '🚌',
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
@@ -60,6 +62,7 @@ const EXPENSE_CHILD: Category = {
   name: 'Gasolina',
   parentId: 'cat-expense-1',
   isDefault: false,
+  icon: '🚌',
   createdAt: '2026-01-02T00:00:00.000Z',
 };
 
@@ -127,16 +130,40 @@ describe('CategoriesPage', () => {
     await userEvent.type(screen.getByLabelText('Nombre'), 'Transporte');
     await userEvent.click(screen.getByRole('button', { name: 'Crear categoría' }));
 
-    await waitFor(() => expect(createSpy).toHaveBeenCalledWith({ type: 'EXPENSE', name: 'Transporte', parentId: undefined }));
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith({ type: 'EXPENSE', name: 'Transporte', parentId: undefined, icon: undefined }),
+    );
     expect(await screen.findAllByText('Transporte')).not.toHaveLength(0);
   });
 
-  it('renombra una categoría existente', async () => {
+  it('crea una categoría nueva con un icono elegido explícitamente', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(categoriesApi, 'listCategories')
+      .mockResolvedValueOnce([INCOME_CATEGORY])
+      .mockResolvedValueOnce([INCOME_CATEGORY, EXPENSE_PARENT]);
+    const createSpy = vi.spyOn(categoriesApi, 'createCategory').mockResolvedValue(EXPENSE_PARENT);
+
+    renderPage();
+    await screen.findByText('Nómina');
+
+    await userEvent.selectOptions(screen.getByLabelText('Tipo'), 'EXPENSE');
+    await userEvent.type(screen.getByLabelText('Nombre'), 'Transporte');
+    await userEvent.selectOptions(screen.getByLabelText('Icono'), '🚌');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear categoría' }));
+
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith({ type: 'EXPENSE', name: 'Transporte', parentId: undefined, icon: '🚌' }),
+    );
+  });
+
+  it('renombra una categoría existente sin tocar su icono', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(categoriesApi, 'listCategories')
       .mockResolvedValueOnce([INCOME_CATEGORY])
       .mockResolvedValueOnce([{ ...INCOME_CATEGORY, name: 'Salario' }]);
-    const renameSpy = vi.spyOn(categoriesApi, 'renameCategory').mockResolvedValue({ ...INCOME_CATEGORY, name: 'Salario' });
+    const updateSpy = vi
+      .spyOn(categoriesApi, 'updateCategory')
+      .mockResolvedValue({ ...INCOME_CATEGORY, name: 'Salario' });
 
     renderPage();
     await screen.findByText('Nómina');
@@ -147,8 +174,27 @@ describe('CategoriesPage', () => {
     await userEvent.type(input, 'Salario');
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
-    await waitFor(() => expect(renameSpy).toHaveBeenCalledWith('cat-income-1', 'Salario'));
+    // El selector de icono se preselecciona con el actual (💼) — sin
+    // tocarlo, se manda de vuelta tal cual, no "Automático".
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledWith('cat-income-1', { name: 'Salario', icon: '💼' }));
     expect(await screen.findByText('Salario')).toBeInTheDocument();
+  });
+
+  it('cambia el icono de una categoría existente desde el formulario de edición', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
+    const updateSpy = vi
+      .spyOn(categoriesApi, 'updateCategory')
+      .mockResolvedValue({ ...INCOME_CATEGORY, icon: '🏦' });
+
+    renderPage();
+    await screen.findByText('Nómina');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Renombrar' }));
+    await userEvent.selectOptions(screen.getByLabelText('Nuevo icono'), '🏦');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledWith('cat-income-1', { name: 'Nómina', icon: '🏦' }));
   });
 
   it('elimina una categoría sin uso y la quita de la lista', async () => {

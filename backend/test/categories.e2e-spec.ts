@@ -8,10 +8,12 @@ import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
 import { categories, transactions, users } from '../src/db/schema/index.js';
+import { RateLimitGuard } from '../src/common/rate-limit.guard.js';
 
 describe('Categorías (e2e) — spec 002 H3', () => {
   let app: INestApplication<App>;
   let db: Database;
+  let rateLimitGuard: RateLimitGuard;
 
   const PASSWORD = 'Contraseña-Segura-123';
 
@@ -26,6 +28,7 @@ describe('Categorías (e2e) — spec 002 H3', () => {
     await app.init();
 
     db = moduleFixture.get<Database>(DB);
+    rateLimitGuard = moduleFixture.get<RateLimitGuard>(RateLimitGuard);
   });
 
   afterAll(async () => {
@@ -36,6 +39,13 @@ describe('Categorías (e2e) — spec 002 H3', () => {
     await db.delete(transactions);
     await db.delete(categories);
     await db.delete(users);
+    // Este fichero ya se acerca a (y, con los tests nuevos de icono, supera)
+    // 20 `login()` — el límite real de `POST /auth/login` (20 cada 15 min).
+    // Sin resetear el bucket en memoria del guard entre tests, los últimos
+    // de la suite empezarían a fallar con 429 sin que su propio test hiciera
+    // nada mal — mismo fix ya aplicado en `transactions.e2e-spec.ts` (ver
+    // comentario de `RateLimitGuard.resetForTests`).
+    rateLimitGuard.resetForTests();
   });
 
   async function createUser(email: string, status: 'ACTIVE' | 'PENDING_VERIFICATION' = 'ACTIVE') {
@@ -91,6 +101,21 @@ describe('Categorías (e2e) — spec 002 H3', () => {
       expect(onlyIncome.body).toHaveLength(1);
       expect(onlyIncome.body[0].name).toBe('Nómina');
     });
+
+    it('una categoría sin icono guardado (anterior a esta funcionalidad) recibe uno inferido del nombre, sin persistirlo', async () => {
+      const user = await createUser('categoria-legacy@example.com');
+      const [legacy] = await db
+        .insert(categories)
+        .values({ userId: user.id, type: 'EXPENSE', name: 'Comida', icon: null })
+        .returning();
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer()).get('/categories').set('Authorization', auth(token)).expect(200);
+
+      expect(res.body.find((c: { id: string }) => c.id === legacy.id)?.icon).toBe('🍔');
+      const stillNull = await db.query.categories.findFirst({ where: (c, { eq }) => eq(c.id, legacy.id) });
+      expect(stillNull?.icon).toBeNull();
+    });
   });
 
   describe('POST /categories', () => {
@@ -104,7 +129,35 @@ describe('Categorías (e2e) — spec 002 H3', () => {
         .send({ type: 'EXPENSE', name: 'Ocio' })
         .expect(201);
 
-      expect(res.body).toMatchObject({ type: 'EXPENSE', name: 'Ocio', parentId: null, isDefault: false });
+      expect(res.body).toMatchObject({ type: 'EXPENSE', name: 'Ocio', parentId: null, isDefault: false, icon: '🎉' });
+    });
+
+    it('sin icono explícito, lo infiere del nombre y lo guarda ya en la creación', async () => {
+      const user = await createUser('icono-automatico@example.com');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .post('/categories')
+        .set('Authorization', auth(token))
+        .send({ type: 'EXPENSE', name: 'Coche' })
+        .expect(201);
+
+      expect(res.body.icon).toBe('🚗');
+      const stored = await db.query.categories.findFirst({ where: (c, { eq }) => eq(c.id, res.body.id) });
+      expect(stored?.icon).toBe('🚗');
+    });
+
+    it('con icono explícito, usa ese en vez del inferido del nombre', async () => {
+      const user = await createUser('icono-manual@example.com');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .post('/categories')
+        .set('Authorization', auth(token))
+        .send({ type: 'EXPENSE', name: 'Coche', icon: '🔥' })
+        .expect(201);
+
+      expect(res.body.icon).toBe('🔥');
     });
 
     it('crea una subcategoría bajo una categoría de gasto propia (H3 criterio 2)', async () => {
@@ -216,6 +269,63 @@ describe('Categorías (e2e) — spec 002 H3', () => {
       expect(res.body.name).toBe('Nombre nuevo');
     });
 
+    it('permite cambiar el icono sin tocar el nombre', async () => {
+      const user = await createUser('cambiar-icono@example.com');
+      const token = await login(user.email);
+      const created = await request(app.getHttpServer())
+        .post('/categories')
+        .set('Authorization', auth(token))
+        .send({ type: 'EXPENSE', name: 'Coche' })
+        .expect(201);
+      expect(created.body.icon).toBe('🚗');
+
+      const res = await request(app.getHttpServer())
+        .patch(`/categories/${created.body.id}`)
+        .set('Authorization', auth(token))
+        .send({ name: 'Coche', icon: '🏎️' })
+        .expect(200);
+
+      expect(res.body.icon).toBe('🏎️');
+    });
+
+    it('con icono vacío, vuelve a inferirlo del nombre actual en vez de dejarlo fijo', async () => {
+      const user = await createUser('icono-vuelve-automatico@example.com');
+      const token = await login(user.email);
+      const created = await request(app.getHttpServer())
+        .post('/categories')
+        .set('Authorization', auth(token))
+        .send({ type: 'EXPENSE', name: 'Coche', icon: '🔥' })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/categories/${created.body.id}`)
+        .set('Authorization', auth(token))
+        .send({ name: 'Comida', icon: '' })
+        .expect(200);
+
+      expect(res.body.icon).toBe('🍔');
+      const stored = await db.query.categories.findFirst({ where: (c, { eq }) => eq(c.id, created.body.id) });
+      expect(stored?.icon).toBeNull();
+    });
+
+    it('sin mandar icono, lo deja tal como estaba', async () => {
+      const user = await createUser('icono-sin-tocar@example.com');
+      const token = await login(user.email);
+      const created = await request(app.getHttpServer())
+        .post('/categories')
+        .set('Authorization', auth(token))
+        .send({ type: 'EXPENSE', name: 'Coche', icon: '🔥' })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/categories/${created.body.id}`)
+        .set('Authorization', auth(token))
+        .send({ name: 'Coche nuevo nombre' })
+        .expect(200);
+
+      expect(res.body.icon).toBe('🔥');
+    });
+
     it('no se puede renombrar una categoría de otro usuario (404)', async () => {
       const owner = await createUser('renombrar-dueno@example.com');
       const attacker = await createUser('renombrar-atacante@example.com');
@@ -255,6 +365,11 @@ describe('Categorías (e2e) — spec 002 H3', () => {
       expect(seeded.every((c) => c.parentId === null)).toBe(true);
       expect(income.map((c) => c.name)).toContain('Nómina');
       expect(expense.map((c) => c.name)).toContain('Comida');
+      // Icono "creado automáticamente" (petición de Diego): ya persistido
+      // en la semilla, no solo inferido al leer.
+      expect(seeded.find((c) => c.name === 'Nómina')?.icon).toBe('💼');
+      expect(seeded.find((c) => c.name === 'Comida')?.icon).toBe('🍔');
+      expect(seeded.every((c) => c.icon !== null)).toBe(true);
     });
   });
 

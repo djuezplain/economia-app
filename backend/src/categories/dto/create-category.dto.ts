@@ -18,4 +18,14 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsUUID()
   parentId?: string;
+
+  // Opcional (incluida la cadena vacía, tratada como "no especificado"):
+  // sin él, `CategoriesService.create` infiere uno del nombre (ver
+  // `category-icons.ts`) — el usuario puede elegir el suyo en su lugar.
+  // `Length(0, 8)` da margen a un emoji compuesto (p. ej. "🏷️", símbolo +
+  // selector de variación, 2 code points).
+  @IsOptional()
+  @IsString()
+  @Length(0, 8)
+  icon?: string;
 }
