@@ -1,23 +1,20 @@
-/* Spec 010 (rediseño editorial), plan.md §1: tipografía del handoff
-   (Source Serif 4 en titulares Y cuerpo — antes spec 008 solo la usaba en
-   titulares). Se carga aquí, no en cada página. */
-@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
+/* Rediseño "app oscura" (petición de Diego, captura de referencia tipo
+   historial de mantenimiento): tipografía sans-serif redondeada, en vez de
+   la serif del rediseño editorial (spec 010). Reemplaza a Source Serif 4;
+   se mantiene el nombre de variable `--font-body` para no tocar cada
+   consumidor. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
 
 :root {
-  /* Spec 010 (rediseño editorial), plan.md §1. Handoff de Claude Design en
-     `design_handoff_gestion_economia/` — valores finales (colores,
-     tipografía, espaciado son "high-fidelity" según su README, no una
-     aproximación como fue spec 008). Se mapean sobre los nombres de
-     variable que el proyecto ya tenía desde spec 008 (el propio README del
-     handoff pide reutilizar tokens existentes en vez de inventar nombres
-     nuevos) — solo `--sans` se renombra a `--font-body` (ya no es
-     sans-serif) y `--accent-2` es nueva (spec 008 solo tenía un acento). */
+  /* Modo claro: se mantiene como el esquema por defecto (decisión de
+     Diego) — solo cambian el acento (verde, antes turquesa) y los radios
+     de borde (ver más abajo), no la paleta neutra de fondo/tarjeta. */
   --text: #201e1d;
   --text-h: #201e1d;
   --bg: #f3f2f2;
   --border: color-mix(in srgb, #201e1d 16%, transparent);
   --code-bg: #eae9e9;
-  --accent: #0088b0;
+  --accent: #16a34a;
   --accent-2: #d6006c;
   --card-bg: #eae9e9;
   --social-bg: rgba(244, 243, 236, 0.5);
@@ -26,8 +23,7 @@
   --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
   --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
 
-  /* Rampas tonales de 9 pasos del handoff (nuevas — spec 008 solo tenía
-     --accent-bg/--accent-border, 2 tintas). --accent-bg/--accent-border se
+  /* Rampas tonales de 9 pasos (spec 010). --accent-bg/--accent-border se
      mantienen apuntando a la rampa para no romper nada que ya las use. */
   --neutral-100: #f8f4f4;
   --neutral-200: #eae7e7;
@@ -39,15 +35,17 @@
   --neutral-800: #444141;
   --neutral-900: #2d2b2b;
 
-  --accent-100: #e9f8ff;
-  --accent-200: #cbeeff;
-  --accent-300: #99e0ff;
-  --accent-400: #62c5ee;
-  --accent-500: #38a6cf;
-  --accent-600: #1186ac;
-  --accent-700: #006786;
-  --accent-800: #004961;
-  --accent-900: #0a303e;
+  /* Rampa de verde (Tailwind green 100-900) — sustituye a la turquesa
+     anterior para acercar el acento al de la captura de referencia. */
+  --accent-100: #dcfce7;
+  --accent-200: #bbf7d0;
+  --accent-300: #86efac;
+  --accent-400: #4ade80;
+  --accent-500: #22c55e;
+  --accent-600: #16a34a;
+  --accent-700: #15803d;
+  --accent-800: #166534;
+  --accent-900: #14532d;
   --accent-bg: var(--accent-100);
   --accent-border: var(--accent-400);
 
@@ -69,14 +67,13 @@
   --status-orange: #eb6834;
   --status-red: #d64545;
 
-  /* Spec 010, plan.md §0. Antes --sans (cuerpo en sans-serif desde
-     siempre); el handoff usa la misma tipografía serif en titulares y
-     cuerpo, así que mantener el nombre "--sans" habría sido confuso. */
-  --font-body: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-  --heading: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-body:
+    'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --heading:
+    'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
-  /* Escala de espaciado del handoff — sustituye a los valores sueltos
+  /* Escala de espaciado (spec 010) — sustituye a los valores sueltos
      (16px, 24px, 32px...) usados desde spec 007/008. */
   --space-1: 5px;
   --space-2: 10px;
@@ -85,9 +82,11 @@
   --space-6: 30px;
   --space-8: 40px;
 
-  --radius-sm: 1px;
-  --radius-md: 2px;
-  --radius-lg: 4px;
+  /* Radios grandes (antes 1/2/4px, look "editorial" recto): la captura de
+     referencia usa tarjetas y botones muy redondeados. */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
 
   font: 15px/155% var(--font-body);
   letter-spacing: normal;
@@ -106,22 +105,22 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Spec 010, plan.md §1. El handoff no tiene variante oscura (mismo
-       caso que spec 008) — se deriva con el mismo criterio: invertir
-       luminosidad, mantener el matiz de cada acento. */
-    --text: #d8d5d4;
-    --text-h: #efeceb;
-    --bg: #1c1b1a;
-    --border: color-mix(in srgb, #efeceb 18%, transparent);
-    --code-bg: #28211f;
-    --accent: #5fc3e6;
+    /* Fondo/tarjetas más neutros y oscuros que el rediseño editorial (spec
+       010, que los tenía con un matiz cálido/marrón): la captura de
+       referencia es un gris casi negro, sin tinte cálido. */
+    --text: #d4d4d4;
+    --text-h: #f5f5f5;
+    --bg: #121212;
+    --border: color-mix(in srgb, #f5f5f5 14%, transparent);
+    --code-bg: #1a1a1a;
+    --accent: #4ade80;
     --accent-2: #ff6fa8;
-    --card-bg: #28211f;
-    --social-bg: rgba(47, 48, 58, 0.5);
+    --card-bg: #1e1e1e;
+    --social-bg: rgba(30, 30, 30, 0.5);
     --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.35);
+      rgba(0, 0, 0, 0.5) 0 10px 15px -3px, rgba(0, 0, 0, 0.35) 0 4px 6px -2px;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.45);
 
     --neutral-100: #2d2b2b;
     --neutral-200: #444141;
@@ -133,15 +132,15 @@
     --neutral-800: #eae7e7;
     --neutral-900: #f8f4f4;
 
-    --accent-100: #0a303e;
-    --accent-200: #004961;
-    --accent-300: #006786;
-    --accent-400: #1186ac;
-    --accent-500: #38a6cf;
-    --accent-600: #62c5ee;
-    --accent-700: #99e0ff;
-    --accent-800: #cbeeff;
-    --accent-900: #e9f8ff;
+    --accent-100: #14532d;
+    --accent-200: #166534;
+    --accent-300: #15803d;
+    --accent-400: #16a34a;
+    --accent-500: #22c55e;
+    --accent-600: #4ade80;
+    --accent-700: #86efac;
+    --accent-800: #bbf7d0;
+    --accent-900: #dcfce7;
     --accent-bg: var(--accent-100);
     --accent-border: var(--accent-400);
 
@@ -200,8 +199,10 @@ h4,
 h5,
 h6 {
   font-family: var(--heading);
-  /* Spec 010, plan.md §1: 600 (antes 700 en spec 008) — peso del handoff. */
-  font-weight: 600;
+  /* 800 (antes 600, spec 010): titulares bien gruesos, como en la captura
+     de referencia — el sans-serif redondeado necesita más peso que la
+     serif anterior para leerse igual de "sólido". */
+  font-weight: 800;
   line-height: 1.12;
   letter-spacing: -0.015em;
   color: var(--text-h);
@@ -397,9 +398,86 @@ p {
     z-index: 20;
   }
 
-  /* Deja hueco para el botón de apertura, fijo en la esquina. */
+  /* Deja hueco para el botón de apertura (arriba) y la barra de navegación
+     inferior + botón flotante (abajo, ver #app-bottom-nav más adelante). */
   #app-content {
-    padding: 72px 20px 20px;
+    padding: 72px 20px 88px;
+  }
+}
+
+/* Barra de navegación inferior + botón flotante ("+"), estilo de la
+   captura de referencia (app de historial de mantenimiento): en escritorio
+   la navegación sigue siendo el menú lateral (`#app-sidebar`); en móvil se
+   añade esta barra fija con los destinos más usados, sin sustituir el menú
+   completo — "Abrir menú" (arriba a la izquierda) sigue dando acceso a las
+   8 secciones y a cerrar sesión. Los enlaces llevan `aria-label` distinto
+   del texto visible para no duplicar el nombre accesible de los enlaces
+   equivalentes del menú lateral (p. ej. "Inicio" existe en los dos sitios
+   a la vez en el DOM, aunque uno esté oculto fuera de pantalla). */
+#app-bottom-nav,
+#app-fab {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  #app-bottom-nav {
+    display: flex;
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 25;
+    justify-content: space-around;
+    align-items: center;
+    height: 64px;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    background: var(--card-bg);
+    border-top: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
+  }
+
+  #app-bottom-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    padding: 6px 0;
+    font-size: 11px;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  #app-bottom-nav a[aria-current='page'] {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  #app-bottom-nav .dot {
+    width: 9px;
+    height: 9px;
+  }
+
+  #app-bottom-nav a[aria-current='page'] .dot {
+    background: var(--accent);
+  }
+
+  #app-fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    right: 16px;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0) + 16px);
+    z-index: 26;
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius-lg);
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 26px;
+    line-height: 1;
+    text-decoration: none;
+    box-shadow: var(--shadow-md);
   }
 }
 

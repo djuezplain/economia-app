@@ -326,6 +326,31 @@ describe('AppLayout', () => {
     });
   });
 
+  describe('barra de navegación inferior y botón flotante (móvil)', () => {
+    it('con sesión, muestra los accesos rápidos y el botón de registrar movimiento', async () => {
+      mockLoggedIn();
+      renderLayout();
+
+      const bottomNav = await screen.findByRole('navigation', { name: 'Navegación rápida' });
+      for (const name of ['Inicio (acceso rápido)', 'Movimientos (acceso rápido)', 'Perfil (acceso rápido)']) {
+        expect(screen.getByRole('link', { name })).toBeInTheDocument();
+      }
+      expect(bottomNav).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Registrar movimiento' })).toHaveAttribute(
+        'href',
+        '/movements/register',
+      );
+    });
+
+    it('sin sesión, no muestra la barra inferior ni el botón flotante', async () => {
+      renderLayout();
+
+      await screen.findByText('Contenido de inicio');
+      expect(screen.queryByRole('navigation', { name: 'Navegación rápida' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Registrar movimiento' })).not.toBeInTheDocument();
+    });
+  });
+
   describe('sin conexión y sin sesión (T6.3, spec 011)', () => {
     it('muestra "Sin conexión" en vez del contenido de la página, sin menú lateral', async () => {
       resetForTests(false);
