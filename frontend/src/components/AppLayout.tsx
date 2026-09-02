@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useSyncQueue } from '../hooks/useSyncQueue';
 import { SyncStatusPanel } from './SyncStatusPanel';
@@ -19,6 +19,18 @@ const NAV_ITEMS = [
   { to: '/goals', end: false, label: 'Objetivos y presupuestos' },
   { to: '/profile', end: false, label: 'Tu perfil' },
   { to: '/sessions', end: false, label: 'Dispositivos y sesiones' },
+] as const;
+
+// Barra de navegación inferior de móvil (ver index.css, #app-bottom-nav):
+// solo los 3 destinos más usados, no las 8 secciones — el menú lateral
+// completo sigue disponible en móvil vía "Abrir menú". `srLabel` es el
+// nombre accesible real de cada enlace (distinto del texto visible, ver
+// comentario en index.css): evita que coincida con el enlace equivalente
+// del menú lateral, que existe en el DOM a la vez aunque esté oculto.
+const BOTTOM_NAV_ITEMS = [
+  { to: '/', end: true, label: 'Inicio', srLabel: 'Inicio (acceso rápido)' },
+  { to: '/movements', end: false, label: 'Movimientos', srLabel: 'Movimientos (acceso rápido)' },
+  { to: '/profile', end: false, label: 'Perfil', srLabel: 'Perfil (acceso rápido)' },
 ] as const;
 
 /**
@@ -191,6 +203,21 @@ export function AppLayout() {
       <div id="app-content">
         <Outlet />
       </div>
+      {showSidebar && (
+        <>
+          <nav id="app-bottom-nav" aria-label="Navegación rápida">
+            {BOTTOM_NAV_ITEMS.map(({ to, end, label, srLabel }) => (
+              <NavLink key={to} to={to} end={end} aria-label={srLabel}>
+                <span className="dot" aria-hidden="true" />
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+          <Link id="app-fab" to="/movements/register" aria-label="Registrar movimiento">
+            +
+          </Link>
+        </>
+      )}
     </div>
   );
 }
