@@ -8,6 +8,16 @@ import { IsMoneyAmount } from '../../common/is-money-amount.decorator.js';
  * (si se manda) sea hija de la categoría indicada.
  */
 export class CreateTransactionDto {
+  /**
+   * Spec 011 (modo offline), plan.md §2: el cliente puede generar el `id`
+   * (UUID) al crear un movimiento sin conexión, para poder mostrarlo y
+   * referenciarlo (ediciones/borrados encolados) antes de sincronizar. Si no
+   * se manda, el servidor lo genera como hasta ahora (`defaultRandom()`).
+   */
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
   @IsIn(['INCOME', 'EXPENSE'])
   type!: 'INCOME' | 'EXPENSE';
 

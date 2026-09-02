@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useCategoriesForType } from '../hooks/useCategoriesForType';
+import { useConnectivity } from '../hooks/useConnectivity';
 import { deleteTransaction, listTransactions } from '../api/transactions';
 import type { MovementType } from '../api/transactions';
 import { ApiError } from '../api/client';
+import { getAllCachedTransactions, getMeta } from '../offline/db';
+import type { CachedTransaction } from '../offline/db';
+import { buildOfflineListResult } from '../offline/queries';
+import { LAST_FULL_SYNC_AT_KEY } from '../offline/sync';
 import { categoryName, PAYMENT_METHOD_LABELS } from './movements-shared';
 import { formatCurrency } from './home-shared';
 
@@ -17,6 +22,7 @@ import { formatCurrency } from './home-shared';
 export function MovementsListPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const navigate = useNavigate();
+  const isOnline = useConnectivity();
 
   const [type, setType] = useState<MovementType>('EXPENSE');
   const { categories, categoriesError } = useCategoriesForType(type);
@@ -30,19 +36,42 @@ export function MovementsListPage() {
 
   const [result, setResult] = useState<Awaited<ReturnType<typeof listTransactions>> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Spec 011 (modo offline), H3 criterio 3: cuándo se sincronizó la copia
+  // local por última vez, para no dar una falsa sensación de estar al día.
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  async function reloadList() {
-    const res = await listTransactions({
+  const filters = useMemo(
+    () => ({
       type,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       categoryId: filterCategoryId || undefined,
       merchant: merchantFilter || undefined,
       q: q || undefined,
-    });
+    }),
+    [type, dateFrom, dateTo, filterCategoryId, merchantFilter, q],
+  );
+
+  /**
+   * Spec 011 (modo offline), plan.md §4/§7, H3. Sin conexión, se lee la
+   * copia local en vez de llamar a la API — mismos filtros, mismo cálculo
+   * de resumen (`offline/queries.ts`), sobre lo último sincronizado.
+   */
+  async function loadOffline() {
+    const cached = await getAllCachedTransactions();
+    setResult(buildOfflineListResult(cached, filters));
+    setLastSyncAt((await getMeta(LAST_FULL_SYNC_AT_KEY)) ?? null);
+  }
+
+  async function reloadList() {
+    if (!isOnline) {
+      await loadOffline();
+      return;
+    }
+    const res = await listTransactions(filters);
     setResult(res);
   }
 
@@ -51,14 +80,14 @@ export function MovementsListPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await listTransactions({
-          type,
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined,
-          categoryId: filterCategoryId || undefined,
-          merchant: merchantFilter || undefined,
-          q: q || undefined,
-        });
+        if (!isOnline) {
+          const cached = await getAllCachedTransactions();
+          if (cancelled) return;
+          setResult(buildOfflineListResult(cached, filters));
+          setLastSyncAt((await getMeta(LAST_FULL_SYNC_AT_KEY)) ?? null);
+          return;
+        }
+        const res = await listTransactions(filters);
         if (!cancelled) setResult(res);
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar los movimientos.');
@@ -67,7 +96,7 @@ export function MovementsListPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, type, dateFrom, dateTo, filterCategoryId, merchantFilter, q]);
+  }, [isAuthenticated, isOnline, filters]);
 
   async function handleDelete(id: string) {
     setDeleteError(null);
@@ -192,6 +221,11 @@ export function MovementsListPage() {
         </div>
       </section>
 
+      {!isOnline && (
+        <p role="status">
+          Sin conexión: mostrando los datos de la última sincronización{lastSyncAt ? ` (${new Date(lastSyncAt).toLocaleString('es-ES')})` : ''}.
+        </p>
+      )}
       {loadError && <p role="alert">{loadError}</p>}
       {deleteError && <p role="alert">{deleteError}</p>}
 
@@ -213,6 +247,11 @@ export function MovementsListPage() {
                   {t.subcategoryId && (
                     <span className="tag tag-neutral">{categoryName(categories, t.subcategoryId)}</span>
                   )}
+                  {/* Spec 011 (modo offline), H2 criterio 2/3: un movimiento
+                      creado/editado/borrado sin conexión se marca así hasta
+                      que se sincroniza (grupo 5 procesa la cola y lo quita
+                      de la caché con `pending: false`). */}
+                  {(t as CachedTransaction).pending && <span className="tag tag-accent">pendiente de sincronizar</span>}
                   <p className="card-meta">
                     {[t.merchant, t.paymentMethod ? PAYMENT_METHOD_LABELS[t.paymentMethod] : null, t.date]
                       .filter((part): part is string => Boolean(part))

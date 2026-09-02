@@ -2,10 +2,14 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
+import { useConnectivity } from '../hooks/useConnectivity';
 import { createCategory, deleteCategory, listCategories, renameCategory } from '../api/categories';
 import type { Category, MovementType } from '../api/categories';
 import { listTransactions } from '../api/transactions';
 import { ApiError } from '../api/client';
+import { getAllCachedCategories, getAllCachedTransactions, getMeta } from '../offline/db';
+import { buildOfflineListResult } from '../offline/queries';
+import { LAST_FULL_SYNC_AT_KEY } from '../offline/sync';
 import { formatCurrency, lastDayOfMonth } from './home-shared';
 
 function currentMonth(): string {
@@ -19,9 +23,12 @@ interface CategoryMonthStats {
 
 export function CategoriesPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const isOnline = useConnectivity();
 
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Spec 011 (modo offline), H3 criterio 3.
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   // Spec 010 (rediseño editorial), plan.md §4.2. "Nº de movimientos/importe/%"
   // de cada categoría de gasto no lo calcula ningún endpoint dedicado — se
@@ -60,8 +67,11 @@ export function CategoriesPage() {
     let cancelled = false;
     (async () => {
       try {
-        const list = await listCategories();
-        if (!cancelled) setCategories(list);
+        // Spec 011 (modo offline), H3: sin conexión, se lee la copia local.
+        const list = isOnline ? await listCategories() : await getAllCachedCategories();
+        if (cancelled) return;
+        setCategories(list);
+        if (!isOnline) setLastSyncAt((await getMeta(LAST_FULL_SYNC_AT_KEY)) ?? null);
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar las categorías.');
@@ -71,7 +81,7 @@ export function CategoriesPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isOnline]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -87,7 +97,10 @@ export function CategoriesPage() {
         // app hoy) podría quedarse corto — el importe y el % no, porque
         // salen de `summary`, calculado sobre todo lo filtrado, no solo la
         // página (`transactions.service.ts`).
-        const result = await listTransactions({ type: 'EXPENSE', dateFrom, dateTo, limit: 200 });
+        const filters = { type: 'EXPENSE' as const, dateFrom, dateTo, limit: 200 };
+        const result = isOnline
+          ? await listTransactions(filters)
+          : buildOfflineListResult(await getAllCachedTransactions(), filters);
         if (cancelled) return;
         const byCategory = new Map<string, { count: number; total: number }>();
         for (const t of result.items) {
@@ -109,7 +122,7 @@ export function CategoriesPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isOnline]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -257,13 +270,13 @@ export function CategoriesPage() {
             )}
 
             <div>
-              <button type="button" className="btn btn-secondary" onClick={() => startRename(category)}>
+              <button type="button" className="btn btn-secondary" disabled={!isOnline} onClick={() => startRename(category)}>
                 Renombrar
               </button>{' '}
               <button
                 type="button"
                 className="btn btn-ghost"
-                disabled={pendingDeleteId === category.id}
+                disabled={!isOnline || pendingDeleteId === category.id}
                 onClick={() => void handleDelete(category.id)}
               >
                 {pendingDeleteId === category.id ? 'Eliminando…' : 'Eliminar'}
@@ -284,6 +297,12 @@ export function CategoriesPage() {
         renombrarlas, eliminarlas o crear las tuyas propias.
       </p>
 
+      {!isOnline && (
+        <p role="status">
+          Sin conexión: mostrando los datos de la última sincronización{lastSyncAt ? ` (${new Date(lastSyncAt).toLocaleString('es-ES')})` : ''}.
+          Crear, renombrar o eliminar categorías requiere conexión.
+        </p>
+      )}
       {loadError && <p role="alert">{loadError}</p>}
       {deleteError && <p role="alert">{deleteError}</p>}
 
@@ -357,7 +376,7 @@ export function CategoriesPage() {
 
               {createError && <p role="alert">{createError}</p>}
 
-              <button type="submit" className="btn btn-primary" disabled={isCreating}>
+              <button type="submit" className="btn btn-primary" disabled={isCreating || !isOnline}>
                 {isCreating ? 'Creando…' : 'Crear categoría'}
               </button>
             </form>

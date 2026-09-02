@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
+import { eq } from 'drizzle-orm';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
@@ -237,6 +239,72 @@ describe('Movimientos (e2e) — spec 002 H1/H2', () => {
           paymentMethod: 'BIZUM',
         })
         .expect(400);
+    });
+
+    // Spec 011 (modo offline), plan.md §2: creación idempotente cuando el
+    // cliente manda su propio `id` (generado sin conexión).
+    it('acepta un id generado por el cliente y lo usa como identificador del movimiento', async () => {
+      const user = await createUser('id-propio@example.com');
+      const category = await createCategory(user.id, 'INCOME', 'Nómina');
+      const token = await login(user.email);
+      const clientId = randomUUID();
+
+      const res = await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send({ id: clientId, type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'Nómina agosto', amount: '2000.00' })
+        .expect(201);
+
+      expect(res.body.id).toBe(clientId);
+    });
+
+    it('reintentar el mismo POST con el mismo id y el mismo usuario es idempotente (no duplica el movimiento)', async () => {
+      const user = await createUser('reintento-mismo-id@example.com');
+      const category = await createCategory(user.id, 'INCOME', 'Nómina');
+      const token = await login(user.email);
+      const clientId = randomUUID();
+      const body = { id: clientId, type: 'INCOME', date: '2026-08-01', categoryId: category.id, concept: 'Nómina agosto', amount: '2000.00' };
+
+      const first = await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send(body)
+        .expect(201);
+      const second = await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(token))
+        .send(body)
+        .expect(201);
+
+      expect(second.body).toEqual(first.body);
+      const rows = await db.query.transactions.findMany({ where: eq(transactions.userId, user.id) });
+      expect(rows).toHaveLength(1);
+    });
+
+    it('el mismo id desde otro usuario responde 409 y no toca el movimiento del primero', async () => {
+      const owner = await createUser('id-propio-dueno@example.com');
+      const other = await createUser('id-propio-otro@example.com');
+      const ownerCategory = await createCategory(owner.id, 'INCOME', 'Nómina');
+      const otherCategory = await createCategory(other.id, 'INCOME', 'Nómina');
+      const ownerToken = await login(owner.email);
+      const otherToken = await login(other.email);
+      const clientId = randomUUID();
+
+      await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(ownerToken))
+        .send({ id: clientId, type: 'INCOME', date: '2026-08-01', categoryId: ownerCategory.id, concept: 'Nómina del primero', amount: '2000.00' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/transactions')
+        .set('Authorization', auth(otherToken))
+        .send({ id: clientId, type: 'INCOME', date: '2026-08-01', categoryId: otherCategory.id, concept: 'Nómina del segundo', amount: '10.00' })
+        .expect(409);
+
+      const ownerRow = await db.query.transactions.findFirst({ where: eq(transactions.id, clientId) });
+      expect(ownerRow?.concept).toBe('Nómina del primero');
+      expect(ownerRow?.userId).toBe(owner.id);
     });
   });
 

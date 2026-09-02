@@ -7,6 +7,8 @@ import { AuthProvider } from '../auth/AuthContext';
 import * as authApi from '../api/auth';
 import * as usersApi from '../api/users';
 import { ApiError } from '../api/client';
+import { resetForTests } from '../offline/connectivity';
+import { enqueue, ensureUserScope, putTransaction } from '../offline/db';
 
 const PROFILE: usersApi.UserProfile = {
   id: 'user-1',
@@ -22,6 +24,7 @@ const PROFILE: usersApi.UserProfile = {
 describe('AppLayout', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetForTests(true);
     // Mismo motivo que en HomePage.test.tsx: sin esto, AuthProvider
     // intentaría un refresco silencioso real contra la red al montar.
     vi.spyOn(authApi, 'refresh').mockRejectedValue(new ApiError(401, 'No hay sesión.'));
@@ -187,6 +190,75 @@ describe('AppLayout', () => {
     await waitFor(() => expect(authApi.logout).toHaveBeenCalled());
   });
 
+  describe('confirmación al cerrar sesión con cambios pendientes (T7.3, spec 011)', () => {
+    it('con cambios pendientes, pide confirmación en vez de cerrar sesión directamente', async () => {
+      mockLoggedIn();
+      await ensureUserScope('user-1');
+      await putTransaction({
+        id: 'tx-1',
+        userId: 'user-1',
+        type: 'EXPENSE',
+        date: '2026-08-01',
+        categoryId: 'cat-1',
+        subcategoryId: null,
+        concept: 'Café',
+        merchant: null,
+        amount: '3.50',
+        paymentMethod: null,
+        createdAt: '2026-08-01T00:00:00.000Z',
+        updatedAt: '2026-08-01T00:00:00.000Z',
+        pending: true,
+        pendingAction: 'CREATE',
+      });
+      await enqueue({
+        entity: 'transaction',
+        action: 'CREATE',
+        transactionId: 'tx-1',
+        payload: { id: 'tx-1', concept: 'Café' },
+        createdAt: '2026-08-01T00:00:00.000Z',
+        status: 'failed',
+        failureReason: 'x',
+        failureKind: 'validation',
+      });
+      const logoutSpy = vi.spyOn(authApi, 'logout').mockResolvedValue({ message: 'Sesión cerrada.' });
+      const user = userEvent.setup();
+      renderLayout();
+
+      await user.click(await screen.findByRole('button', { name: 'Cerrar sesión' }));
+
+      expect(await screen.findByText(/1 cambio sin sincronizar/)).toBeInTheDocument();
+      expect(logoutSpy).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+      expect(screen.queryByText(/sin sincronizar/)).not.toBeInTheDocument();
+      expect(logoutSpy).not.toHaveBeenCalled();
+    });
+
+    it('confirmando "cerrar sesión de todos modos", cierra sesión', async () => {
+      mockLoggedIn();
+      await ensureUserScope('user-1');
+      await enqueue({
+        entity: 'transaction',
+        action: 'DELETE',
+        transactionId: 'tx-1',
+        payload: null,
+        createdAt: '2026-08-01T00:00:00.000Z',
+        status: 'failed',
+        failureReason: 'x',
+        failureKind: 'validation',
+      });
+      const logoutSpy = vi.spyOn(authApi, 'logout').mockResolvedValue({ message: 'Sesión cerrada.' });
+      const user = userEvent.setup();
+      renderLayout();
+
+      await user.click(await screen.findByRole('button', { name: 'Cerrar sesión' }));
+      await screen.findByText(/sin sincronizar/);
+      await user.click(screen.getByRole('button', { name: 'Cerrar sesión de todos modos' }));
+
+      await waitFor(() => expect(logoutSpy).toHaveBeenCalled());
+    });
+  });
+
   describe('menú superpuesto en móvil (spec 009, H1)', () => {
     it('empieza cerrado y se abre/cierra con el botón dedicado, sin afectar al plegado de escritorio', async () => {
       mockLoggedIn();
@@ -251,6 +323,29 @@ describe('AppLayout', () => {
 
       await screen.findByText('Contenido de categorías');
       expect(screen.getByRole('button', { name: 'Abrir menú' })).toBeInTheDocument();
+    });
+  });
+
+  describe('sin conexión y sin sesión (T6.3, spec 011)', () => {
+    it('muestra "Sin conexión" en vez del contenido de la página, sin menú lateral', async () => {
+      resetForTests(false);
+      vi.spyOn(authApi, 'refresh').mockRejectedValue(new TypeError('Failed to fetch'));
+
+      renderLayout();
+
+      expect(await screen.findByText('Vuelve a conectarte para continuar.')).toBeInTheDocument();
+      expect(screen.queryByText('Contenido de inicio')).not.toBeInTheDocument();
+      expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
+    });
+
+    it('con sesión, estar offline no bloquea el contenido (el aviso solo aplica sin sesión)', async () => {
+      resetForTests(false);
+      mockLoggedIn();
+
+      renderLayout();
+
+      expect(await screen.findByText('Contenido de inicio')).toBeInTheDocument();
+      expect(screen.queryByText('Vuelve a conectarte para continuar.')).not.toBeInTheDocument();
     });
   });
 });

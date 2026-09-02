@@ -5,6 +5,10 @@ import type { AuthUser } from '../api/auth';
 import { getProfile } from '../api/users';
 import { registerRefreshHandler, registerTokenGetter } from '../api/client';
 import { getAccessToken, setAccessToken } from './token-store';
+import { clearAll, ensureUserScope } from '../offline/db';
+import { syncFullHistory } from '../offline/sync';
+import { retrySessionExpiredEntries } from '../offline/queueProcessor';
+import { isOnline, subscribe } from '../offline/connectivity';
 import { AuthContext } from './auth-context';
 import type { AuthContextValue } from './auth-context';
 
@@ -12,6 +16,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // Spec 011 (modo offline), plan.md §6.
+  const [isOffline, setIsOffline] = useState(!isOnline());
+
+  useEffect(() => subscribe((online) => setIsOffline(!online)), []);
 
   /**
    * H2 (spec 001), criterio 3: para poder avisar de forma persistente cuando
@@ -27,8 +35,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const profile = await getProfile();
       setUser({ id: profile.id, email: profile.email, name: profile.name, status: profile.status });
+      void syncUserCache(profile.id);
     } catch {
       // Ver comentario de arriba: se deja `user` como estaba (probablemente `null`).
+    }
+  }
+
+  /**
+   * Spec 011 (modo offline), plan.md §3-§4: en cuanto se sabe qué usuario
+   * está autenticado, se garantiza que la caché local es la suya
+   * (`ensureUserScope`, vacía cualquier resto de otro usuario) y se lanza
+   * una hidratación completa del histórico. "Fire and forget", igual que
+   * `hydrateUser`: sin conexión, `syncFullHistory` simplemente falla y no
+   * actualiza nada — no bloquea el arranque de la app ni el login.
+   *
+   * H5 criterio 5 (`spec.md`): también reintenta los cambios pendientes
+   * bloqueados por sesión caducada (T5.3) — cualquier camino por el que se
+   * llega aquí implica que se acaba de establecer una sesión válida.
+   */
+  async function syncUserCache(userId: string): Promise<void> {
+    try {
+      await ensureUserScope(userId);
+      await syncFullHistory();
+    } catch {
+      // Ver comentario de arriba: sin conexión (o sin IndexedDB disponible
+      // en el navegador), simplemente no se actualiza la caché.
+    }
+    try {
+      await retrySessionExpiredEntries();
+    } catch {
+      // Best-effort, igual que el resto de esta función.
     }
   }
 
@@ -81,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(res.accessToken);
     setUser(res.user);
     setIsAuthenticated(true);
+    void syncUserCache(res.user.id);
   }
 
   async function logout(): Promise<void> {
@@ -94,6 +131,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(null);
       setUser(null);
       setIsAuthenticated(false);
+      // Spec 011 (modo offline), plan.md §3: no deja datos económicos en
+      // IndexedDB tras cerrar sesión en este dispositivo.
+      void clearAll();
     }
   }
 
@@ -104,8 +144,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, isAuthenticated, isLoading, login, logout, setSessionToken }),
-    [user, isAuthenticated, isLoading],
+    () => ({ user, isAuthenticated, isLoading, isOffline, login, logout, setSessionToken }),
+    [user, isAuthenticated, isLoading, isOffline],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -6,6 +6,7 @@
  * https://www.postgresql.org/docs/current/errcodes-appendix.html
  */
 const FOREIGN_KEY_VIOLATION = '23503';
+const UNIQUE_VIOLATION = '23505';
 
 /**
  * spec 002, plan.md §1/§6: las FKs de `transactions` hacia `categories` usan
@@ -17,6 +18,18 @@ const FOREIGN_KEY_VIOLATION = '23503';
  */
 export function isForeignKeyViolation(err: unknown): boolean {
   return getPgErrorCode(err) === FOREIGN_KEY_VIOLATION;
+}
+
+/**
+ * Spec 011 (modo offline), plan.md §2: cuando el cliente manda un `id`
+ * propio al crear un movimiento (para poder generarlo sin conexión), un
+ * reintento del mismo `POST` (p. ej. porque la respuesta del primero se
+ * perdió) choca con la PK ya insertada. Este helper detecta esa colisión
+ * para que `TransactionsService.create` la trate como una creación
+ * idempotente en vez de un 500 genérico.
+ */
+export function isUniqueViolation(err: unknown): boolean {
+  return getPgErrorCode(err) === UNIQUE_VIOLATION;
 }
 
 /**

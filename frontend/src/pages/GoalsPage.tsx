@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
+import { useConnectivity } from '../hooks/useConnectivity';
 import { listCategories } from '../api/categories';
 import type { Category } from '../api/categories';
 import { createSavingsGoal, deleteSavingsGoal, listSavingsGoals, updateSavingsGoal } from '../api/savings-goals';
@@ -196,6 +197,7 @@ function budgetProgressCellText(progress: BudgetProgress | null | undefined): st
  */
 export function GoalsPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const isOnline = useConnectivity();
 
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[] | null>(null);
@@ -260,7 +262,7 @@ export function GoalsPage() {
   }
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     let cancelled = false;
     (async () => {
       try {
@@ -273,10 +275,10 @@ export function GoalsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isOnline]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     let cancelled = false;
     (async () => {
       try {
@@ -288,19 +290,19 @@ export function GoalsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isOnline]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     setMonthProgressError(null);
     void reloadMonthProgress(month);
-  }, [isAuthenticated, month]);
+  }, [isAuthenticated, isOnline, month]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isOnline) return;
     setYearProgressError(null);
     void reloadYearProgress(year);
-  }, [isAuthenticated, year]);
+  }, [isAuthenticated, isOnline, year]);
 
   async function saveSavingsGoal(
     period: GoalPeriod,
@@ -425,6 +427,18 @@ export function GoalsPage() {
         <p>
           <Link to="/login">Iniciar sesión</Link>
         </p>
+      </main>
+    );
+  }
+
+  // Spec 011 (modo offline), H6 criterio 1, spec.md §2: objetivos y
+  // presupuestos quedan fuera de alcance de esta spec (ni lectura cacheada
+  // ni escritura) — mismo criterio que Dashboard.
+  if (!isOnline) {
+    return (
+      <main>
+        <h1>Objetivos y presupuestos</h1>
+        <p role="status">Esta página requiere conexión a internet.</p>
       </main>
     );
   }

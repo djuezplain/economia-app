@@ -12,6 +12,7 @@ import type { Category } from '../api/categories';
 import type { MonthSummary, YearSummary } from '../api/dashboard';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
+import { resetForTests } from '../offline/connectivity';
 
 const INCOME_CATEGORY: Category = {
   id: 'cat-income-1',
@@ -97,6 +98,7 @@ function buildEmptyYearSummary(): YearSummary {
 describe('DashboardPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetForTests(true);
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue({
       id: 'user-1',
       email: 'ana@example.com',
@@ -249,5 +251,24 @@ describe('DashboardPage', () => {
     await userEvent.type(yearInput, '2025');
 
     await waitFor(() => expect(yearSpy).toHaveBeenLastCalledWith('2025'));
+  });
+
+  it('sin conexión (T3.3, spec 011), avisa de que el dashboard requiere conexión en vez de intentar cargar datos', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    const listCategoriesSpy = vi.spyOn(categoriesApi, 'listCategories');
+    const monthSpy = vi.spyOn(dashboardApi, 'getMonthSummary');
+    resetForTests(false);
+
+    render(
+      <AuthProvider>
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+
+    expect(await screen.findByText('Esta página requiere conexión a internet.')).toBeInTheDocument();
+    expect(listCategoriesSpy).not.toHaveBeenCalled();
+    expect(monthSpy).not.toHaveBeenCalled();
   });
 });

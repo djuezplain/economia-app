@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
+import { useSyncQueue } from '../hooks/useSyncQueue';
+import { SyncStatusPanel } from './SyncStatusPanel';
 
 // Spec 008 (rediseño Broadsheet), plan.md §5. Sustituye a los iconos de
 // `lucide-react` de spec 007 H5 (retirados en T7) por un punto de color
@@ -29,7 +31,7 @@ const NAV_ITEMS = [
  * vuelve a montar todo el árbol de React, tal como pide spec.md §4.
  */
 export function AppLayout() {
-  const { isAuthenticated, isLoading, logout } = useAuth();
+  const { isAuthenticated, isLoading, isOffline, logout } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   // Spec 009 (adaptación a móvil), plan.md §1. Estado independiente de
   // `isCollapsed`: en escritorio el menú se pliega a una franja estrecha
@@ -43,6 +45,11 @@ export function AppLayout() {
   // `isMobileMenuOpen` ya vale `false` de por sí, sin que nadie haya
   // cerrado nada) — solo debe mover el foco en una transición real.
   const isFirstRender = useRef(true);
+  // Spec 011 (modo offline), T7.3: confirmación antes de cerrar sesión si
+  // hay cambios sin sincronizar (se perderían de la vista al vaciarse la
+  // caché en el logout, `AuthContext.logout` → `clearAll`).
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const syncQueue = useSyncQueue();
 
   // H1 criterio 4: sin menú mientras no se sabe si hay sesión (evita
   // parpadeo) ni cuando no la hay — mismo criterio que ya usaba `HomePage`.
@@ -50,6 +57,16 @@ export function AppLayout() {
 
   function closeMobileMenu() {
     setIsMobileMenuOpen(false);
+  }
+
+  function handleLogoutClick() {
+    if (syncQueue.length > 0 && !confirmLogout) {
+      setConfirmLogout(true);
+      return;
+    }
+    setConfirmLogout(false);
+    closeMobileMenu();
+    void logout();
   }
 
   // Spec 009, plan.md §1.4. Foco ligero (sin trap completo, fuera de
@@ -84,6 +101,23 @@ export function AppLayout() {
   // nombre accesible en modo desplegado sigue siendo exactamente el mismo
   // de siempre (el texto visible), sin ningún cambio de comportamiento ahí.
   const collapsedLabel = (label: string) => (isCollapsed ? { 'aria-label': label, title: label } : {});
+
+  /**
+   * Spec 011 (modo offline), plan.md §6, H6 criterio 2. Recargar u abrir la
+   * app sin conexión y sin sesión ya cargada en memoria no tiene forma de
+   * autenticarse (el access token solo vive en memoria, spec 001) — se
+   * avisa con claridad en vez de dejar que cada una de las 8 páginas
+   * muestre su propio "tienes que iniciar sesión" (que llevaría a un
+   * `/login` igual de inútil sin red).
+   */
+  if (!isLoading && isOffline && !isAuthenticated) {
+    return (
+      <main>
+        <h1>Sin conexión</h1>
+        <p role="alert">Vuelve a conectarte para continuar.</p>
+      </main>
+    );
+  }
 
   return (
     <div id="app-shell">
@@ -133,22 +167,27 @@ export function AppLayout() {
               </li>
             ))}
             <li>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  closeMobileMenu();
-                  void logout();
-                }}
-                {...collapsedLabel('Cerrar sesión')}
-              >
+              <button type="button" className="btn btn-secondary" onClick={handleLogoutClick} {...collapsedLabel('Cerrar sesión')}>
                 <span className="dot" aria-hidden="true" />{' '}
                 <span className={isCollapsed ? 'sr-only' : undefined}>Cerrar sesión</span>
               </button>
+              {confirmLogout && (
+                <p role="alert">
+                  Tienes {syncQueue.length} cambio{syncQueue.length === 1 ? '' : 's'} sin sincronizar que se dejarán de
+                  mostrar al cerrar sesión.{' '}
+                  <button type="button" className="btn btn-ghost" onClick={handleLogoutClick}>
+                    Cerrar sesión de todos modos
+                  </button>{' '}
+                  <button type="button" className="btn btn-ghost" onClick={() => setConfirmLogout(false)}>
+                    Cancelar
+                  </button>
+                </p>
+              )}
             </li>
           </ul>
         </nav>
       )}
+      {showSidebar && <SyncStatusPanel />}
       <div id="app-content">
         <Outlet />
       </div>

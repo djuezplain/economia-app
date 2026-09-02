@@ -11,6 +11,8 @@ import * as transactionsApi from '../api/transactions';
 import type { Category } from '../api/categories';
 import type { ListTransactionsResult, Transaction } from '../api/transactions';
 import { ApiError } from '../api/client';
+import { putTransactions } from '../offline/db';
+import { resetForTests } from '../offline/connectivity';
 
 const INCOME_CATEGORY: Category = {
   id: 'cat-income-1',
@@ -109,6 +111,7 @@ const INCOME_RESULT: ListTransactionsResult = {
 describe('MovementsListPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetForTests(true);
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue({
       id: 'user-1',
       email: 'ana@example.com',
@@ -237,5 +240,31 @@ describe('MovementsListPage', () => {
     await waitFor(() =>
       expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'EXPENSE', dateFrom: '2026-08-01', dateTo: '2026-08-31' })),
     );
+  });
+
+  it('sin conexión (T3.3, spec 011), muestra los movimientos de la caché local en vez de llamar a la API', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+    const listSpy = vi.spyOn(transactionsApi, 'listTransactions');
+    await putTransactions([{ ...EXPENSE_TX, pending: false, pendingAction: null }]);
+    resetForTests(false);
+
+    renderPage();
+
+    expect(await screen.findByText('Depósito gasolina')).toBeInTheDocument();
+    expect(screen.getByText(/Sin conexión/)).toBeInTheDocument();
+    expect(listSpy).not.toHaveBeenCalled();
+  });
+
+  it('un movimiento con pending:true en la caché se marca "pendiente de sincronizar" (T4.2, spec 011)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+    await putTransactions([{ ...EXPENSE_TX, pending: true, pendingAction: 'CREATE' }]);
+    resetForTests(false);
+
+    renderPage();
+
+    expect(await screen.findByText('Depósito gasolina')).toBeInTheDocument();
+    expect(screen.getByText('pendiente de sincronizar')).toBeInTheDocument();
   });
 });

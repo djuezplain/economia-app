@@ -12,6 +12,7 @@ import type { MonthSummary } from '../api/dashboard';
 import type { MonthProgress, GoalProgress } from '../api/goals-progress';
 import type { ListTransactionsResult, Transaction } from '../api/transactions';
 import { ApiError } from '../api/client';
+import { resetForTests } from '../offline/connectivity';
 import { formatCurrency } from './home-shared';
 
 // `screen.getByText` normaliza los espacios en blanco del DOM (colapsa el
@@ -217,5 +218,25 @@ describe('HomePage', () => {
     expect(await screen.findByText('Balance del mes')).toBeInTheDocument();
     expect(screen.getByText('Café')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Error de prueba.');
+  });
+
+  it('sin conexión (H6, spec 011), avisa de que la página requiere conexión sin llamar a la API', async () => {
+    mockLoggedIn();
+    resetForTests(false);
+    const monthSpy = vi.spyOn(dashboardApi, 'getMonthSummary');
+
+    renderHome();
+
+    expect(await screen.findByText('Esta página requiere conexión a internet.')).toBeInTheDocument();
+    expect(monthSpy).not.toHaveBeenCalled();
+  });
+
+  it('sin conexión, el aviso de verificación pendiente se sigue mostrando (no depende de la red)', async () => {
+    mockLoggedIn({ ...PROFILE, status: 'PENDING_VERIFICATION' });
+    resetForTests(false);
+
+    renderHome();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Todavía no has verificado tu email.');
   });
 });

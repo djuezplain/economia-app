@@ -6,7 +6,7 @@ import { ApiError } from '../api/client';
 import { GOOGLE_LOGIN_URL } from '../api/auth';
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, isOffline } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,6 +16,12 @@ export function LoginPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
+    // Spec 011 (modo offline), H6 criterio 2: comprobado antes de intentar
+    // la petición, para no dejar que falle con un error de red poco claro.
+    if (isOffline) {
+      setFormError('No hay conexión. Vuelve a conectarte para iniciar sesión.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       await login(email, password);
