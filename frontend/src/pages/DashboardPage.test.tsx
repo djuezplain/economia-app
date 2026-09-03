@@ -9,7 +9,7 @@ import * as usersApi from '../api/users';
 import * as categoriesApi from '../api/categories';
 import * as dashboardApi from '../api/dashboard';
 import type { Category } from '../api/categories';
-import type { MonthSummary, YearSummary } from '../api/dashboard';
+import type { ComparisonSummary, MonthSummary, YearSummary } from '../api/dashboard';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 import { resetForTests } from '../offline/connectivity';
@@ -81,6 +81,28 @@ function buildYearSummary(): YearSummary {
   };
 }
 
+const COMPARISON_SUMMARY_EXPENSE: ComparisonSummary = {
+  period: 'month',
+  type: 'EXPENSE',
+  days: 28,
+  currentLabel: 'Agosto 2026',
+  previousLabel: 'Julio 2026',
+  current: { count: 4, total: '400.00', averagePerDay: '14.29' },
+  previous: { count: 2, total: '200.00', averagePerDay: '7.14' },
+  changes: { count: '100.00', total: '100.00', averagePerDay: '100.00' },
+};
+
+const COMPARISON_SUMMARY_SIN_ANTERIOR: ComparisonSummary = {
+  period: 'month',
+  type: 'EXPENSE',
+  days: 28,
+  currentLabel: 'Agosto 2026',
+  previousLabel: 'Julio 2026',
+  current: { count: 1, total: '50.00', averagePerDay: '1.79' },
+  previous: { count: 0, total: '0.00', averagePerDay: '0.00' },
+  changes: { count: null, total: null, averagePerDay: null },
+};
+
 function buildEmptyYearSummary(): YearSummary {
   const months = Array.from({ length: 12 }, (_, i) => ({
     month: `2026-${String(i + 1).padStart(2, '0')}`,
@@ -125,6 +147,7 @@ describe('DashboardPage', () => {
     vi.spyOn(authApi, 'refresh').mockRejectedValue(new ApiError(401, 'No hay sesión.'));
     const monthSpy = vi.spyOn(dashboardApi, 'getMonthSummary');
     const yearSpy = vi.spyOn(dashboardApi, 'getYearSummary');
+    const comparisonSpy = vi.spyOn(dashboardApi, 'getComparison');
     const categoriesSpy = vi.spyOn(categoriesApi, 'listCategories');
 
     renderPage();
@@ -132,6 +155,7 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Tienes que iniciar sesión');
     expect(monthSpy).not.toHaveBeenCalled();
     expect(yearSpy).not.toHaveBeenCalled();
+    expect(comparisonSpy).not.toHaveBeenCalled();
     expect(categoriesSpy).not.toHaveBeenCalled();
   });
 
@@ -140,6 +164,7 @@ describe('DashboardPage', () => {
     vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY, EXPENSE_FOOD, EXPENSE_TRANSPORT]);
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
+    vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
 
     renderPage();
 
@@ -168,6 +193,7 @@ describe('DashboardPage', () => {
     vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY_SIN_GASTOS);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
+    vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
 
     renderPage();
 
@@ -181,6 +207,7 @@ describe('DashboardPage', () => {
     vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY, EXPENSE_FOOD]);
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
+    vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
 
     renderPage();
 
@@ -201,6 +228,7 @@ describe('DashboardPage', () => {
     vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildEmptyYearSummary());
+    vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
 
     renderPage();
 
@@ -214,6 +242,7 @@ describe('DashboardPage', () => {
     vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
+    vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
 
     renderPage();
 
@@ -226,11 +255,14 @@ describe('DashboardPage', () => {
     vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
     const monthSpy = vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
+    vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
 
     renderPage();
     await screen.findByText('Ingresos: 2000.00');
 
-    const monthInput = screen.getByLabelText('Mes');
+    // spec 013 añadió un botón de periodo "Mes" (la comparativa temporal) con el mismo
+    // texto que esta etiqueta — se filtra por tipo de campo para no ambigüar la consulta.
+    const monthInput = screen.getByLabelText('Mes', { selector: 'input[type="month"]' });
     await userEvent.clear(monthInput);
     await userEvent.type(monthInput, '2026-03');
 
@@ -242,11 +274,14 @@ describe('DashboardPage', () => {
     vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     const yearSpy = vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
+    vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
 
     renderPage();
     await screen.findByText('Ingresos totales: 4100.00');
 
-    const yearInput = screen.getByLabelText('Año');
+    // spec 013 añadió un botón de periodo "Año" (la comparativa temporal) con el mismo
+    // texto que esta etiqueta — se filtra por tipo de campo para no ambigüar la consulta.
+    const yearInput = screen.getByLabelText('Año', { selector: 'input[type="number"]' });
     await userEvent.clear(yearInput);
     await userEvent.type(yearInput, '2025');
 
@@ -257,6 +292,7 @@ describe('DashboardPage', () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     const listCategoriesSpy = vi.spyOn(categoriesApi, 'listCategories');
     const monthSpy = vi.spyOn(dashboardApi, 'getMonthSummary');
+    const comparisonSpy = vi.spyOn(dashboardApi, 'getComparison');
     resetForTests(false);
 
     render(
@@ -270,5 +306,81 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Esta página requiere conexión a internet.')).toBeInTheDocument();
     expect(listCategoriesSpy).not.toHaveBeenCalled();
     expect(monthSpy).not.toHaveBeenCalled();
+    expect(comparisonSpy).not.toHaveBeenCalled();
+  });
+
+  describe('Comparativa temporal (spec 013)', () => {
+    function mockOtherEndpoints() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
+      vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
+      vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
+    }
+
+    function comparisonSection() {
+      return screen.getByRole('heading', { name: 'Comparativa temporal' }).closest('section') as HTMLElement;
+    }
+
+    // `getByText` normaliza (colapsa) los espacios del propio DOM al comparar,
+    // pero no el patrón que se le pasa — el espacio de no separación de
+    // `formatCurrency` ("400,00 €") no coincidiría con el mismo texto ya
+    // colapsado a un espacio normal en el DOM renderizado.
+    function eur(amount: string): string {
+      return formatCurrency(amount).replace(/ /g, ' ');
+    }
+
+    it('muestra las cifras del periodo actual y del anterior, con el % de variación', async () => {
+      mockOtherEndpoints();
+      vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+
+      renderPage();
+      await screen.findByText('Agosto 2026');
+
+      const section = within(comparisonSection());
+      expect(section.getByText('Julio 2026')).toBeInTheDocument();
+      expect(section.getByText('4')).toBeInTheDocument();
+      expect(section.getByText('Anterior: 2')).toBeInTheDocument();
+      expect(section.getByText(eur('400.00'))).toBeInTheDocument();
+      expect(section.getByText(`Anterior: ${eur('200.00')}`)).toBeInTheDocument();
+      expect(section.getAllByText('↑ 100.00%')).toHaveLength(3);
+      expect(section.getByText(/Has gastado un 100\.00% más que en el periodo anterior/)).toBeInTheDocument();
+    });
+
+    it('sin movimientos en el periodo anterior, muestra "sin datos" en vez de un % erróneo', async () => {
+      mockOtherEndpoints();
+      vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_SIN_ANTERIOR);
+
+      renderPage();
+      await screen.findByText('Agosto 2026');
+
+      const section = within(comparisonSection());
+      expect(section.getAllByText('sin datos')).toHaveLength(3);
+      expect(section.getByText('No hay movimientos en Julio 2026 con los que comparar.')).toBeInTheDocument();
+    });
+
+    it('cambia el tipo (Gastos/Ingresos) y vuelve a pedir la comparativa con ese tipo', async () => {
+      mockOtherEndpoints();
+      const comparisonSpy = vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+
+      renderPage();
+      await screen.findByText('Agosto 2026');
+      expect(comparisonSpy).toHaveBeenLastCalledWith('month', 'EXPENSE');
+
+      await userEvent.click(screen.getByRole('radio', { name: 'Ingresos' }));
+
+      await waitFor(() => expect(comparisonSpy).toHaveBeenLastCalledWith('month', 'INCOME'));
+    });
+
+    it('cambia el periodo (Semana/Mes/Trimestre/Año) y vuelve a pedir la comparativa con ese periodo', async () => {
+      mockOtherEndpoints();
+      const comparisonSpy = vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+
+      renderPage();
+      await screen.findByText('Agosto 2026');
+
+      await userEvent.click(screen.getByRole('radio', { name: 'Trimestre' }));
+
+      await waitFor(() => expect(comparisonSpy).toHaveBeenLastCalledWith('quarter', 'EXPENSE'));
+    });
   });
 });

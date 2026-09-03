@@ -16,8 +16,8 @@ import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { listCategories } from '../api/categories';
 import type { Category } from '../api/categories';
-import { getMonthSummary, getYearSummary } from '../api/dashboard';
-import type { MonthSummary, YearSummary } from '../api/dashboard';
+import { getComparison, getMonthSummary, getYearSummary } from '../api/dashboard';
+import type { ComparisonPeriod, ComparisonSummary, MonthSummary, YearSummary } from '../api/dashboard';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 
@@ -60,6 +60,43 @@ function formatPercent(value: string | null): string {
   return value === null ? 'sin datos' : `${value}%`;
 }
 
+// Spec 013 (comparativa temporal), plan.md §4.
+const COMPARISON_PERIOD_OPTIONS: Array<{ value: ComparisonPeriod; label: string }> = [
+  { value: 'week', label: 'Semana' },
+  { value: 'month', label: 'Mes' },
+  { value: 'quarter', label: 'Trimestre' },
+  { value: 'year', label: 'Año' },
+];
+
+/**
+ * Etiqueta de variación de una métrica (H3 criterio 2/3): el sentido "bueno"
+ * de subir o bajar depende del tipo — en gastos, subir es malo; en ingresos,
+ * al revés. Mismo criterio de semántica de color que `ProgressBar`/
+ * `GoalsPage` (`direction: 'budget' | 'savings'`, spec 007/010), aplicado
+ * aquí a un signo en vez de a un %.
+ */
+function changeTag(change: string | null, type: 'INCOME' | 'EXPENSE'): { className: string; text: string } {
+  if (change === null) return { className: 'tag tag-neutral', text: 'sin datos' };
+  const value = parseFloat(change);
+  if (value === 0) return { className: 'tag tag-neutral', text: '· 0.00%' };
+  const isGood = type === 'INCOME' ? value > 0 : value < 0;
+  const arrow = value > 0 ? '↑' : '↓';
+  return { className: isGood ? 'tag tag-accent' : 'tag tag-accent-2', text: `${arrow} ${Math.abs(value).toFixed(2)}%` };
+}
+
+/** Texto-resumen de H3 criterio 3. */
+function comparisonSummaryText(summary: ComparisonSummary): string {
+  const verb = summary.type === 'EXPENSE' ? 'gastado' : 'ingresado';
+  if (summary.changes.total === null) {
+    return `No hay movimientos en ${summary.previousLabel} con los que comparar.`;
+  }
+  const totalChange = parseFloat(summary.changes.total);
+  const moreOrLess = totalChange >= 0 ? 'más' : 'menos';
+  const avgChange = summary.changes.averagePerDay;
+  const avgClause = avgChange === null ? '' : ` y tu media diaria ha ${parseFloat(avgChange) >= 0 ? 'subido' : 'bajado'}`;
+  return `Has ${verb} un ${Math.abs(totalChange).toFixed(2)}% ${moreOrLess} que en el periodo anterior${avgClause}.`;
+}
+
 /**
  * H4/H5 (spec 002). Dos secciones (mes en curso/seleccionado, año
  * seleccionado), cada una con sus cifras en texto plano (accesibles sin
@@ -90,6 +127,12 @@ export function DashboardPage() {
   const [year, setYear] = useState(currentYear());
   const [yearSummary, setYearSummary] = useState<YearSummary | null>(null);
   const [yearError, setYearError] = useState<string | null>(null);
+
+  // Spec 013 (comparativa temporal).
+  const [comparisonType, setComparisonType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
+  const [comparisonPeriod, setComparisonPeriod] = useState<ComparisonPeriod>('month');
+  const [comparisonSummary, setComparisonSummary] = useState<ComparisonSummary | null>(null);
+  const [comparisonError, setComparisonError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated || !isOnline) return;
@@ -140,6 +183,25 @@ export function DashboardPage() {
     };
   }, [isAuthenticated, isOnline, year]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const summary = await getComparison(comparisonPeriod, comparisonType);
+        if (!cancelled) {
+          setComparisonSummary(summary);
+          setComparisonError(null);
+        }
+      } catch (err) {
+        if (!cancelled) setComparisonError(err instanceof ApiError ? err.message : 'No se ha podido cargar la comparativa.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline, comparisonPeriod, comparisonType]);
+
   const byCategoryChartData = useMemo(() => {
     if (!monthSummary) return [];
     return [...monthSummary.byCategory]
@@ -186,9 +248,96 @@ export function DashboardPage() {
     );
   }
 
+  const countChangeTag = comparisonSummary ? changeTag(comparisonSummary.changes.count, comparisonSummary.type) : null;
+  const totalChangeTag = comparisonSummary ? changeTag(comparisonSummary.changes.total, comparisonSummary.type) : null;
+  const averageChangeTag = comparisonSummary ? changeTag(comparisonSummary.changes.averagePerDay, comparisonSummary.type) : null;
+
   return (
     <main>
       <h1>Dashboard</h1>
+
+      <section>
+        <h2>Comparativa temporal</h2>
+
+        <div className="comparison-toolbar">
+          <div className="seg" role="radiogroup" aria-label="Tipo de movimiento a comparar">
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="comparison-type"
+                value="EXPENSE"
+                checked={comparisonType === 'EXPENSE'}
+                onChange={() => setComparisonType('EXPENSE')}
+              />
+              Gastos
+            </label>
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="comparison-type"
+                value="INCOME"
+                checked={comparisonType === 'INCOME'}
+                onChange={() => setComparisonType('INCOME')}
+              />
+              Ingresos
+            </label>
+          </div>
+
+          <div className="seg" role="radiogroup" aria-label="Periodo a comparar">
+            {COMPARISON_PERIOD_OPTIONS.map((option) => (
+              <label className="seg-opt" key={option.value}>
+                <input
+                  type="radio"
+                  name="comparison-period"
+                  value={option.value}
+                  checked={comparisonPeriod === option.value}
+                  onChange={() => setComparisonPeriod(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {comparisonError && <p role="alert">{comparisonError}</p>}
+
+        {comparisonSummary && countChangeTag && totalChangeTag && averageChangeTag && (
+          <>
+            <div className="comparison-pills">
+              <span className="tag tag-accent">{comparisonSummary.currentLabel}</span>
+              <span aria-hidden="true">vs</span>
+              <span className="tag tag-neutral">{comparisonSummary.previousLabel}</span>
+            </div>
+
+            <div className="comparison-grid">
+              <div className="card elev-sm">
+                <p className="card-kicker">Nº de {comparisonSummary.type === 'EXPENSE' ? 'gastos' : 'ingresos'}</p>
+                <p className="card-amount">{comparisonSummary.current.count}</p>
+                <p className="card-meta">Anterior: {comparisonSummary.previous.count}</p>
+                <span className={countChangeTag.className}>{countChangeTag.text}</span>
+              </div>
+
+              <div className="card elev-sm">
+                <p className="card-kicker">Importe total</p>
+                <p className="card-amount">{formatCurrency(comparisonSummary.current.total)}</p>
+                <p className="card-meta">Anterior: {formatCurrency(comparisonSummary.previous.total)}</p>
+                <span className={totalChangeTag.className}>{totalChangeTag.text}</span>
+              </div>
+
+              <div className="card elev-sm">
+                <p className="card-kicker">Media por día</p>
+                <p className="card-amount">{formatCurrency(comparisonSummary.current.averagePerDay)}</p>
+                <p className="card-meta">Anterior: {formatCurrency(comparisonSummary.previous.averagePerDay)}</p>
+                <span className={averageChangeTag.className}>{averageChangeTag.text}</span>
+              </div>
+            </div>
+
+            <p className="callout" role="status">
+              {comparisonSummaryText(comparisonSummary)}
+            </p>
+          </>
+        )}
+      </section>
 
       <section>
         <h2>Resumen del mes</h2>
