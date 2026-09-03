@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  absoluteDifference,
+  bucketBySeason,
+  clippedDaysInRange,
   comparisonChanges,
   comparisonMetrics,
   currentMonthIso,
@@ -13,6 +16,9 @@ import {
   resolveDaysForYear,
   savingsAmount,
   savingsPercent,
+  seasonalDays,
+  seasonalSummary,
+  SEASONS,
 } from './dashboard.calculations.js';
 
 describe('dashboard.calculations', () => {
@@ -261,6 +267,154 @@ describe('dashboard.calculations', () => {
       const current = { count: 2, total: '50.00', averagePerDay: '5.00' };
       const previous = { count: 0, total: '0.00', averagePerDay: '0.00' };
       expect(comparisonChanges(current, previous)).toEqual({ count: null, total: null, averagePerDay: null });
+    });
+  });
+
+  describe('clippedDaysInRange (spec 014)', () => {
+    it('rango completo cuando cabe entero dentro de [floor, ceiling]', () => {
+      expect(clippedDaysInRange('2026-06-01', '2026-08-31', '2026-06-01', '2026-09-03')).toBe(92);
+    });
+
+    it('recorta por arriba (ceiling) si el rango sigue en curso', () => {
+      expect(clippedDaysInRange('2026-06-01', '2026-08-31', '2026-06-01', '2026-07-10')).toBe(40);
+    });
+
+    it('recorta por abajo (floor) si el rango empieza antes de floor', () => {
+      expect(clippedDaysInRange('2026-06-01', '2026-08-31', '2026-07-15', '2026-09-03')).toBe(48);
+    });
+
+    it('0 si el rango es totalmente posterior a ceiling (aún no ha empezado)', () => {
+      expect(clippedDaysInRange('2026-12-01', '2026-12-31', '2026-12-01', '2026-09-03')).toBe(0);
+    });
+
+    it('0 si el rango es totalmente anterior a floor', () => {
+      expect(clippedDaysInRange('2024-06-01', '2024-08-31', '2025-01-01', '2026-09-03')).toBe(0);
+    });
+  });
+
+  describe('seasonalDays (spec 014)', () => {
+    it('alcance "año": una estación en curso solo cuenta los días transcurridos', () => {
+      const now = new Date('2026-07-10T10:00:00.000Z');
+      expect(seasonalDays('summer', { kind: 'year', year: 2026 }, now)).toBe(40);
+    });
+
+    it('alcance "año": una estación que todavía no ha empezado ese año da 0 días', () => {
+      const now = new Date('2026-05-01T10:00:00.000Z');
+      expect(seasonalDays('summer', { kind: 'year', year: 2026 }, now)).toBe(0);
+    });
+
+    it('alcance "año": invierno son dos tramos no contiguos (ene+feb, y dic) dentro del mismo año — H2 criterio 4', () => {
+      // 2026 no es bisiesto: enero+febrero = 59 días, ya cerrados a 3 de
+      // septiembre; diciembre de 2026 todavía no ha llegado → 0. Total 59,
+      // no 90 (que sería si se tratara como un tramo continuo dic-feb).
+      const now = new Date('2026-09-03T10:00:00.000Z');
+      expect(seasonalDays('winter', { kind: 'year', year: 2026 }, now)).toBe(59);
+    });
+
+    it('alcance "histórico": suma los días de cada año transcurrido, recortando al primer movimiento', () => {
+      const now = new Date('2026-08-28T10:00:00.000Z');
+      const scope = { kind: 'historic' as const, firstTransactionDate: '2025-07-15' };
+      // Invierno: instancia de 2025 recortada a partir del 15/07/2025 dentro de
+      // sus dos tramos (ene-feb 2025 queda entera antes del recorte → 0;
+      // diciembre 2025 entero → 31) más la instancia de 2026 (ene-feb 2026
+      // enteros → 59; diciembre 2026 aún no llega → 0) = 0 + 31 + 59 + 0 = 90.
+      expect(seasonalDays('winter', scope, now)).toBe(90);
+      // Verano: instancia de 2025 recortada al 15/07 → del 15/07 al 31/08 = 48
+      // días; instancia de 2026 hasta el 28/08 (hoy) = 89 días. 48 + 89 = 137.
+      expect(seasonalDays('summer', scope, now)).toBe(137);
+    });
+  });
+
+  describe('bucketBySeason (spec 014)', () => {
+    it('agrupa por el mes de la fecha, sin importar el año', () => {
+      const transactions = [
+        { date: '2025-01-05' }, // invierno
+        { date: '2026-02-10' }, // invierno
+        { date: '2026-12-24' }, // invierno
+        { date: '2026-04-01' }, // primavera
+        { date: '2026-07-01' }, // verano
+        { date: '2026-10-01' }, // otoño
+      ];
+      const buckets = bucketBySeason(transactions);
+      expect(buckets.winter).toHaveLength(3);
+      expect(buckets.spring).toHaveLength(1);
+      expect(buckets.summer).toHaveLength(1);
+      expect(buckets.autumn).toHaveLength(1);
+    });
+  });
+
+  describe('absoluteDifference (spec 014)', () => {
+    it('valor absoluto de la diferencia, sin importar el orden de los argumentos', () => {
+      expect(absoluteDifference('300.00', '10.00')).toBe('290.00');
+      expect(absoluteDifference('10.00', '300.00')).toBe('290.00');
+    });
+  });
+
+  describe('seasonalSummary (spec 014)', () => {
+    it('devuelve las 4 estaciones en orden canónico, con sus cifras y la comparación mejor/peor', () => {
+      const now = new Date('2026-09-03T10:00:00.000Z');
+      const transactions = [
+        { type: 'EXPENSE' as const, date: '2026-01-10', amount: '100.00' },
+        { type: 'EXPENSE' as const, date: '2026-02-05', amount: '50.00' },
+        { type: 'EXPENSE' as const, date: '2026-04-01', amount: '30.00' },
+        { type: 'EXPENSE' as const, date: '2026-07-01', amount: '200.00' },
+        { type: 'EXPENSE' as const, date: '2026-08-15', amount: '100.00' },
+        { type: 'EXPENSE' as const, date: '2026-09-01', amount: '10.00' },
+        // Ingreso en la misma fecha — no debe contar en un análisis de EXPENSE.
+        { type: 'INCOME' as const, date: '2026-07-01', amount: '9999.00' },
+      ];
+
+      const result = seasonalSummary(transactions, 'EXPENSE', { kind: 'year', year: 2026 }, now);
+
+      expect(result.seasons.map((s) => s.season)).toEqual([...SEASONS]);
+      expect(result.seasons).toEqual([
+        { season: 'winter', count: 2, total: '150.00', averagePerDay: '2.54' },
+        { season: 'spring', count: 1, total: '30.00', averagePerDay: '0.33' },
+        { season: 'summer', count: 2, total: '300.00', averagePerDay: '3.26' },
+        { season: 'autumn', count: 1, total: '10.00', averagePerDay: '3.33' },
+      ]);
+      expect(result.comparison).toEqual({
+        bestSeason: 'summer',
+        worstSeason: 'autumn',
+        difference: '290.00',
+        percent: '2900.00',
+      });
+    });
+
+    it('sin comparación si la estación con menos importe está a 0 (H3 criterio 4)', () => {
+      const now = new Date('2026-09-03T10:00:00.000Z');
+      const transactions = [
+        { type: 'EXPENSE' as const, date: '2026-01-10', amount: '100.00' },
+        { type: 'EXPENSE' as const, date: '2026-04-01', amount: '30.00' },
+        // Nada en verano ni en otoño.
+      ];
+
+      const result = seasonalSummary(transactions, 'EXPENSE', { kind: 'year', year: 2026 }, now);
+
+      expect(result.seasons.find((s) => s.season === 'summer')?.total).toBe('0.00');
+      expect(result.comparison).toBeNull();
+    });
+
+    it('sin comparación si las 4 estaciones están empatadas (H3 criterio 4)', () => {
+      const now = new Date('2026-09-03T10:00:00.000Z');
+      const transactions = [
+        { type: 'EXPENSE' as const, date: '2026-01-10', amount: '50.00' },
+        { type: 'EXPENSE' as const, date: '2026-04-01', amount: '50.00' },
+        { type: 'EXPENSE' as const, date: '2026-07-01', amount: '50.00' },
+        { type: 'EXPENSE' as const, date: '2026-09-01', amount: '50.00' },
+      ];
+
+      const result = seasonalSummary(transactions, 'EXPENSE', { kind: 'year', year: 2026 }, now);
+
+      expect(result.comparison).toBeNull();
+    });
+
+    it('sin ningún movimiento, las 4 estaciones quedan a "0.00" y sin comparación', () => {
+      const now = new Date('2026-09-03T10:00:00.000Z');
+      const result = seasonalSummary([], 'EXPENSE', { kind: 'year', year: 2026 }, now);
+
+      expect(result.seasons.every((s) => s.total === '0.00' && s.count === 0)).toBe(true);
+      expect(result.comparison).toBeNull();
     });
   });
 });

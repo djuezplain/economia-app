@@ -388,4 +388,113 @@ describe('Dashboard (e2e) — spec 002 H4/H5', () => {
       expect(incomeRes.current.total).toBe('2000.00');
     });
   });
+
+  describe('GET /dashboard/seasonal (spec 014)', () => {
+    it('sin autenticar, responde 401', async () => {
+      await request(app.getHttpServer()).get('/dashboard/seasonal').expect(401);
+    });
+
+    it('rechaza (400) `scope=year` sin `year`, y un `year` con formato inválido', async () => {
+      const user = await createUser('estacional-invalido@example.com');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .get('/dashboard/seasonal?scope=year')
+        .set('Authorization', auth(token))
+        .expect(400);
+      await request(app.getHttpServer())
+        .get('/dashboard/seasonal?scope=year&year=26')
+        .set('Authorization', auth(token))
+        .expect(400);
+    });
+
+    it('sin `type`/`scope`, usa gastos/histórico por defecto', async () => {
+      const user = await createUser('estacional-defecto@example.com');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .get('/dashboard/seasonal')
+        .set('Authorization', auth(token))
+        .expect(200);
+
+      expect(res.body.type).toBe('EXPENSE');
+      expect(res.body.scope).toBe('historic');
+      expect(res.body.year).toBeNull();
+      expect(res.body.seasons).toHaveLength(4);
+      expect(res.body.seasons.map((s: { season: string }) => s.season)).toEqual(['winter', 'spring', 'summer', 'autumn']);
+    });
+
+    it('alcance "año": reparte los movimientos de ese año natural por estación, con fechas fijas', async () => {
+      const user = await createUser('estacional-anio@example.com');
+      const expense = await createCategory(user.id, 'EXPENSE', 'Comida');
+
+      await db.insert(transactions).values([
+        { userId: user.id, type: 'EXPENSE', date: '2026-01-10', categoryId: expense.id, concept: 'Invierno 1', amount: '100.00' },
+        { userId: user.id, type: 'EXPENSE', date: '2026-02-05', categoryId: expense.id, concept: 'Invierno 2', amount: '50.00' },
+        { userId: user.id, type: 'EXPENSE', date: '2026-04-01', categoryId: expense.id, concept: 'Primavera', amount: '30.00' },
+        { userId: user.id, type: 'EXPENSE', date: '2026-07-01', categoryId: expense.id, concept: 'Verano 1', amount: '200.00' },
+        { userId: user.id, type: 'EXPENSE', date: '2026-08-15', categoryId: expense.id, concept: 'Verano 2', amount: '100.00' },
+        { userId: user.id, type: 'EXPENSE', date: '2026-09-01', categoryId: expense.id, concept: 'Otoño', amount: '10.00' },
+        // Fuera del año consultado — no debe contar.
+        { userId: user.id, type: 'EXPENSE', date: '2025-01-05', categoryId: expense.id, concept: 'Año anterior', amount: '9999.00' },
+      ]);
+
+      const dashboardService = app.get(DashboardService);
+      const res = await dashboardService.seasonal(user.id, 'EXPENSE', 'year', '2026', new Date('2026-09-03T10:00:00.000Z'));
+
+      expect(res.seasons).toEqual([
+        { season: 'winter', count: 2, total: '150.00', averagePerDay: '2.54' },
+        { season: 'spring', count: 1, total: '30.00', averagePerDay: '0.33' },
+        { season: 'summer', count: 2, total: '300.00', averagePerDay: '3.26' },
+        { season: 'autumn', count: 1, total: '10.00', averagePerDay: '3.33' },
+      ]);
+      expect(res.comparison).toEqual({ bestSeason: 'summer', worstSeason: 'autumn', difference: '290.00', percent: '2900.00' });
+    });
+
+    it('alcance "histórico": suma movimientos de la misma estación en años distintos', async () => {
+      const user = await createUser('estacional-historico@example.com');
+      const expense = await createCategory(user.id, 'EXPENSE', 'Comida');
+
+      await db.insert(transactions).values([
+        { userId: user.id, type: 'EXPENSE', date: '2025-07-20', categoryId: expense.id, concept: 'Verano 2025', amount: '80.00' },
+        { userId: user.id, type: 'EXPENSE', date: '2026-07-01', categoryId: expense.id, concept: 'Verano 2026', amount: '200.00' },
+      ]);
+
+      const dashboardService = app.get(DashboardService);
+      const res = await dashboardService.seasonal(user.id, 'EXPENSE', 'historic', undefined, new Date('2026-08-28T10:00:00.000Z'));
+
+      const summer = res.seasons.find((s) => s.season === 'summer');
+      expect(summer).toMatchObject({ count: 2, total: '280.00' });
+    });
+
+    it('si como mucho una estación tiene movimientos, no hay comparación posible', async () => {
+      const user = await createUser('estacional-sin-comparacion@example.com');
+      const expense = await createCategory(user.id, 'EXPENSE', 'Comida');
+      await db
+        .insert(transactions)
+        .values({ userId: user.id, type: 'EXPENSE', date: '2026-01-10', categoryId: expense.id, concept: 'Invierno', amount: '50.00' });
+
+      const dashboardService = app.get(DashboardService);
+      const res = await dashboardService.seasonal(user.id, 'EXPENSE', 'year', '2026', new Date('2026-09-03T10:00:00.000Z'));
+
+      expect(res.comparison).toBeNull();
+    });
+
+    it('solo calcula sobre los movimientos propios del usuario autenticado', async () => {
+      const owner = await createUser('estacional-dueno@example.com');
+      const other = await createUser('estacional-otro@example.com');
+      const ownerExpense = await createCategory(owner.id, 'EXPENSE', 'Comida');
+      const otherExpense = await createCategory(other.id, 'EXPENSE', 'Comida ajena');
+
+      await db.insert(transactions).values([
+        { userId: owner.id, type: 'EXPENSE', date: '2026-07-01', categoryId: ownerExpense.id, concept: 'Propio', amount: '10.00' },
+        { userId: other.id, type: 'EXPENSE', date: '2026-07-01', categoryId: otherExpense.id, concept: 'Ajeno', amount: '9999.00' },
+      ]);
+
+      const dashboardService = app.get(DashboardService);
+      const res = await dashboardService.seasonal(owner.id, 'EXPENSE', 'year', '2026', new Date('2026-09-03T10:00:00.000Z'));
+
+      expect(res.seasons.find((s) => s.season === 'summer')?.total).toBe('10.00');
+    });
+  });
 });

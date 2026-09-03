@@ -56,3 +56,34 @@ export interface ComparisonSummary {
 export function getComparison(period: ComparisonPeriod, type: 'INCOME' | 'EXPENSE'): Promise<ComparisonSummary> {
   return api.get<ComparisonSummary>(`/dashboard/comparison?period=${period}&type=${type}`);
 }
+
+// Spec 014 (análisis estacional). Espejo de `SeasonalSummary` en el backend.
+export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
+export type SeasonalScope = 'historic' | 'year';
+
+export interface SeasonEntry {
+  season: Season;
+  count: number;
+  total: string;
+  averagePerDay: string;
+}
+
+export interface SeasonalComparison {
+  bestSeason: Season;
+  worstSeason: Season;
+  difference: string;
+  percent: string;
+}
+
+export interface SeasonalSummary {
+  scope: SeasonalScope;
+  year: number | null;
+  type: 'INCOME' | 'EXPENSE';
+  seasons: SeasonEntry[];
+  comparison: SeasonalComparison | null;
+}
+
+export function getSeasonal(type: 'INCOME' | 'EXPENSE', scope: SeasonalScope, year?: string): Promise<SeasonalSummary> {
+  const query = scope === 'year' ? `type=${type}&scope=${scope}&year=${year}` : `type=${type}&scope=${scope}`;
+  return api.get<SeasonalSummary>(`/dashboard/seasonal?${query}`);
+}
