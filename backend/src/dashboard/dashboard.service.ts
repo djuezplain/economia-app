@@ -15,8 +15,16 @@ import {
   resolveDaysForMonth,
   savingsAmount,
   savingsPercent,
+  seasonalSummary,
 } from './dashboard.calculations.js';
-import type { ComparisonChanges, ComparisonMetrics, ComparisonPeriod, MonthlyEvolutionEntry } from './dashboard.calculations.js';
+import type {
+  ComparisonChanges,
+  ComparisonMetrics,
+  ComparisonPeriod,
+  MonthlyEvolutionEntry,
+  SeasonalComparison,
+  SeasonEntry,
+} from './dashboard.calculations.js';
 
 export interface MonthSummary {
   month: string;
@@ -43,6 +51,16 @@ export interface ComparisonSummary {
   current: ComparisonMetrics;
   previous: ComparisonMetrics;
   changes: ComparisonChanges;
+}
+
+export type SeasonalScopeKind = 'historic' | 'year';
+
+export interface SeasonalSummary {
+  scope: SeasonalScopeKind;
+  year: number | null;
+  type: MovementType;
+  seasons: SeasonEntry[];
+  comparison: SeasonalComparison | null;
 }
 
 function monthRange(month: string): { start: string; end: string } {
@@ -158,5 +176,43 @@ export class DashboardService {
       previous,
       changes: comparisonChanges(current, previous),
     };
+  }
+
+  /** H1/H2/H3 (spec 014). Reparte los movimientos del usuario por estación (invierno/primavera/verano/otoño) y compara la de mayor y la de menor importe. */
+  async seasonal(
+    userId: string,
+    typeParam: MovementType | undefined,
+    scopeParam: SeasonalScopeKind | undefined,
+    yearParam: string | undefined,
+    now: Date = new Date(),
+  ): Promise<SeasonalSummary> {
+    const type = typeParam ?? 'EXPENSE';
+    const scope = scopeParam ?? 'historic';
+
+    if (scope === 'year') {
+      const year = Number(yearParam);
+      const items = await this.db.query.transactions.findMany({
+        where: and(eq(transactions.userId, userId), gte(transactions.date, `${year}-01-01`), lte(transactions.date, `${year}-12-31`)),
+      });
+      const { seasons, comparison } = seasonalSummary(items, type, { kind: 'year', year }, now);
+      return { scope, year, type, seasons, comparison };
+    }
+
+    // Alcance "histórico" (H2 criterio 3): una única consulta de todo el
+    // histórico del usuario — `firstTransactionDate` (para no diluir la
+    // media con años sin movimientos) se calcula sobre el propio resultado,
+    // sin una segunda consulta `MIN(date)`.
+    const items = await this.db.query.transactions.findMany({ where: eq(transactions.userId, userId) });
+    const firstTransactionDate = items.reduce<string | null>(
+      (min, t) => (min === null || t.date < min ? t.date : min),
+      null,
+    );
+    const { seasons, comparison } = seasonalSummary(
+      items,
+      type,
+      { kind: 'historic', firstTransactionDate: firstTransactionDate ?? `${now.getFullYear()}-01-01` },
+      now,
+    );
+    return { scope, year: null, type, seasons, comparison };
   }
 }

@@ -16,8 +16,17 @@ import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { listCategories } from '../api/categories';
 import type { Category } from '../api/categories';
-import { getComparison, getMonthSummary, getYearSummary } from '../api/dashboard';
-import type { ComparisonPeriod, ComparisonSummary, MonthSummary, YearSummary } from '../api/dashboard';
+import { getComparison, getMonthSummary, getSeasonal, getYearSummary } from '../api/dashboard';
+import type {
+  ComparisonPeriod,
+  ComparisonSummary,
+  MonthSummary,
+  Season,
+  SeasonalComparison,
+  SeasonalScope,
+  SeasonalSummary,
+  YearSummary,
+} from '../api/dashboard';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 
@@ -97,6 +106,41 @@ function comparisonSummaryText(summary: ComparisonSummary): string {
   return `Has ${verb} un ${Math.abs(totalChange).toFixed(2)}% ${moreOrLess} que en el periodo anterior${avgClause}.`;
 }
 
+// Spec 014 (análisis estacional), plan.md §4. Orden e icono siguen el mismo
+// orden canónico que ya fija el backend (`SEASONS`, dashboard.calculations.ts).
+const SEASON_LABELS: Record<Season, string> = { winter: 'Invierno', spring: 'Primavera', summer: 'Verano', autumn: 'Otoño' };
+const SEASON_ICONS: Record<Season, string> = { winter: '❄️', spring: '🌸', summer: '☀️', autumn: '🍂' };
+
+/**
+ * Etiqueta "Mejor"/"Peor" de una tarjeta de estación (H3 criterio 1/2): solo
+ * la estación con más importe (`bestSeason`, el mayor `total`) y la de menos
+ * (`worstSeason`) la llevan. Qué etiqueta es "buena" depende del tipo — en
+ * Gastos, la de MENOS importe es la buena; en Ingresos, la de MÁS —, mismo
+ * criterio de semántica ya usado en `changeTag` para Comparativa temporal.
+ */
+function seasonBadge(
+  season: Season,
+  comparison: SeasonalComparison | null,
+  type: 'INCOME' | 'EXPENSE',
+): { className: string; text: string } | null {
+  if (!comparison) return null;
+  const isMax = comparison.bestSeason === season;
+  const isMin = comparison.worstSeason === season;
+  if (!isMax && !isMin) return null;
+  const isGoodSeason = type === 'EXPENSE' ? isMin : isMax;
+  return { className: isGoodSeason ? 'tag tag-accent' : 'tag tag-accent-2', text: isGoodSeason ? 'Mejor' : 'Peor' };
+}
+
+/** Texto-resumen de H3 criterio 3, o el aviso de H3 criterio 4 cuando no hay comparación posible. */
+function seasonalSummaryText(summary: SeasonalSummary): string {
+  if (!summary.comparison) {
+    return 'Todavía no hay suficientes estaciones con movimientos para compararlas.';
+  }
+  const verb = summary.type === 'EXPENSE' ? 'gastas' : 'ingresas';
+  const { bestSeason, worstSeason, difference, percent } = summary.comparison;
+  return `En ${SEASON_LABELS[bestSeason]} ${verb} ${formatCurrency(difference)} más que en ${SEASON_LABELS[worstSeason]} (${percent}% más).`;
+}
+
 /**
  * H4/H5 (spec 002). Dos secciones (mes en curso/seleccionado, año
  * seleccionado), cada una con sus cifras en texto plano (accesibles sin
@@ -133,6 +177,15 @@ export function DashboardPage() {
   const [comparisonPeriod, setComparisonPeriod] = useState<ComparisonPeriod>('month');
   const [comparisonSummary, setComparisonSummary] = useState<ComparisonSummary | null>(null);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
+
+  // Spec 014 (análisis estacional). Selector propio, independiente del de
+  // "Comparativa temporal" (plan.md §4) — mismo criterio de independencia
+  // que ya tienen "Resumen del mes" y "Vista anual" entre sí.
+  const [seasonalType, setSeasonalType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
+  const [seasonalScope, setSeasonalScope] = useState<SeasonalScope>('historic');
+  const [seasonalYear, setSeasonalYear] = useState(currentYear());
+  const [seasonalData, setSeasonalData] = useState<SeasonalSummary | null>(null);
+  const [seasonalError, setSeasonalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated || !isOnline) return;
@@ -201,6 +254,30 @@ export function DashboardPage() {
       cancelled = true;
     };
   }, [isAuthenticated, isOnline, comparisonPeriod, comparisonType]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const summary = await getSeasonal(seasonalType, seasonalScope, seasonalScope === 'year' ? seasonalYear : undefined);
+        if (!cancelled) {
+          setSeasonalData(summary);
+          setSeasonalError(null);
+        }
+      } catch (err) {
+        if (!cancelled) setSeasonalError(err instanceof ApiError ? err.message : 'No se ha podido cargar el análisis estacional.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline, seasonalType, seasonalScope, seasonalYear]);
+
+  const maxSeasonalTotal = useMemo(() => {
+    if (!seasonalData) return 0;
+    return Math.max(...seasonalData.seasons.map((entry) => parseFloat(entry.total)));
+  }, [seasonalData]);
 
   const byCategoryChartData = useMemo(() => {
     if (!monthSummary) return [];
@@ -334,6 +411,115 @@ export function DashboardPage() {
 
             <p className="callout" role="status">
               {comparisonSummaryText(comparisonSummary)}
+            </p>
+          </>
+        )}
+      </section>
+
+      <section>
+        <h2>Análisis estacional</h2>
+
+        <div className="comparison-toolbar">
+          <div className="seg" role="radiogroup" aria-label="Tipo de movimiento a analizar">
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="seasonal-type"
+                value="EXPENSE"
+                checked={seasonalType === 'EXPENSE'}
+                onChange={() => setSeasonalType('EXPENSE')}
+              />
+              Gastos
+            </label>
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="seasonal-type"
+                value="INCOME"
+                checked={seasonalType === 'INCOME'}
+                onChange={() => setSeasonalType('INCOME')}
+              />
+              Ingresos
+            </label>
+          </div>
+
+          <div className="seg" role="radiogroup" aria-label="Alcance del análisis estacional">
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="seasonal-scope"
+                value="historic"
+                checked={seasonalScope === 'historic'}
+                onChange={() => setSeasonalScope('historic')}
+              />
+              Histórico
+            </label>
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="seasonal-scope"
+                value="year"
+                checked={seasonalScope === 'year'}
+                onChange={() => setSeasonalScope('year')}
+              />
+              Año concreto
+            </label>
+          </div>
+
+          {seasonalScope === 'year' && (
+            <div className="field" style={{ maxWidth: 140 }}>
+              <label htmlFor="seasonal-year">Año</label>
+              <input
+                id="seasonal-year"
+                type="number"
+                className="input"
+                value={seasonalYear}
+                onChange={(e) => setSeasonalYear(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+
+        {seasonalError && <p role="alert">{seasonalError}</p>}
+
+        {seasonalData && (
+          <>
+            <div className="comparison-grid">
+              {seasonalData.seasons.map((entry) => {
+                const badge = seasonBadge(entry.season, seasonalData.comparison, seasonalData.type);
+                const percent = maxSeasonalTotal > 0 ? (parseFloat(entry.total) / maxSeasonalTotal) * 100 : 0;
+                const amount = formatCurrency(entry.total);
+                return (
+                  <div className="card elev-sm" key={entry.season}>
+                    <p className="card-kicker">
+                      {SEASON_ICONS[entry.season]} {SEASON_LABELS[entry.season]}
+                      {badge && (
+                        <span className={badge.className} style={{ marginInlineStart: 8 }}>
+                          {badge.text}
+                        </span>
+                      )}
+                    </p>
+                    <p className="card-amount">{amount}</p>
+                    <p className="card-meta">
+                      {entry.count} {entry.count === 1 ? 'movimiento' : 'movimientos'} · {formatCurrency(entry.averagePerDay)}/día
+                    </p>
+                    <div
+                      className="bar"
+                      role="progressbar"
+                      aria-valuenow={Math.round(percent)}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`${SEASON_LABELS[entry.season]}: ${amount}`}
+                    >
+                      <div className="bar-fill" style={{ width: `${Math.min(percent, 100)}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="callout" role="status">
+              {seasonalSummaryText(seasonalData)}
             </p>
           </>
         )}

@@ -324,3 +324,171 @@ export function comparisonChanges(current: ComparisonMetrics, previous: Comparis
     averagePerDay: percentChange(current.averagePerDay, previous.averagePerDay),
   };
 }
+
+/**
+ * Spec 014 (análisis estacional). Orden canónico fijo — H2 criterio 1: las 4
+ * estaciones aparecen siempre en este orden (igual que la imagen de
+ * referencia), tanto en la respuesta del backend como en la UI.
+ */
+export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
+
+export const SEASONS: readonly Season[] = ['winter', 'spring', 'summer', 'autumn'];
+
+/** Meses naturales (1-12) de cada estación — invierno = dic+ene+feb (spec.md decisión 2). */
+const SEASON_MONTHS: Record<Season, readonly [number, number, number]> = {
+  winter: [12, 1, 2],
+  spring: [3, 4, 5],
+  summer: [6, 7, 8],
+  autumn: [9, 10, 11],
+};
+
+const MONTH_TO_SEASON: Record<number, Season> = {
+  12: 'winter',
+  1: 'winter',
+  2: 'winter',
+  3: 'spring',
+  4: 'spring',
+  5: 'spring',
+  6: 'summer',
+  7: 'summer',
+  8: 'summer',
+  9: 'autumn',
+  10: 'autumn',
+  11: 'autumn',
+};
+
+function monthRangeFor(year: number, firstMonth: number, lastMonth: number): { start: string; end: string } {
+  const lastMonthKey = `${year}-${String(lastMonth).padStart(2, '0')}`;
+  return {
+    start: `${year}-${String(firstMonth).padStart(2, '0')}-01`,
+    end: `${lastMonthKey}-${String(daysInMonth(lastMonthKey)).padStart(2, '0')}`,
+  };
+}
+
+/**
+ * Tramos de fechas de una estación **dentro de un año natural concreto**
+ * (decisión 4 de spec.md): sus 3 meses se fijan siempre a `year`, sin cruzar
+ * a otro año. Para primavera/verano/otoño eso da un único tramo continuo de
+ * 3 meses seguidos. Invierno es la excepción: como sus meses son dic+ene+feb
+ * del MISMO `year`, enero y febrero quedan al principio del año y diciembre
+ * al final — cronológicamente son dos tramos separados, no uno continuo
+ * (enero de `year` es anterior a diciembre de ese mismo `year`).
+ */
+function seasonSubRangesForYear(season: Season, year: number): Array<{ start: string; end: string }> {
+  if (season === 'winter') return [monthRangeFor(year, 1, 2), monthRangeFor(year, 12, 12)];
+  const [firstMonth, , lastMonth] = SEASON_MONTHS[season];
+  return [monthRangeFor(year, firstMonth, lastMonth)];
+}
+
+/**
+ * Nº de días de `[start, end]` que caen dentro de `[floor, ceiling]` (0 si el
+ * resultado es un rango vacío — p. ej. un periodo totalmente futuro respecto
+ * a `ceiling`, o totalmente anterior a `floor`). Generaliza el mismo
+ * criterio de "nunca contar días futuros" que ya usan `resolveDaysForMonth`/
+ * `resolveDaysForYear`, parametrizado para poder aplicar además un recorte
+ * por abajo (spec 014, alcance "Histórico").
+ */
+export function clippedDaysInRange(start: string, end: string, floor: string, ceiling: string): number {
+  const clippedStart = start > floor ? start : floor;
+  const clippedEnd = end < ceiling ? end : ceiling;
+  if (clippedStart > clippedEnd) return 0;
+  return diffDaysIso(clippedEnd, clippedStart) + 1;
+}
+
+/**
+ * `{ kind: 'year' }`: un año natural concreto (H2 criterio 4). `{ kind:
+ * 'historic' }`: todo el histórico del usuario, sin contar días anteriores a
+ * `firstTransactionDate` (H2 criterio 3).
+ */
+export type SeasonalScope = { kind: 'year'; year: number } | { kind: 'historic'; firstTransactionDate: string };
+
+/** Días de un año natural de una estación (sumando sus tramos) que caen dentro de `[floor, ceiling]`. */
+function daysForYearInstance(season: Season, year: number, floor: string, ceiling: string): number {
+  return seasonSubRangesForYear(season, year).reduce((sum, range) => sum + clippedDaysInRange(range.start, range.end, floor, ceiling), 0);
+}
+
+/** Días a usar como denominador de la media diaria de una estación, según el alcance elegido (H2 criterios 2-4). */
+export function seasonalDays(season: Season, scope: SeasonalScope, now: Date): number {
+  const today = isoFromUtcMs(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
+  if (scope.kind === 'year') {
+    // `floor` = 1 de enero del propio año: nunca es posterior al inicio de ningún tramo de esa estación en ese año, así que no recorta nada — solo evita contar días futuros (`ceiling`).
+    return daysForYearInstance(season, scope.year, `${scope.year}-01-01`, today);
+  }
+
+  const firstYear = Number(scope.firstTransactionDate.slice(0, 4));
+  const currentYear = Number(today.slice(0, 4));
+  let total = 0;
+  for (let year = firstYear; year <= currentYear; year++) {
+    total += daysForYearInstance(season, year, scope.firstTransactionDate, today);
+  }
+  return total;
+}
+
+/** Agrupa movimientos ya cargados por estación, mirando solo el mes de `date` — nunca el año (eso ya lo decide la consulta a BD / el `scope`). */
+export function bucketBySeason<T extends { date: string }>(transactions: T[]): Record<Season, T[]> {
+  const buckets: Record<Season, T[]> = { winter: [], spring: [], summer: [], autumn: [] };
+  for (const t of transactions) {
+    buckets[MONTH_TO_SEASON[Number(t.date.slice(5, 7))]].push(t);
+  }
+  return buckets;
+}
+
+/** Diferencia en valor absoluto entre dos importes. */
+export function absoluteDifference(a: string, b: string): string {
+  return new Decimal(a).minus(b).abs().toFixed(2);
+}
+
+export interface SeasonEntry extends ComparisonMetrics {
+  season: Season;
+}
+
+export interface SeasonalComparison {
+  bestSeason: Season;
+  worstSeason: Season;
+  difference: string;
+  percent: string;
+}
+
+/**
+ * H2/H3 (spec 014): cifras de las 4 estaciones (siempre las 4, en orden
+ * canónico) y la comparación entre la de mayor y la de menor importe total.
+ * `comparison` es `null` cuando no se puede calcular una diferencia con
+ * sentido (H3 criterio 4): la estación con menos importe es 0 (dividir entre
+ * 0 daría un % engañoso, mismo criterio que `percentChange`), o las 4 están
+ * empatadas.
+ */
+export function seasonalSummary(
+  transactions: Array<{ type: MovementType; date: string; amount: string }>,
+  type: MovementType,
+  scope: SeasonalScope,
+  now: Date,
+): { seasons: SeasonEntry[]; comparison: SeasonalComparison | null } {
+  const buckets = bucketBySeason(transactions);
+  const seasons: SeasonEntry[] = SEASONS.map((season) => ({
+    season,
+    ...comparisonMetrics(buckets[season], type, seasonalDays(season, scope, now)),
+  }));
+
+  let best = seasons[0];
+  let worst = seasons[0];
+  for (const entry of seasons) {
+    if (new Decimal(entry.total).greaterThan(best.total)) best = entry;
+    if (new Decimal(entry.total).lessThan(worst.total)) worst = entry;
+  }
+
+  if (worst.total === '0.00' || best.total === worst.total) {
+    return { seasons, comparison: null };
+  }
+
+  return {
+    seasons,
+    comparison: {
+      bestSeason: best.season,
+      worstSeason: worst.season,
+      difference: absoluteDifference(best.total, worst.total),
+      // `worst.total` no es "0.00" en esta rama, así que percentChange nunca devuelve null aquí.
+      percent: percentChange(best.total, worst.total)!,
+    },
+  };
+}
