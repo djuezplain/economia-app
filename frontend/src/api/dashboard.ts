@@ -32,3 +32,27 @@ export function getMonthSummary(month?: string): Promise<MonthSummary> {
 export function getYearSummary(year?: string): Promise<YearSummary> {
   return api.get<YearSummary>(year ? `/dashboard/year?year=${year}` : '/dashboard/year');
 }
+
+// Spec 013 (comparativa temporal). Espejo de `ComparisonSummary` en el backend.
+export type ComparisonPeriod = 'week' | 'month' | 'quarter' | 'year';
+
+export interface ComparisonMetrics {
+  count: number;
+  total: string;
+  averagePerDay: string;
+}
+
+export interface ComparisonSummary {
+  period: ComparisonPeriod;
+  type: 'INCOME' | 'EXPENSE';
+  days: number;
+  currentLabel: string;
+  previousLabel: string;
+  current: ComparisonMetrics;
+  previous: ComparisonMetrics;
+  changes: { count: string | null; total: string | null; averagePerDay: string | null };
+}
+
+export function getComparison(period: ComparisonPeriod, type: 'INCOME' | 'EXPENSE'): Promise<ComparisonSummary> {
+  return api.get<ComparisonSummary>(`/dashboard/comparison?period=${period}&type=${type}`);
+}

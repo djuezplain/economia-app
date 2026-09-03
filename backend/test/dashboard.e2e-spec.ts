@@ -8,6 +8,7 @@ import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
 import { categories, transactions, users } from '../src/db/schema/index.js';
+import { DashboardService } from '../src/dashboard/dashboard.service.js';
 
 describe('Dashboard (e2e) — spec 002 H4/H5', () => {
   let app: INestApplication<App>;
@@ -269,6 +270,122 @@ describe('Dashboard (e2e) — spec 002 H4/H5', () => {
         .get('/dashboard/year?year=26')
         .set('Authorization', auth(token))
         .expect(400);
+    });
+  });
+
+  describe('GET /dashboard/comparison (spec 013)', () => {
+    it('sin autenticar, responde 401', async () => {
+      await request(app.getHttpServer()).get('/dashboard/comparison').expect(401);
+    });
+
+    it('rechaza (400) un `period` o `type` no soportado', async () => {
+      const user = await createUser('comparativa-invalida@example.com');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .get('/dashboard/comparison?period=lustro')
+        .set('Authorization', auth(token))
+        .expect(400);
+      await request(app.getHttpServer())
+        .get('/dashboard/comparison?type=AHORRO')
+        .set('Authorization', auth(token))
+        .expect(400);
+    });
+
+    it('sin `period`/`type`, usa mes/gastos por defecto', async () => {
+      const user = await createUser('comparativa-defecto@example.com');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .get('/dashboard/comparison')
+        .set('Authorization', auth(token))
+        .expect(200);
+
+      expect(res.body.period).toBe('month');
+      expect(res.body.type).toBe('EXPENSE');
+    });
+
+    it('compara los gastos de un mes cerrado con el mes anterior (fechas fijas, no depende de "hoy")', async () => {
+      const user = await createUser('comparativa-mes@example.com');
+      const expense = await createCategory(user.id, 'EXPENSE', 'Comida');
+
+      await db.insert(transactions).values([
+        // Agosto de 2026 (mes que se consulta como "actual"): 2 gastos, 100.00 en total.
+        { userId: user.id, type: 'EXPENSE', date: '2026-08-05', categoryId: expense.id, concept: 'Súper', amount: '60.00' },
+        { userId: user.id, type: 'EXPENSE', date: '2026-08-10', categoryId: expense.id, concept: 'Restaurante', amount: '40.00' },
+        // Julio de 2026 (mes anterior): 1 gasto, 50.00.
+        { userId: user.id, type: 'EXPENSE', date: '2026-07-05', categoryId: expense.id, concept: 'Súper', amount: '50.00' },
+        // Fuera de ambos meses — no debe contar.
+        { userId: user.id, type: 'EXPENSE', date: '2026-06-01', categoryId: expense.id, concept: 'Fuera de rango', amount: '999.00' },
+      ]);
+      const token = await login(user.email);
+
+      // spec 013, plan.md §2: el servicio compara el mes que contiene "ahora"
+      // frente al anterior — se fija la fecha vía el parámetro `now` en el
+      // servicio directamente, ya que el endpoint no acepta una fecha de
+      // referencia (compara siempre contra "hoy", como `/dashboard/month`
+      // hace con "sin `month`, usa el mes en curso"). Aquí se prueba a
+      // través del servicio inyectado en vez del endpoint HTTP para poder
+      // fijar `now` de forma determinista.
+      const dashboardService = app.get(DashboardService);
+      const res = await dashboardService.comparison(user.id, 'month', 'EXPENSE', new Date('2026-08-31T10:00:00.000Z'));
+
+      expect(res.currentLabel).toBe('Agosto 2026');
+      expect(res.previousLabel).toBe('Julio 2026');
+      expect(res.days).toBe(31);
+      expect(res.current).toEqual({ count: 2, total: '100.00', averagePerDay: '3.23' });
+      expect(res.previous).toEqual({ count: 1, total: '50.00', averagePerDay: '1.61' });
+      expect(res.changes.count).toBe('100.00');
+      expect(res.changes.total).toBe('100.00');
+    });
+
+    it('si el periodo anterior no tiene movimientos, `changes` es null en vez de un % erróneo', async () => {
+      const user = await createUser('comparativa-sin-anterior@example.com');
+      const expense = await createCategory(user.id, 'EXPENSE', 'Comida');
+      await db
+        .insert(transactions)
+        .values({ userId: user.id, type: 'EXPENSE', date: '2026-08-05', categoryId: expense.id, concept: 'Súper', amount: '60.00' });
+
+      const dashboardService = app.get(DashboardService);
+      const res = await dashboardService.comparison(user.id, 'month', 'EXPENSE', new Date('2026-08-31T10:00:00.000Z'));
+
+      expect(res.previous).toEqual({ count: 0, total: '0.00', averagePerDay: '0.00' });
+      expect(res.changes).toEqual({ count: null, total: null, averagePerDay: null });
+    });
+
+    it('solo calcula sobre los movimientos propios del usuario autenticado', async () => {
+      const owner = await createUser('comparativa-dueno@example.com');
+      const other = await createUser('comparativa-otro@example.com');
+      const ownerExpense = await createCategory(owner.id, 'EXPENSE', 'Comida');
+      const otherExpense = await createCategory(other.id, 'EXPENSE', 'Comida ajena');
+
+      await db.insert(transactions).values([
+        { userId: owner.id, type: 'EXPENSE', date: '2026-08-05', categoryId: ownerExpense.id, concept: 'Propio', amount: '10.00' },
+        { userId: other.id, type: 'EXPENSE', date: '2026-08-05', categoryId: otherExpense.id, concept: 'Ajeno', amount: '9999.00' },
+      ]);
+
+      const dashboardService = app.get(DashboardService);
+      const res = await dashboardService.comparison(owner.id, 'month', 'EXPENSE', new Date('2026-08-31T10:00:00.000Z'));
+
+      expect(res.current.total).toBe('10.00');
+    });
+
+    it('separa gastos de ingresos según `type`', async () => {
+      const user = await createUser('comparativa-tipo@example.com');
+      const income = await createCategory(user.id, 'INCOME', 'Nómina');
+      const expense = await createCategory(user.id, 'EXPENSE', 'Comida');
+
+      await db.insert(transactions).values([
+        { userId: user.id, type: 'INCOME', date: '2026-08-05', categoryId: income.id, concept: 'Nómina', amount: '2000.00' },
+        { userId: user.id, type: 'EXPENSE', date: '2026-08-05', categoryId: expense.id, concept: 'Súper', amount: '60.00' },
+      ]);
+
+      const dashboardService = app.get(DashboardService);
+      const expenseRes = await dashboardService.comparison(user.id, 'month', 'EXPENSE', new Date('2026-08-31T10:00:00.000Z'));
+      const incomeRes = await dashboardService.comparison(user.id, 'month', 'INCOME', new Date('2026-08-31T10:00:00.000Z'));
+
+      expect(expenseRes.current.total).toBe('60.00');
+      expect(incomeRes.current.total).toBe('2000.00');
     });
   });
 });

@@ -4,14 +4,19 @@ import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { transactions } from '../db/schema/index.js';
 import { average, groupByCategory, sumByType } from '../transactions/transactions.calculations.js';
+import type { MovementType } from '../transactions/transactions.calculations.js';
 import {
+  comparisonChanges,
+  comparisonMetrics,
   currentMonthIso,
   monthlyEvolution,
+  periodLabel,
+  periodRanges,
   resolveDaysForMonth,
   savingsAmount,
   savingsPercent,
 } from './dashboard.calculations.js';
-import type { MonthlyEvolutionEntry } from './dashboard.calculations.js';
+import type { ComparisonChanges, ComparisonMetrics, ComparisonPeriod, MonthlyEvolutionEntry } from './dashboard.calculations.js';
 
 export interface MonthSummary {
   month: string;
@@ -27,6 +32,17 @@ export interface YearSummary {
   year: number;
   months: MonthlyEvolutionEntry[];
   totals: { income: string; expense: string; savings: string; savingsPercent: string | null };
+}
+
+export interface ComparisonSummary {
+  period: ComparisonPeriod;
+  type: MovementType;
+  days: number;
+  currentLabel: string;
+  previousLabel: string;
+  current: ComparisonMetrics;
+  previous: ComparisonMetrics;
+  changes: ComparisonChanges;
 }
 
 function monthRange(month: string): { start: string; end: string } {
@@ -102,6 +118,45 @@ export class DashboardService {
         savings: savingsAmount(income, expense),
         savingsPercent: savingsPercent(income, expense),
       },
+    };
+  }
+
+  /** H1/H2/H3 (spec 013). Compara el periodo actual (el que contiene `now`) frente al inmediatamente anterior del mismo tipo, recortados al mismo nº de días. */
+  async comparison(
+    userId: string,
+    periodParam: ComparisonPeriod | undefined,
+    typeParam: MovementType | undefined,
+    now: Date = new Date(),
+  ): Promise<ComparisonSummary> {
+    const period = periodParam ?? 'month';
+    const type = typeParam ?? 'EXPENSE';
+    const ranges = periodRanges(period, now);
+
+    const [currentItems, previousItems] = await Promise.all([
+      this.db.query.transactions.findMany({
+        where: and(eq(transactions.userId, userId), gte(transactions.date, ranges.currentStart), lte(transactions.date, ranges.currentEnd)),
+      }),
+      this.db.query.transactions.findMany({
+        where: and(
+          eq(transactions.userId, userId),
+          gte(transactions.date, ranges.previousStart),
+          lte(transactions.date, ranges.previousEnd),
+        ),
+      }),
+    ]);
+
+    const current = comparisonMetrics(currentItems, type, ranges.days);
+    const previous = comparisonMetrics(previousItems, type, ranges.days);
+
+    return {
+      period,
+      type,
+      days: ranges.days,
+      currentLabel: periodLabel(period, ranges.currentStart),
+      previousLabel: periodLabel(period, ranges.previousStart),
+      current,
+      previous,
+      changes: comparisonChanges(current, previous),
     };
   }
 }

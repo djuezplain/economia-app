@@ -1,5 +1,5 @@
 import { Decimal } from 'decimal.js';
-import { sumByType } from '../transactions/transactions.calculations.js';
+import { average, sumAmounts, sumByType } from '../transactions/transactions.calculations.js';
 import type { MovementType } from '../transactions/transactions.calculations.js';
 
 export interface MonthlyEvolutionEntry {
@@ -107,4 +107,220 @@ export function monthlyEvolution(
     entries.push({ month: monthKey, income, expense, savings: savingsAmount(income, expense) });
   }
   return entries;
+}
+
+/**
+ * Spec 013 (comparativa temporal). Granularidades soportadas — "trimestre"
+ * es el calendario natural (Q1 ene-mar...), no un trimestre móvil.
+ */
+export type ComparisonPeriod = 'week' | 'month' | 'quarter' | 'year';
+
+export interface ComparisonRanges {
+  currentStart: string;
+  currentEnd: string;
+  previousStart: string;
+  previousEnd: string;
+  /** Nº de días que cubre cada rango (igual en ambos, por construcción — H2). */
+  days: number;
+}
+
+function isoFromUtcMs(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function utcMs(year: number, month: number, day: number): number {
+  return Date.UTC(year, month - 1, day);
+}
+
+/** Suma (o resta, con `days` negativo) días naturales a una fecha ISO. Puro, sin zona horaria (spec 013, mismo criterio que `formatDate`/`lastDayOfMonth` en el frontend). */
+function addDaysIso(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return isoFromUtcMs(utcMs(y, m, d) + days * 86_400_000);
+}
+
+/** Nº de días naturales entre dos fechas ISO (`a − b`). */
+function diffDaysIso(a: string, b: string): number {
+  const [ay, am, ad] = a.split('-').map(Number);
+  const [by, bm, bd] = b.split('-').map(Number);
+  return Math.round((utcMs(ay, am, ad) - utcMs(by, bm, bd)) / 86_400_000);
+}
+
+/** Lunes de la semana ISO 8601 (lunes-domingo, spec 013 decisión 1) que contiene `iso`. */
+function isoWeekStartOf(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dow = new Date(utcMs(y, m, d)).getUTCDay(); // 0 = domingo .. 6 = sábado
+  const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+  return addDaysIso(iso, -daysSinceMonday);
+}
+
+/** Nº de semana ISO 8601 de una fecha (para `periodLabel`). */
+function isoWeekNumberOf(iso: string): number {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(utcMs(y, m, d));
+  const isoDayOfWeek = date.getUTCDay() || 7; // lunes = 1 .. domingo = 7
+  date.setUTCDate(date.getUTCDate() + 4 - isoDayOfWeek);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+}
+
+function quarterOf(month: number): number {
+  return Math.ceil(month / 3);
+}
+
+function quarterStartIso(year: number, quarter: number): string {
+  return `${year}-${String((quarter - 1) * 3 + 1).padStart(2, '0')}-01`;
+}
+
+/** Suma (o resta) meses naturales a un `{año, mes}`, cruzando años correctamente. */
+function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
+  const zeroBased = month - 1 + delta;
+  return { year: year + Math.floor(zeroBased / 12), month: ((zeroBased % 12) + 12) % 12 + 1 };
+}
+
+/** Suma (o resta) trimestres naturales a un `{año, trimestre}`, cruzando años correctamente. */
+function shiftQuarter(year: number, quarter: number, delta: number): { year: number; quarter: number } {
+  const zeroBased = quarter - 1 + delta;
+  return { year: year + Math.floor(zeroBased / 4), quarter: ((zeroBased % 4) + 4) % 4 + 1 };
+}
+
+/** Inicio y nº total de días del periodo (de `period`) que contiene `iso`. */
+function periodBoundsContaining(period: ComparisonPeriod, iso: string): { start: string; totalDays: number } {
+  const [year, month] = iso.split('-').map(Number);
+  switch (period) {
+    case 'week':
+      return { start: isoWeekStartOf(iso), totalDays: 7 };
+    case 'month': {
+      const start = `${iso.slice(0, 7)}-01`;
+      return { start, totalDays: daysInMonth(iso.slice(0, 7)) };
+    }
+    case 'quarter': {
+      const quarter = quarterOf(month);
+      const start = quarterStartIso(year, quarter);
+      const next = shiftQuarter(year, quarter, 1);
+      return { start, totalDays: diffDaysIso(quarterStartIso(next.year, next.quarter), start) };
+    }
+    case 'year':
+      return { start: `${year}-01-01`, totalDays: daysInYear(year) };
+  }
+}
+
+/** Inicio y nº total de días del periodo (de `period`) inmediatamente anterior al que contiene `iso`. */
+function previousPeriodBounds(period: ComparisonPeriod, iso: string): { start: string; totalDays: number } {
+  const [year, month] = iso.split('-').map(Number);
+  switch (period) {
+    case 'week': {
+      const start = addDaysIso(isoWeekStartOf(iso), -7);
+      return { start, totalDays: 7 };
+    }
+    case 'month': {
+      const prev = shiftMonth(year, month, -1);
+      const start = `${prev.year}-${String(prev.month).padStart(2, '0')}-01`;
+      return { start, totalDays: daysInMonth(start.slice(0, 7)) };
+    }
+    case 'quarter': {
+      const prev = shiftQuarter(year, quarterOf(month), -1);
+      const start = quarterStartIso(prev.year, prev.quarter);
+      const thisQuarterStart = quarterStartIso(year, quarterOf(month));
+      return { start, totalDays: diffDaysIso(thisQuarterStart, start) };
+    }
+    case 'year':
+      return { start: `${year - 1}-01-01`, totalDays: daysInYear(year - 1) };
+  }
+}
+
+/**
+ * H1/H2 (spec 013): rango del periodo actual (el que contiene `now`) y del
+ * inmediatamente anterior, recortados al mismo nº de días — los transcurridos
+ * del periodo actual, o los disponibles del anterior si este es más corto
+ * (p. ej. comparar un mes de 30/31 días en curso contra febrero).
+ */
+export function periodRanges(period: ComparisonPeriod, now: Date): ComparisonRanges {
+  const today = isoFromUtcMs(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const current = periodBoundsContaining(period, today);
+  const previous = previousPeriodBounds(period, today);
+  const elapsedDays = diffDaysIso(today, current.start) + 1;
+  const days = Math.min(elapsedDays, current.totalDays, previous.totalDays);
+
+  return {
+    currentStart: current.start,
+    currentEnd: addDaysIso(current.start, days - 1),
+    previousStart: previous.start,
+    previousEnd: addDaysIso(previous.start, days - 1),
+    days,
+  };
+}
+
+const MONTH_NAMES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+
+/** Etiqueta corta de un periodo para la pastilla de la comparativa (spec 013 §4). */
+export function periodLabel(period: ComparisonPeriod, startIso: string): string {
+  const [year, month] = startIso.split('-').map(Number);
+  switch (period) {
+    case 'week':
+      return `Semana ${isoWeekNumberOf(startIso)} · ${year}`;
+    case 'month': {
+      const name = MONTH_NAMES[month - 1];
+      return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${year}`;
+    }
+    case 'quarter':
+      return `Q${quarterOf(month)} ${year}`;
+    case 'year':
+      return `${year}`;
+  }
+}
+
+export interface ComparisonMetrics {
+  count: number;
+  total: string;
+  averagePerDay: string;
+}
+
+/** Métricas (H3) de un rango ya cargado: nº de movimientos, importe total y media por día. */
+export function comparisonMetrics(
+  transactions: Array<{ type: MovementType; amount: string }>,
+  type: MovementType,
+  days: number,
+): ComparisonMetrics {
+  const filtered = transactions.filter((t) => t.type === type);
+  const total = sumAmounts(filtered);
+  return { count: filtered.length, total, averagePerDay: average(total, days) };
+}
+
+/**
+ * % de variación firmado (`current` respecto a `previous`). `null` si
+ * `previous` es 0 — mismo criterio que `savingsPercent` (sin datos, ni
+ * división por cero ni un % engañoso).
+ */
+export function percentChange(current: string | number, previous: string | number): string | null {
+  const previousDecimal = new Decimal(previous);
+  if (previousDecimal.isZero()) return null;
+  return new Decimal(current).minus(previousDecimal).dividedBy(previousDecimal).times(100).toFixed(2);
+}
+
+export interface ComparisonChanges {
+  count: string | null;
+  total: string | null;
+  averagePerDay: string | null;
+}
+
+/** % de variación de cada una de las 3 métricas del periodo actual respecto al anterior (H3 criterio 2). */
+export function comparisonChanges(current: ComparisonMetrics, previous: ComparisonMetrics): ComparisonChanges {
+  return {
+    count: percentChange(current.count, previous.count),
+    total: percentChange(current.total, previous.total),
+    averagePerDay: percentChange(current.averagePerDay, previous.averagePerDay),
+  };
 }
