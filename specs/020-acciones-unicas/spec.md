@@ -38,6 +38,7 @@ Como usuario quiero anotar, dentro de una acción ya creada, cuánto vale mi pos
 - Criterio 3: el historial de valoraciones de una acción se muestra ordenado de la más reciente a la más antigua; la posición muestra, como su valor "actual", el precio por acción de la valoración más reciente **multiplicado por el nº total de acciones** (H2 criterio 4) — no un valor guardado.
 - Criterio 4: cada entrada de valoración se puede editar o eliminar, sin afectar a las demás ni a la acción.
 - Criterio 5: mismo aislamiento por usuario que H2 criterio 6.
+- Criterio 6: el título de la acción muestra el % de ganancia o pérdida sobre el coste — (Valor actual − Coste total) / Coste total × 100 — en verde si es positivo, en rojo si es negativo. No se muestra si no hay ninguna compra (sin coste no hay base sobre la que calcular un %) ni si no hay ninguna valoración. *(Revisión §3.quater.)*
 
 ## 2. Fuera de alcance
 
@@ -61,6 +62,15 @@ Tras probar la revisión anterior, Diego pidió un tercer cambio: al anotar una 
 - El campo se renombra de "Valoración actual" a "Precio por acción actual" (`stockValuations.pricePerShare`, antes `valuation`).
 - El valor total de la posición (lo que antes se guardaba directamente) pasa a **calcularse**: precio por acción de la valoración más reciente × nº total de acciones (H2 criterio 4, sobre el historial de compras) — mismo criterio que `purchaseValue`/`totalCost`, nunca se guarda (`currentValue`, `wealth.calculations.ts`).
 - Migración: las valoraciones ya guardadas bajo el modelo anterior (con el valor total) se trasladan tal cual a `pricePerShare` — no hay forma fiable de reconstruir a posteriori qué precio por acción correspondía a un valor total histórico (el nº de acciones poseídas en cada fecha pasada no se registra), así que la migración es una copia literal del número, no una conversión. Dado que esta spec aún no tenía datos reales en producción (solo pruebas), no se considera pérdida de información relevante.
+
+## 3.quater Revisión: % de ganancia/pérdida en el título de la acción
+
+Diego pidió, sobre la revisión anterior (con `currentValue` ya calculado), mostrar en el título de cada acción el % de ganancia o pérdida sobre lo invertido — en verde si gana, en rojo si pierde (H3 criterio 6).
+
+- Fórmula: (Valor actual − Coste total) / Coste total × 100 — mismo criterio de "calculado, nunca guardado" que el resto de esta spec (`gainLossPercent`, junto a `currentValue` en el frontend; no se añade al backend porque, a diferencia de `currentValue`, no hace falta en ningún endpoint, solo se usa al pintar la tarjeta).
+- Sin ninguna compra (Coste total = 0) no se muestra — dividir entre cero no tiene sentido y, sin coste, tampoco hay "ganancia" que medir.
+- Sin ninguna valoración tampoco se muestra — mismo criterio que "Sin valoración" ya existente para el valor actual.
+- Colores: `var(--status-green)`/`var(--status-red)`, variables ya usadas en el proyecto para positivo/negativo (`ProgressBar.tsx`) — no se añade ninguna variable de color nueva.
 
 ## 3. Decisiones tomadas con Diego antes de escribir el plan
 

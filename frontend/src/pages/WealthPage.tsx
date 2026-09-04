@@ -97,6 +97,15 @@ function currentValue(pricePerShare: string, shareCount: string): string {
   return (price * shares).toFixed(2);
 }
 
+/** % de ganancia o pérdida = (Valor actual − Coste total) / Coste total × 100 — calculado,
+ *  nunca guardado. `null` sin coste (ninguna compra todavía): no hay base sobre la que calcular un %. */
+function gainLossPercent(currentVal: string, cost: string): number | null {
+  const value = parseFloat(currentVal);
+  const costNum = parseFloat(cost);
+  if (Number.isNaN(value) || Number.isNaN(costNum) || costNum === 0) return null;
+  return ((value - costNum) / costNum) * 100;
+}
+
 /** Las 5 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3). */
 const PLACEHOLDER_SECTIONS = [
   { icon: '💹', label: 'Fondos Inversión' },
@@ -861,6 +870,9 @@ export function WealthPage() {
               const lastValuation = stockValuations[0] ?? null; // `valuations` ya viene ordenado por fecha descendente
               const newPurchaseForm = getNewPurchaseForm(stock.id);
               const newValuationForm = getNewValuationForm(stock.id);
+              const gainLoss = lastValuation
+                ? gainLossPercent(currentValue(lastValuation.pricePerShare, totalShares(stockPurchases)), totalCost(stockPurchases))
+                : null;
 
               if (isEditingStock) {
                 return (
@@ -903,6 +915,13 @@ export function WealthPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="card-title">
                       {stock.stock} · {stock.custodyBank}
+                      {gainLoss !== null && (
+                        <span style={{ color: gainLoss >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                          {' '}
+                          {gainLoss >= 0 ? '+' : ''}
+                          {gainLoss.toFixed(2)}%
+                        </span>
+                      )}
                     </span>
                     <span className="card-amount">
                       {lastValuation ? formatCurrency(currentValue(lastValuation.pricePerShare, totalShares(stockPurchases))) : 'Sin valoración'}
