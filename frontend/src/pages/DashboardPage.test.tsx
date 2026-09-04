@@ -398,7 +398,7 @@ describe('DashboardPage', () => {
     }
 
     function comparisonSection() {
-      return screen.getByRole('heading', { name: 'Comparativa temporal' }).closest('section') as HTMLElement;
+      return screen.getByRole('heading', { name: 'Comparativa temporal' }).closest('details') as HTMLElement;
     }
 
     // `getByText` normaliza (colapsa) los espacios del propio DOM al comparar,
@@ -477,7 +477,7 @@ describe('DashboardPage', () => {
     }
 
     function seasonalSection() {
-      return screen.getByRole('heading', { name: 'Análisis estacional' }).closest('section') as HTMLElement;
+      return screen.getByRole('heading', { name: 'Análisis estacional' }).closest('details') as HTMLElement;
     }
 
     // `getByText` normaliza (colapsa) los espacios del propio DOM al comparar,
@@ -579,7 +579,7 @@ describe('DashboardPage', () => {
     }
 
     function categorySection() {
-      return screen.getByRole('heading', { name: 'Categorías por periodo' }).closest('section') as HTMLElement;
+      return screen.getByRole('heading', { name: 'Categorías por periodo' }).closest('details') as HTMLElement;
     }
 
     // `getByText` normaliza (colapsa) los espacios del propio DOM al comparar,

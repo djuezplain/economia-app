@@ -974,6 +974,43 @@ main ul li:last-child {
   font-size: 14px;
 }
 
+/* — secciones plegables del Dashboard (spec 016) — */
+.dashboard-section {
+  margin: 0 0 var(--space-6);
+}
+.dashboard-section > summary {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  /* Oculta el marcador nativo (triángulo) — se sustituye por el `::after`
+     de abajo, mismo indicador en todos los navegadores. `list-style` basta
+     en Firefox; Chrome/Safari necesitan además el pseudo-elemento propio. */
+  list-style: none;
+}
+.dashboard-section > summary::-webkit-details-marker {
+  display: none;
+}
+.dashboard-section > summary > h2 {
+  margin: 0;
+}
+.dashboard-section > summary::after {
+  content: '▾';
+  margin-inline-start: auto;
+  padding-inline-start: var(--space-3);
+  color: color-mix(in srgb, var(--text) 60%, transparent);
+  transition: transform 0.15s ease;
+}
+.dashboard-section[open] > summary::after {
+  transform: rotate(180deg);
+}
+.dashboard-section > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.dashboard-section[open] > summary {
+  margin-bottom: var(--space-3);
+}
+
 /* — navegación (pestañas, p. ej. MovementsLayout) — */
 .nav ul {
   display: flex;
