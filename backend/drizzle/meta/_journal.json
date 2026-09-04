@@ -71,6 +71,20 @@
       "when": 1788546566607,
       "tag": "0009_drop_bank_account_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788548110005,
+      "tag": "0010_add_stocks_purchases_valuations",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788548143974,
+      "tag": "0011_drop_stock_entries",
+      "breakpoints": true
     }
   ]
 }

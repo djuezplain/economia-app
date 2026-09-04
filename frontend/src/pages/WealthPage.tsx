@@ -12,8 +12,22 @@ import {
   updateBankAccountBalance,
 } from '../api/bank-account-balances';
 import type { BankAccountBalance, UpdateBankAccountBalanceInput } from '../api/bank-account-balances';
-import { createStockEntry, deleteStockEntry, listStockEntries, updateStockEntry } from '../api/stock-entries';
-import type { StockEntry, StockEntryInput } from '../api/stock-entries';
+import { createStock, deleteStock, listStocks, updateStock } from '../api/stocks';
+import type { Stock, StockInput } from '../api/stocks';
+import {
+  createStockPurchase,
+  deleteStockPurchase,
+  listStockPurchases,
+  updateStockPurchase,
+} from '../api/stock-purchases';
+import type { StockPurchase, UpdateStockPurchaseInput } from '../api/stock-purchases';
+import {
+  createStockValuation,
+  deleteStockValuation,
+  listStockValuations,
+  updateStockValuation,
+} from '../api/stock-valuations';
+import type { StockValuation, UpdateStockValuationInput } from '../api/stock-valuations';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 
@@ -23,7 +37,9 @@ function todayIso(): string {
 
 const EMPTY_ACCOUNT_FORM: BankAccountInput = { bank: '', accountNumber: '' };
 const EMPTY_BALANCE_FORM: UpdateBankAccountBalanceInput = { euros: '', date: todayIso() };
-const EMPTY_STOCK_FORM: StockEntryInput = { custodyBank: '', stock: '', shareCount: '', purchasePrice: '', currentValuation: '' };
+const EMPTY_STOCK_FORM: StockInput = { custodyBank: '', stock: '' };
+const EMPTY_PURCHASE_FORM: UpdateStockPurchaseInput = { shareCount: '', purchasePrice: '' };
+const EMPTY_VALUATION_FORM: UpdateStockValuationInput = { valuation: '', date: todayIso() };
 
 function accountFormFromEntity(account: BankAccount): BankAccountInput {
   return { bank: account.bank, accountNumber: account.accountNumber };
@@ -33,22 +49,34 @@ function balanceFormFromEntity(balance: BankAccountBalance): UpdateBankAccountBa
   return { euros: balance.euros, date: balance.date };
 }
 
-function stockFormFromEntry(entry: StockEntry): StockEntryInput {
-  return {
-    custodyBank: entry.custodyBank,
-    stock: entry.stock,
-    shareCount: entry.shareCount,
-    purchasePrice: entry.purchasePrice,
-    currentValuation: entry.currentValuation,
-  };
+function stockFormFromEntity(stock: Stock): StockInput {
+  return { custodyBank: stock.custodyBank, stock: stock.stock };
 }
 
-/** H3 criterio 2 (spec 018): calculado, nunca guardado — ver `wealth.calculations.ts` en el backend. */
+function purchaseFormFromEntity(purchase: StockPurchase): UpdateStockPurchaseInput {
+  return { shareCount: purchase.shareCount, purchasePrice: purchase.purchasePrice };
+}
+
+function valuationFormFromEntity(valuation: StockValuation): UpdateStockValuationInput {
+  return { valuation: valuation.valuation, date: valuation.date };
+}
+
+/** H2 criterio 3 (spec 020): calculado, nunca guardado — ver `wealth.calculations.ts` en el backend. */
 function purchaseValue(purchasePrice: string, shareCount: string): string {
   const price = parseFloat(purchasePrice);
   const shares = parseFloat(shareCount);
   if (Number.isNaN(price) || Number.isNaN(shares)) return '';
   return (price * shares).toFixed(2);
+}
+
+/** H2 criterio 4 (spec 020): nº total de acciones de una posición, sumando todas sus compras — calculado, nunca guardado. */
+function totalShares(purchases: StockPurchase[]): string {
+  return purchases.reduce((sum, p) => sum + parseFloat(p.shareCount), 0).toFixed(4);
+}
+
+/** H2 criterio 4 (spec 020): coste total de una posición, sumando el valor de compra de todas sus compras. */
+function totalCost(purchases: StockPurchase[]): string {
+  return purchases.reduce((sum, p) => sum + parseFloat(purchaseValue(p.purchasePrice, p.shareCount) || '0'), 0).toFixed(2);
 }
 
 /** Las 5 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3). */
@@ -62,11 +90,13 @@ const PLACEHOLDER_SECTIONS = [
 
 /**
  * Spec 018 (Resumen Patrimonio) / spec 019 (cuentas bancarias únicas, con
- * historial de saldos). 7 secciones plegables (H1 criterio 1/2 de spec 018,
- * mismo patrón `<details className="dashboard-section">` que el Dashboard,
- * spec 016/017): "Cuentas Bancarias" en dos niveles (cuenta → historial de
- * saldos anidado, spec 019), "Acciones" igual que en spec 018 (sin cambios),
- * las otras 5 con un aviso de "Próximamente.".
+ * historial de saldos) / spec 020 (acciones únicas, con historial de
+ * compras y de valoraciones). 7 secciones plegables (H1 criterio 1/2 de
+ * spec 018, mismo patrón `<details className="dashboard-section">` que el
+ * Dashboard, spec 016/017): "Cuentas Bancarias" en dos niveles (cuenta →
+ * historial de saldos anidado, spec 019), "Acciones" en tres niveles
+ * (acción → historial de compras + historial de valoraciones anidados,
+ * spec 020), las otras 5 con un aviso de "Próximamente.".
  */
 export function WealthPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -96,17 +126,41 @@ export function WealthPage() {
   const [pendingDeleteBalanceId, setPendingDeleteBalanceId] = useState<string | null>(null);
   const [balanceActionError, setBalanceActionError] = useState<string | null>(null);
 
-  const [stockEntries, setStockEntries] = useState<StockEntry[] | null>(null);
-  const [stockLoadError, setStockLoadError] = useState<string | null>(null);
-  const [newStockForm, setNewStockForm] = useState<StockEntryInput>(EMPTY_STOCK_FORM);
+  const [stockList, setStockList] = useState<Stock[] | null>(null);
+  const [stocksLoadError, setStocksLoadError] = useState<string | null>(null);
+  const [newStockForm, setNewStockForm] = useState<StockInput>(EMPTY_STOCK_FORM);
   const [createStockError, setCreateStockError] = useState<string | null>(null);
   const [isCreatingStock, setIsCreatingStock] = useState(false);
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
-  const [editingStockForm, setEditingStockForm] = useState<StockEntryInput>(EMPTY_STOCK_FORM);
+  const [editingStockForm, setEditingStockForm] = useState<StockInput>(EMPTY_STOCK_FORM);
   const [editStockError, setEditStockError] = useState<string | null>(null);
   const [isSavingStock, setIsSavingStock] = useState(false);
   const [pendingDeleteStockId, setPendingDeleteStockId] = useState<string | null>(null);
   const [stockActionError, setStockActionError] = useState<string | null>(null);
+
+  const [purchases, setPurchases] = useState<StockPurchase[] | null>(null);
+  const [purchasesLoadError, setPurchasesLoadError] = useState<string | null>(null);
+  const [newPurchaseForms, setNewPurchaseForms] = useState<Record<string, UpdateStockPurchaseInput>>({});
+  const [createPurchaseError, setCreatePurchaseError] = useState<string | null>(null);
+  const [creatingPurchaseForStockId, setCreatingPurchaseForStockId] = useState<string | null>(null);
+  const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
+  const [editingPurchaseForm, setEditingPurchaseForm] = useState<UpdateStockPurchaseInput>(EMPTY_PURCHASE_FORM);
+  const [editPurchaseError, setEditPurchaseError] = useState<string | null>(null);
+  const [isSavingPurchase, setIsSavingPurchase] = useState(false);
+  const [pendingDeletePurchaseId, setPendingDeletePurchaseId] = useState<string | null>(null);
+  const [purchaseActionError, setPurchaseActionError] = useState<string | null>(null);
+
+  const [valuations, setValuations] = useState<StockValuation[] | null>(null);
+  const [valuationsLoadError, setValuationsLoadError] = useState<string | null>(null);
+  const [newValuationForms, setNewValuationForms] = useState<Record<string, UpdateStockValuationInput>>({});
+  const [createValuationError, setCreateValuationError] = useState<string | null>(null);
+  const [creatingValuationForStockId, setCreatingValuationForStockId] = useState<string | null>(null);
+  const [editingValuationId, setEditingValuationId] = useState<string | null>(null);
+  const [editingValuationForm, setEditingValuationForm] = useState<UpdateStockValuationInput>(EMPTY_VALUATION_FORM);
+  const [editValuationError, setEditValuationError] = useState<string | null>(null);
+  const [isSavingValuation, setIsSavingValuation] = useState(false);
+  const [pendingDeleteValuationId, setPendingDeleteValuationId] = useState<string | null>(null);
+  const [valuationActionError, setValuationActionError] = useState<string | null>(null);
 
   async function reloadAccounts() {
     setAccounts(await listBankAccounts());
@@ -116,8 +170,16 @@ export function WealthPage() {
     setBalances(await listBankAccountBalances());
   }
 
-  async function reloadStockEntries() {
-    setStockEntries(await listStockEntries());
+  async function reloadStocks() {
+    setStockList(await listStocks());
+  }
+
+  async function reloadPurchases() {
+    setPurchases(await listStockPurchases());
+  }
+
+  async function reloadValuations() {
+    setValuations(await listStockValuations());
   }
 
   useEffect(() => {
@@ -155,9 +217,39 @@ export function WealthPage() {
     let cancelled = false;
     (async () => {
       try {
-        await reloadStockEntries();
+        await reloadStocks();
       } catch (err) {
-        if (!cancelled) setStockLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar las acciones.');
+        if (!cancelled) setStocksLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar las acciones.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadPurchases();
+      } catch (err) {
+        if (!cancelled) setPurchasesLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de compras.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadValuations();
+      } catch (err) {
+        if (!cancelled) setValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
       }
     })();
     return () => {
@@ -279,20 +371,20 @@ export function WealthPage() {
     setCreateStockError(null);
     setIsCreatingStock(true);
     try {
-      await createStockEntry(newStockForm);
+      await createStock(newStockForm);
       setNewStockForm(EMPTY_STOCK_FORM);
-      await reloadStockEntries();
+      await reloadStocks();
     } catch (err) {
-      setCreateStockError(err instanceof ApiError ? err.message : 'No se ha podido crear la entrada.');
+      setCreateStockError(err instanceof ApiError ? err.message : 'No se ha podido crear la acción.');
     } finally {
       setIsCreatingStock(false);
     }
   }
 
-  function startEditStock(entry: StockEntry) {
+  function startEditStock(stock: Stock) {
     setEditStockError(null);
-    setEditingStockId(entry.id);
-    setEditingStockForm(stockFormFromEntry(entry));
+    setEditingStockId(stock.id);
+    setEditingStockForm(stockFormFromEntity(stock));
   }
 
   async function handleEditStock(event: FormEvent<HTMLFormElement>) {
@@ -301,11 +393,11 @@ export function WealthPage() {
     setEditStockError(null);
     setIsSavingStock(true);
     try {
-      await updateStockEntry(editingStockId, editingStockForm);
+      await updateStock(editingStockId, editingStockForm);
       setEditingStockId(null);
-      await reloadStockEntries();
+      await reloadStocks();
     } catch (err) {
-      setEditStockError(err instanceof ApiError ? err.message : 'No se ha podido guardar la entrada.');
+      setEditStockError(err instanceof ApiError ? err.message : 'No se ha podido guardar la acción.');
     } finally {
       setIsSavingStock(false);
     }
@@ -315,12 +407,130 @@ export function WealthPage() {
     setStockActionError(null);
     setPendingDeleteStockId(id);
     try {
-      await deleteStockEntry(id);
-      await reloadStockEntries();
+      await deleteStock(id);
+      await Promise.all([reloadStocks(), reloadPurchases(), reloadValuations()]);
     } catch (err) {
-      setStockActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la entrada.');
+      setStockActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la acción.');
     } finally {
       setPendingDeleteStockId(null);
+    }
+  }
+
+  function getNewPurchaseForm(stockId: string): UpdateStockPurchaseInput {
+    return newPurchaseForms[stockId] ?? { shareCount: '', purchasePrice: '' };
+  }
+
+  function setNewPurchaseForm(stockId: string, form: UpdateStockPurchaseInput) {
+    setNewPurchaseForms((prev) => ({ ...prev, [stockId]: form }));
+  }
+
+  async function handleCreatePurchase(stockId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatePurchaseError(null);
+    setCreatingPurchaseForStockId(stockId);
+    try {
+      const form = getNewPurchaseForm(stockId);
+      await createStockPurchase({ stockId, shareCount: form.shareCount ?? '', purchasePrice: form.purchasePrice ?? '' });
+      setNewPurchaseForm(stockId, { shareCount: '', purchasePrice: '' });
+      await reloadPurchases();
+    } catch (err) {
+      setCreatePurchaseError(err instanceof ApiError ? err.message : 'No se ha podido añadir la compra.');
+    } finally {
+      setCreatingPurchaseForStockId(null);
+    }
+  }
+
+  function startEditPurchase(purchase: StockPurchase) {
+    setEditPurchaseError(null);
+    setEditingPurchaseId(purchase.id);
+    setEditingPurchaseForm(purchaseFormFromEntity(purchase));
+  }
+
+  async function handleEditPurchase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingPurchaseId) return;
+    setEditPurchaseError(null);
+    setIsSavingPurchase(true);
+    try {
+      await updateStockPurchase(editingPurchaseId, editingPurchaseForm);
+      setEditingPurchaseId(null);
+      await reloadPurchases();
+    } catch (err) {
+      setEditPurchaseError(err instanceof ApiError ? err.message : 'No se ha podido guardar la compra.');
+    } finally {
+      setIsSavingPurchase(false);
+    }
+  }
+
+  async function handleDeletePurchase(id: string) {
+    setPurchaseActionError(null);
+    setPendingDeletePurchaseId(id);
+    try {
+      await deleteStockPurchase(id);
+      await reloadPurchases();
+    } catch (err) {
+      setPurchaseActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la compra.');
+    } finally {
+      setPendingDeletePurchaseId(null);
+    }
+  }
+
+  function getNewValuationForm(stockId: string): UpdateStockValuationInput {
+    return newValuationForms[stockId] ?? { valuation: '', date: todayIso() };
+  }
+
+  function setNewValuationForm(stockId: string, form: UpdateStockValuationInput) {
+    setNewValuationForms((prev) => ({ ...prev, [stockId]: form }));
+  }
+
+  async function handleCreateValuation(stockId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateValuationError(null);
+    setCreatingValuationForStockId(stockId);
+    try {
+      const form = getNewValuationForm(stockId);
+      await createStockValuation({ stockId, valuation: form.valuation ?? '', date: form.date ?? todayIso() });
+      setNewValuationForm(stockId, { valuation: '', date: todayIso() });
+      await reloadValuations();
+    } catch (err) {
+      setCreateValuationError(err instanceof ApiError ? err.message : 'No se ha podido añadir la valoración.');
+    } finally {
+      setCreatingValuationForStockId(null);
+    }
+  }
+
+  function startEditValuation(valuation: StockValuation) {
+    setEditValuationError(null);
+    setEditingValuationId(valuation.id);
+    setEditingValuationForm(valuationFormFromEntity(valuation));
+  }
+
+  async function handleEditValuation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingValuationId) return;
+    setEditValuationError(null);
+    setIsSavingValuation(true);
+    try {
+      await updateStockValuation(editingValuationId, editingValuationForm);
+      setEditingValuationId(null);
+      await reloadValuations();
+    } catch (err) {
+      setEditValuationError(err instanceof ApiError ? err.message : 'No se ha podido guardar la valoración.');
+    } finally {
+      setIsSavingValuation(false);
+    }
+  }
+
+  async function handleDeleteValuation(id: string) {
+    setValuationActionError(null);
+    setPendingDeleteValuationId(id);
+    try {
+      await deleteStockValuation(id);
+      await reloadValuations();
+    } catch (err) {
+      setValuationActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la valoración.');
+    } finally {
+      setPendingDeleteValuationId(null);
     }
   }
 
@@ -604,24 +814,33 @@ export function WealthPage() {
           <h2>📈 Acciones</h2>
         </summary>
 
-        {stockLoadError && <p role="alert">{stockLoadError}</p>}
+        {stocksLoadError && <p role="alert">{stocksLoadError}</p>}
+        {purchasesLoadError && <p role="alert">{purchasesLoadError}</p>}
+        {valuationsLoadError && <p role="alert">{valuationsLoadError}</p>}
         {stockActionError && <p role="alert">{stockActionError}</p>}
+        {purchaseActionError && <p role="alert">{purchaseActionError}</p>}
+        {valuationActionError && <p role="alert">{valuationActionError}</p>}
 
-        {stockEntries && stockEntries.length === 0 && <p>Todavía no tienes ninguna entrada de acciones.</p>}
+        {stockList && stockList.length === 0 && <p>Todavía no tienes ninguna acción.</p>}
 
-        {stockEntries && stockEntries.length > 0 && (
-          <ul id="wealth-stock-list" aria-label="Tus entradas de acciones">
-            {stockEntries.map((entry) => {
-              const isEditing = editingStockId === entry.id;
+        {stockList && stockList.length > 0 && (
+          <ul id="wealth-stock-list" aria-label="Tus acciones">
+            {stockList.map((stock) => {
+              const isEditingStock = editingStockId === stock.id;
+              const stockPurchases = (purchases ?? []).filter((p) => p.stockId === stock.id);
+              const stockValuations = (valuations ?? []).filter((v) => v.stockId === stock.id);
+              const lastValuation = stockValuations[0] ?? null; // `valuations` ya viene ordenado por fecha descendente
+              const newPurchaseForm = getNewPurchaseForm(stock.id);
+              const newValuationForm = getNewValuationForm(stock.id);
 
-              if (isEditing) {
+              if (isEditingStock) {
                 return (
-                  <li className="card elev-sm" key={entry.id}>
-                    <form onSubmit={handleEditStock} aria-label={`Editar entrada: ${entry.stock}`} noValidate>
+                  <li className="card elev-sm" key={stock.id}>
+                    <form onSubmit={handleEditStock} aria-label={`Editar acción: ${stock.stock}`} noValidate>
                       <div className="field">
-                        <label htmlFor={`stock-${entry.id}-custodyBank`}>Banco Custodia</label>
+                        <label htmlFor={`stock-${stock.id}-custodyBank`}>Banco Custodia</label>
                         <input
-                          id={`stock-${entry.id}-custodyBank`}
+                          id={`stock-${stock.id}-custodyBank`}
                           className="input"
                           value={editingStockForm.custodyBank}
                           onChange={(e) => setEditingStockForm({ ...editingStockForm, custodyBank: e.target.value })}
@@ -629,48 +848,12 @@ export function WealthPage() {
                         />
                       </div>
                       <div className="field">
-                        <label htmlFor={`stock-${entry.id}-stock`}>Acción</label>
+                        <label htmlFor={`stock-${stock.id}-stock`}>Acción</label>
                         <input
-                          id={`stock-${entry.id}-stock`}
+                          id={`stock-${stock.id}-stock`}
                           className="input"
                           value={editingStockForm.stock}
                           onChange={(e) => setEditingStockForm({ ...editingStockForm, stock: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <div className="field">
-                        <label htmlFor={`stock-${entry.id}-shareCount`}>Número acciones</label>
-                        <input
-                          id={`stock-${entry.id}-shareCount`}
-                          className="input"
-                          inputMode="decimal"
-                          value={editingStockForm.shareCount}
-                          onChange={(e) => setEditingStockForm({ ...editingStockForm, shareCount: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <div className="field">
-                        <label htmlFor={`stock-${entry.id}-purchasePrice`}>Precio compra</label>
-                        <input
-                          id={`stock-${entry.id}-purchasePrice`}
-                          className="input"
-                          inputMode="decimal"
-                          value={editingStockForm.purchasePrice}
-                          onChange={(e) => setEditingStockForm({ ...editingStockForm, purchasePrice: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <p className="card-meta">
-                        Valor compra: {formatCurrency(purchaseValue(editingStockForm.purchasePrice, editingStockForm.shareCount) || '0.00')}
-                      </p>
-                      <div className="field">
-                        <label htmlFor={`stock-${entry.id}-currentValuation`}>Valoración actual</label>
-                        <input
-                          id={`stock-${entry.id}-currentValuation`}
-                          className="input"
-                          inputMode="decimal"
-                          value={editingStockForm.currentValuation}
-                          onChange={(e) => setEditingStockForm({ ...editingStockForm, currentValuation: e.target.value })}
                           required
                         />
                       </div>
@@ -687,38 +870,295 @@ export function WealthPage() {
               }
 
               return (
-                <li className="card elev-sm" key={entry.id}>
+                <li className="card elev-sm" key={stock.id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="card-title">
-                      {entry.stock} · {entry.custodyBank}
+                      {stock.stock} · {stock.custodyBank}
                     </span>
-                    <span className="card-amount">{formatCurrency(entry.currentValuation)}</span>
+                    <span className="card-amount">{lastValuation ? formatCurrency(lastValuation.valuation) : 'Sin valoración'}</span>
                   </div>
                   <p className="card-meta">
-                    {entry.shareCount} acciones · Precio compra: {formatCurrency(entry.purchasePrice)} · Valor compra:{' '}
-                    {formatCurrency(purchaseValue(entry.purchasePrice, entry.shareCount) || '0.00')}
+                    {totalShares(stockPurchases)} acciones · Coste total: {formatCurrency(totalCost(stockPurchases))}
+                    {lastValuation && <> · Última fecha: {lastValuation.date}</>}
                   </p>
                   <div>
-                    <button type="button" className="btn btn-secondary" onClick={() => startEditStock(entry)}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      aria-label={`Editar acción: ${stock.stock} · ${stock.custodyBank}`}
+                      onClick={() => startEditStock(stock)}
+                    >
                       Editar
                     </button>{' '}
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      disabled={pendingDeleteStockId === entry.id}
-                      onClick={() => void handleDeleteStock(entry.id)}
+                      aria-label={`Eliminar acción: ${stock.stock} · ${stock.custodyBank}`}
+                      disabled={pendingDeleteStockId === stock.id}
+                      onClick={() => void handleDeleteStock(stock.id)}
                     >
-                      {pendingDeleteStockId === entry.id ? 'Eliminando…' : 'Eliminar'}
+                      {pendingDeleteStockId === stock.id ? 'Eliminando…' : 'Eliminar'}
                     </button>
                   </div>
+
+                  <details>
+                    <summary>Historial de compras ({stockPurchases.length})</summary>
+
+                    {stockPurchases.length === 0 && <p>Todavía no hay ninguna compra registrada en esta acción.</p>}
+
+                    {stockPurchases.length > 0 && (
+                      <ul aria-label={`Historial de compras de ${stock.stock} · ${stock.custodyBank}`}>
+                        {stockPurchases.map((purchase) => {
+                          const isEditingPurchase = editingPurchaseId === purchase.id;
+                          // Nombre accesible construido con los valores en crudo (sin `formatCurrency`): evita depender
+                          // del formato de `Intl.NumberFormat` (incluye un espacio no separable) para identificar el elemento.
+                          const purchaseLabel = `${purchase.shareCount} acciones a ${purchase.purchasePrice}€`;
+
+                          if (isEditingPurchase) {
+                            return (
+                              <li key={purchase.id}>
+                                <form
+                                  onSubmit={handleEditPurchase}
+                                  aria-label={`Editar compra de ${stock.stock}: ${purchaseLabel}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`purchase-${purchase.id}-shareCount`}>Número acciones</label>
+                                    <input
+                                      id={`purchase-${purchase.id}-shareCount`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingPurchaseForm.shareCount}
+                                      onChange={(e) => setEditingPurchaseForm({ ...editingPurchaseForm, shareCount: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`purchase-${purchase.id}-purchasePrice`}>Precio compra</label>
+                                    <input
+                                      id={`purchase-${purchase.id}-purchasePrice`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingPurchaseForm.purchasePrice}
+                                      onChange={(e) => setEditingPurchaseForm({ ...editingPurchaseForm, purchasePrice: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <p className="card-meta">
+                                    Valor compra:{' '}
+                                    {formatCurrency(
+                                      purchaseValue(editingPurchaseForm.purchasePrice ?? '', editingPurchaseForm.shareCount ?? '') ||
+                                        '0.00',
+                                    )}
+                                  </p>
+                                  {editPurchaseError && <p role="alert">{editPurchaseError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingPurchase}>
+                                    {isSavingPurchase ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingPurchase}
+                                    onClick={() => setEditingPurchaseId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={purchase.id}>
+                              <span>
+                                {purchase.shareCount} acciones @ {formatCurrency(purchase.purchasePrice)} ={' '}
+                                {formatCurrency(purchaseValue(purchase.purchasePrice, purchase.shareCount))}
+                              </span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar compra de ${stock.stock}: ${purchaseLabel}`}
+                                onClick={() => startEditPurchase(purchase)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar compra de ${stock.stock}: ${purchaseLabel}`}
+                                disabled={pendingDeletePurchaseId === purchase.id}
+                                onClick={() => void handleDeletePurchase(purchase.id)}
+                              >
+                                {pendingDeletePurchaseId === purchase.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreatePurchase(stock.id, e)}
+                      aria-label={`Añadir compra: ${stock.stock}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-purchase-${stock.id}-shareCount`}>Número acciones</label>
+                        <input
+                          id={`new-purchase-${stock.id}-shareCount`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newPurchaseForm.shareCount}
+                          onChange={(e) => setNewPurchaseForm(stock.id, { ...newPurchaseForm, shareCount: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-purchase-${stock.id}-purchasePrice`}>Precio compra</label>
+                        <input
+                          id={`new-purchase-${stock.id}-purchasePrice`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newPurchaseForm.purchasePrice}
+                          onChange={(e) => setNewPurchaseForm(stock.id, { ...newPurchaseForm, purchasePrice: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <p className="card-meta">
+                        Valor compra:{' '}
+                        {formatCurrency(purchaseValue(newPurchaseForm.purchasePrice ?? '', newPurchaseForm.shareCount ?? '') || '0.00')}
+                      </p>
+                      {createPurchaseError && <p role="alert">{createPurchaseError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingPurchaseForStockId === stock.id}>
+                        {creatingPurchaseForStockId === stock.id ? 'Añadiendo…' : 'Añadir compra'}
+                      </button>
+                    </form>
+                  </details>
+
+                  <details>
+                    <summary>Historial de valoraciones ({stockValuations.length})</summary>
+
+                    {stockValuations.length === 0 && <p>Todavía no hay ninguna valoración registrada en esta acción.</p>}
+
+                    {stockValuations.length > 0 && (
+                      <ul aria-label={`Historial de valoraciones de ${stock.stock} · ${stock.custodyBank}`}>
+                        {stockValuations.map((valuation) => {
+                          const isEditingValuation = editingValuationId === valuation.id;
+
+                          if (isEditingValuation) {
+                            return (
+                              <li key={valuation.id}>
+                                <form
+                                  onSubmit={handleEditValuation}
+                                  aria-label={`Editar valoración de ${stock.stock} del ${valuation.date}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`valuation-${valuation.id}-valuation`}>Valoración actual</label>
+                                    <input
+                                      id={`valuation-${valuation.id}-valuation`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingValuationForm.valuation}
+                                      onChange={(e) => setEditingValuationForm({ ...editingValuationForm, valuation: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`valuation-${valuation.id}-date`}>Fecha</label>
+                                    <input
+                                      id={`valuation-${valuation.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingValuationForm.date}
+                                      onChange={(e) => setEditingValuationForm({ ...editingValuationForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  {editValuationError && <p role="alert">{editValuationError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingValuation}>
+                                    {isSavingValuation ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingValuation}
+                                    onClick={() => setEditingValuationId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={valuation.id}>
+                              <span>{valuation.date}</span> <span>{formatCurrency(valuation.valuation)}</span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar valoración de ${stock.stock} del ${valuation.date}`}
+                                onClick={() => startEditValuation(valuation)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar valoración de ${stock.stock} del ${valuation.date}`}
+                                disabled={pendingDeleteValuationId === valuation.id}
+                                onClick={() => void handleDeleteValuation(valuation.id)}
+                              >
+                                {pendingDeleteValuationId === valuation.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreateValuation(stock.id, e)}
+                      aria-label={`Añadir valoración: ${stock.stock}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-valuation-${stock.id}-valuation`}>Valoración actual</label>
+                        <input
+                          id={`new-valuation-${stock.id}-valuation`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newValuationForm.valuation}
+                          onChange={(e) => setNewValuationForm(stock.id, { ...newValuationForm, valuation: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-valuation-${stock.id}-date`}>Fecha</label>
+                        <input
+                          id={`new-valuation-${stock.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newValuationForm.date}
+                          onChange={(e) => setNewValuationForm(stock.id, { ...newValuationForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {createValuationError && <p role="alert">{createValuationError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingValuationForStockId === stock.id}>
+                        {creatingValuationForStockId === stock.id ? 'Añadiendo…' : 'Añadir valoración'}
+                      </button>
+                    </form>
+                  </details>
                 </li>
               );
             })}
           </ul>
         )}
 
-        <h3>Añadir entrada</h3>
-        <form onSubmit={handleCreateStock} aria-label="Añadir entrada de acciones" noValidate>
+        <h3>Añadir acción</h3>
+        <form onSubmit={handleCreateStock} aria-label="Añadir acción" noValidate>
           <div className="field">
             <label htmlFor="new-stock-custodyBank">Banco Custodia</label>
             <input
@@ -739,45 +1179,9 @@ export function WealthPage() {
               required
             />
           </div>
-          <div className="field">
-            <label htmlFor="new-stock-shareCount">Número acciones</label>
-            <input
-              id="new-stock-shareCount"
-              className="input"
-              inputMode="decimal"
-              value={newStockForm.shareCount}
-              onChange={(e) => setNewStockForm({ ...newStockForm, shareCount: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-stock-purchasePrice">Precio compra</label>
-            <input
-              id="new-stock-purchasePrice"
-              className="input"
-              inputMode="decimal"
-              value={newStockForm.purchasePrice}
-              onChange={(e) => setNewStockForm({ ...newStockForm, purchasePrice: e.target.value })}
-              required
-            />
-          </div>
-          <p className="card-meta">
-            Valor compra: {formatCurrency(purchaseValue(newStockForm.purchasePrice, newStockForm.shareCount) || '0.00')}
-          </p>
-          <div className="field">
-            <label htmlFor="new-stock-currentValuation">Valoración actual</label>
-            <input
-              id="new-stock-currentValuation"
-              className="input"
-              inputMode="decimal"
-              value={newStockForm.currentValuation}
-              onChange={(e) => setNewStockForm({ ...newStockForm, currentValuation: e.target.value })}
-              required
-            />
-          </div>
           {createStockError && <p role="alert">{createStockError}</p>}
           <button type="submit" className="btn btn-primary" disabled={isCreatingStock}>
-            {isCreatingStock ? 'Creando…' : 'Añadir entrada'}
+            {isCreatingStock ? 'Creando…' : 'Añadir acción'}
           </button>
         </form>
       </details>
