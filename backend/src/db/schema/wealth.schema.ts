@@ -55,13 +55,14 @@ export const bankAccountBalances = pgTable(
 );
 
 /**
- * H3 (spec 018): historial de compras de acciones — igual que
- * `bankAccountBalances`, varias filas de la misma acción son varias compras
- * distintas, no una sola posición que se sobrescribe. Sin `date` propia
- * (spec.md H3 no la pide). Sin cambios en spec 019 (plan.md §5).
+ * H1 (spec 020): una acción (banco custodia + acción) es una entidad única
+ * por usuario — sustituye al histórico plano de spec 018 (`stockEntries`,
+ * retirada). "Misma acción dos veces" se valida en `StocksService.create()`/
+ * `update()` (409), no con una constraint SQL — mismo criterio que
+ * `bankAccounts` (spec 019).
  */
-export const stockEntries = pgTable(
-  'stock_entries',
+export const stocks = pgTable(
+  'stocks',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     userId: uuid('user_id')
@@ -69,15 +70,59 @@ export const stockEntries = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     custodyBank: varchar('custody_bank', { length: 100 }).notNull(),
     stock: varchar('stock', { length: 150 }).notNull(),
-    // H3 criterio 2: puede ser fraccionario (brokers modernos permiten
-    // comprar "0.5 acciones") — precisión a 4 decimales, no 2.
-    shareCount: numeric('share_count', { precision: 14, scale: 4 }).notNull(),
-    purchasePrice: numeric('purchase_price', { precision: 12, scale: 2 }).notNull(),
-    currentValuation: numeric('current_valuation', { precision: 12, scale: 2 }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('stock_entries_user_idx').on(table.userId)],
+  (table) => [index('stocks_user_idx').on(table.userId)],
+);
+
+/**
+ * H2 (spec 020): historial de compras de una acción — muchas por acción,
+ * ninguna es la acción en sí. Sin `userId`/`date` propios: el aislamiento
+ * por usuario pasa siempre por `stocks.userId` (normalizado, igual que
+ * `bankAccountBalances`); sin fecha porque H2 no la pide (a diferencia de
+ * `stockValuations`, justo debajo).
+ */
+export const stockPurchases = pgTable(
+  'stock_purchases',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    // `onDelete: 'cascade'`: H1 criterio 4 pide que borrar la acción se
+    // lleve su historial de compras por delante.
+    stockId: uuid('stock_id')
+      .notNull()
+      .references(() => stocks.id, { onDelete: 'cascade' }),
+    // H2 criterio 1: puede ser fraccionario (brokers modernos permiten
+    // comprar "0.5 acciones") — precisión a 4 decimales, no 2.
+    shareCount: numeric('share_count', { precision: 14, scale: 4 }).notNull(),
+    purchasePrice: numeric('purchase_price', { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('stock_purchases_stock_idx').on(table.stockId)],
+);
+
+/**
+ * H3 (spec 020): historial de valoraciones de una acción — segundo
+ * historial independiente del de compras (decisión 1 de spec.md), mismo
+ * criterio que `bankAccountBalances` (spec 019) pero para el valor de la
+ * posición en vez del saldo de una cuenta.
+ */
+export const stockValuations = pgTable(
+  'stock_valuations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    stockId: uuid('stock_id')
+      .notNull()
+      .references(() => stocks.id, { onDelete: 'cascade' }),
+    // A diferencia de `bankAccountBalances.euros`, siempre positivo (una
+    // posición no puede valer menos de 0) — `IsMoneyAmount`, no `IsSignedMoneyAmount`.
+    valuation: numeric('valuation', { precision: 12, scale: 2 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('stock_valuations_stock_date_idx').on(table.stockId, table.date)],
 );
 
 // --- Relations ------------------------------------------------------------
@@ -91,6 +136,16 @@ export const bankAccountBalancesRelations = relations(bankAccountBalances, ({ on
   bankAccount: one(bankAccounts, { fields: [bankAccountBalances.bankAccountId], references: [bankAccounts.id] }),
 }));
 
-export const stockEntriesRelations = relations(stockEntries, ({ one }) => ({
-  user: one(users, { fields: [stockEntries.userId], references: [users.id] }),
+export const stocksRelations = relations(stocks, ({ one, many }) => ({
+  user: one(users, { fields: [stocks.userId], references: [users.id] }),
+  purchases: many(stockPurchases),
+  valuations: many(stockValuations),
+}));
+
+export const stockPurchasesRelations = relations(stockPurchases, ({ one }) => ({
+  stock: one(stocks, { fields: [stockPurchases.stockId], references: [stocks.id] }),
+}));
+
+export const stockValuationsRelations = relations(stockValuations, ({ one }) => ({
+  stock: one(stocks, { fields: [stockValuations.stockId], references: [stocks.id] }),
 }));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { purchaseValue } from './wealth.calculations.js';
+import { purchaseValue, totalCost, totalShares } from './wealth.calculations.js';
 
 describe('wealth.calculations', () => {
   describe('purchaseValue', () => {
@@ -13,6 +13,30 @@ describe('wealth.calculations', () => {
 
     it('redondea a 2 decimales', () => {
       expect(purchaseValue('3.333', '3')).toBe('10.00');
+    });
+  });
+
+  describe('totalShares (spec 020)', () => {
+    it('suma el número de acciones de todas las compras', () => {
+      expect(totalShares([{ shareCount: '10' }, { shareCount: '5' }])).toBe('15.0000');
+    });
+
+    it('admite compras fraccionarias', () => {
+      expect(totalShares([{ shareCount: '0.5' }, { shareCount: '0.25' }])).toBe('0.7500');
+    });
+
+    it('sin ninguna compra, 0', () => {
+      expect(totalShares([])).toBe('0.0000');
+    });
+  });
+
+  describe('totalCost (spec 020)', () => {
+    it('suma el valor de compra (precio × cantidad) de todas las compras', () => {
+      expect(totalCost([{ shareCount: '10', purchasePrice: '28.50' }, { shareCount: '5', purchasePrice: '30.00' }])).toBe('435.00');
+    });
+
+    it('sin ninguna compra, 0', () => {
+      expect(totalCost([])).toBe('0.00');
     });
   });
 });
