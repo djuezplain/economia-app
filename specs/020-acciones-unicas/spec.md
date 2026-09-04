@@ -40,6 +40,15 @@ Como usuario quiero anotar, dentro de una acción ya creada, cuánto vale mi pos
 - Criterio 5: mismo aislamiento por usuario que H2 criterio 6.
 - Criterio 6: el título de la acción muestra el % de ganancia o pérdida sobre el coste — (Valor actual − Coste total) / Coste total × 100 — en verde si es positivo, en rojo si es negativo. No se muestra si no hay ninguna compra (sin coste no hay base sobre la que calcular un %) ni si no hay ninguna valoración. *(Revisión §3.quater.)*
 
+**H4 — Ver el total del patrimonio registrado, de un vistazo**
+
+Como usuario quiero ver, nada más entrar en Resumen Patrimonio, el sumatorio de Cuentas Bancarias y Acciones, para no tener que sumarlo a mano abriendo cada sección. *(Revisión §3.quinquies — pedida por Diego después de H1-H3, no forma parte del alcance original de esta spec sobre "Acciones", pero se documenta aquí por no haber ninguna spec de nivel de página dedicada.)*
+
+- Criterio 1: al principio de la página, antes de "Cuentas Bancarias", una tarjeta "Total" muestra la suma del último saldo de cada cuenta bancaria más el valor actual de cada acción.
+- Criterio 2: la misma tarjeta desglosa los dos sumandos por separado (Cuentas Bancarias / Acciones).
+- Criterio 3: una cuenta sin ningún saldo o una acción sin ninguna valoración cuentan como 0 en el total — mismo criterio que "Sin saldo"/"Sin valoración" en sus propias tarjetas.
+- Criterio 4: el total se calcula, nunca se guarda — mismo criterio que el resto de esta página (coste total, valor actual, % de ganancia/pérdida).
+
 ## 2. Fuera de alcance
 
 - Cualquier cambio a "Cuentas Bancarias" (spec 019) — sin cambios.
@@ -71,6 +80,15 @@ Diego pidió, sobre la revisión anterior (con `currentValue` ya calculado), mos
 - Sin ninguna compra (Coste total = 0) no se muestra — dividir entre cero no tiene sentido y, sin coste, tampoco hay "ganancia" que medir.
 - Sin ninguna valoración tampoco se muestra — mismo criterio que "Sin valoración" ya existente para el valor actual.
 - Colores: `var(--status-green)`/`var(--status-red)`, variables ya usadas en el proyecto para positivo/negativo (`ProgressBar.tsx`) — no se añade ninguna variable de color nueva.
+
+## 3.quinquies Revisión: tarjeta "Total" al principio de la página (H4)
+
+Diego pidió, sobre las revisiones anteriores, añadir al principio de Resumen Patrimonio (antes de "Cuentas Bancarias") una tarjeta con el sumatorio de Cuentas Bancarias y Acciones — ver H4 arriba.
+
+- Solo se muestra una vez han cargado las 5 listas de las que depende (`accounts`, `balances`, `stockList`, `purchases`, `valuations`) — evita un parpadeo mostrando "0,00 €" mientras aún se está cargando.
+- Cuentas Bancarias: para cada cuenta, su último saldo (o 0 si no tiene ninguno) — mismo criterio de "más reciente = primero en la lista ya ordenada por fecha" que usa cada tarjeta de cuenta individual.
+- Acciones: para cada acción, su valor actual (`currentValue`, igual que en su propia tarjeta) — 0 si no tiene ninguna valoración.
+- Fuera de alcance de esta tarjeta: cualquier otra de las 5 categorías sin implementar (Fondos Inversión, Cripto, Vehículos, Fondo Pensiones, Efectivo) no entra en la suma — no tienen datos que sumar todavía.
 
 ## 3. Decisiones tomadas con Diego antes de escribir el plan
 

@@ -106,6 +106,32 @@ function gainLossPercent(currentVal: string, cost: string): number | null {
   return ((value - costNum) / costNum) * 100;
 }
 
+/** Resumen (parte superior de la página): sumatorio del último saldo de cada cuenta bancaria
+ *  — calculado, nunca guardado. Una cuenta sin ningún saldo aún contribuye 0, mismo criterio
+ *  que "Sin saldo" en su propia tarjeta. */
+function bankAccountsTotal(accounts: BankAccount[], balances: BankAccountBalance[]): string {
+  return accounts
+    .reduce((sum, account) => {
+      const lastBalance = balances.find((b) => b.bankAccountId === account.id); // ya ordenado por fecha descendente
+      return sum + (lastBalance ? parseFloat(lastBalance.euros) : 0);
+    }, 0)
+    .toFixed(2);
+}
+
+/** Resumen (parte superior de la página): sumatorio del valor actual de cada acción — mismo
+ *  criterio que `currentValue`. Una acción sin ninguna valoración aún contribuye 0, mismo
+ *  criterio que "Sin valoración" en su propia tarjeta. */
+function stocksTotal(stocks: Stock[], purchases: StockPurchase[], valuations: StockValuation[]): string {
+  return stocks
+    .reduce((sum, stock) => {
+      const stockPurchases = purchases.filter((p) => p.stockId === stock.id);
+      const lastValuation = valuations.find((v) => v.stockId === stock.id); // ya ordenado por fecha descendente
+      if (!lastValuation) return sum;
+      return sum + parseFloat(currentValue(lastValuation.pricePerShare, totalShares(stockPurchases)));
+    }, 0)
+    .toFixed(2);
+}
+
 /** Las 5 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3). */
 const PLACEHOLDER_SECTIONS = [
   { icon: '💹', label: 'Fondos Inversión' },
@@ -602,9 +628,26 @@ export function WealthPage() {
     );
   }
 
+  const canShowTotal = accounts !== null && balances !== null && stockList !== null && purchases !== null && valuations !== null;
+
   return (
     <main>
       <h1>Resumen Patrimonio</h1>
+
+      {canShowTotal && (
+        <div className="card elev-sm" id="wealth-total-summary">
+          <span className="card-title">Total</span>
+          <span className="card-amount">
+            {formatCurrency(
+              (parseFloat(bankAccountsTotal(accounts, balances)) + parseFloat(stocksTotal(stockList, purchases, valuations))).toFixed(2),
+            )}
+          </span>
+          <p className="card-meta">
+            Cuentas Bancarias: {formatCurrency(bankAccountsTotal(accounts, balances))} · Acciones:{' '}
+            {formatCurrency(stocksTotal(stockList, purchases, valuations))}
+          </p>
+        </div>
+      )}
 
       <details className="dashboard-section">
         <summary>

@@ -116,3 +116,11 @@ Tres recursos, sustituyen a `/stock-entries` (spec 018) — se elimina ese contr
 - Frontend únicamente — no hace falta ni endpoint ni DTO nuevos, es un dato derivado de otros dos ya calculados en cliente (`currentValue`, `totalCost`).
 - `WealthPage.tsx`: nueva función local `gainLossPercent(currentVal, cost)` = (Valor actual − Coste) / Coste × 100, `null` si `cost` es 0 (sin compras) — mismo patrón que `currentValue`/`purchaseValue` (parsea a `NaN`/devuelve `''` o `null` cuando no hay datos suficientes, en vez de lanzar). Se calcula una vez por tarjeta de acción, junto a `lastValuation`/`stockPurchases`, y se usa solo si `lastValuation` no es `null` (si no hay valoración, no hay `currentValue`, y por tanto tampoco % que mostrar).
 - Se pinta como un `<span>` dentro de `.card-title`, con `style={{ color: gainLoss >= 0 ? 'var(--status-green)' : 'var(--status-red)' }}` — mismas variables de color que usa `ProgressBar.tsx` para presupuestos superados/objetivos cumplidos (spec 007), no se añade ninguna nueva. Formato: `+16.67%` / `-20.00%` (2 decimales, signo explícito en positivo).
+
+## 10. Revisión (§3.quinquies de spec.md, H4): tarjeta "Total"
+
+- Frontend únicamente. Dos funciones nuevas en `WealthPage.tsx` (no en `wealth.calculations.ts`: no hace falta en el backend, mismo criterio que `gainLossPercent`):
+  - `bankAccountsTotal(accounts, balances)`: para cada cuenta, `balances.find(b => b.bankAccountId === account.id)` (la lista ya viene ordenada por fecha descendente desde la API, así que el primer resultado es el saldo más reciente) — 0 si no hay ninguno.
+  - `stocksTotal(stocks, purchases, valuations)`: para cada acción, `valuations.find(...)` (misma idea) y, si existe, `currentValue(esa valoración, totalShares(sus compras))` — 0 si no hay ninguna valoración.
+- Se renderiza justo debajo de `<h1>`, en un `const canShowTotal = accounts !== null && balances !== null && stockList !== null && purchases !== null && valuations !== null` — TypeScript estrecha los cinco arrays dentro del bloque `canShowTotal && (...)` (control flow analysis de condiciones con alias, no hace falta un type guard aparte).
+- Tarjeta simple `<div className="card elev-sm">` (no `<details>`, no es plegable — se quiere ver siempre) con `card-title`/`card-amount`/`card-meta`, mismas clases que el resto de tarjetas de la página.

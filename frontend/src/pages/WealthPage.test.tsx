@@ -130,14 +130,57 @@ describe('WealthPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText(/Cuentas Bancarias/)).toBeInTheDocument();
-    expect(screen.getByText(/Acciones/)).toBeInTheDocument();
-    expect(screen.getByText(/Fondos Inversión/)).toBeInTheDocument();
-    expect(screen.getByText(/Cripto/)).toBeInTheDocument();
-    expect(screen.getByText(/Vehículos/)).toBeInTheDocument();
-    expect(screen.getByText(/Fondo Pensiones/)).toBeInTheDocument();
-    expect(screen.getByText(/Efectivo/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Cuentas Bancarias/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Acciones/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Fondos Inversión/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Cripto/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Vehículos/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Fondo Pensiones/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Efectivo/ })).toBeInTheDocument();
     expect(screen.getAllByText('Próximamente.')).toHaveLength(5);
+  });
+
+  describe('Total (sumatorio de Cuentas Bancarias y Acciones)', () => {
+    it('suma el último saldo de cada cuenta bancaria y el valor actual de cada acción', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
+
+      renderPage();
+
+      // Cuentas Bancarias: 1500,00 € (BANK_BALANCE). Acciones: 350,00 € (10 × 35,00 €, STOCK_VALUATION). Total: 1850,00 €.
+      expect(await screen.findByText('1850,00 €')).toBeInTheDocument();
+      expect(screen.getByText('Cuentas Bancarias: 1500,00 € · Acciones: 350,00 €')).toBeInTheDocument();
+    });
+
+    it('sin ninguna cuenta ni acción, el total es 0,00 €', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      expect(await screen.findByText('0,00 €')).toBeInTheDocument();
+    });
+
+    it('una cuenta sin saldo o una acción sin valoración cuentan como 0 en el total', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      expect(await screen.findByText('Cuentas Bancarias: 0,00 € · Acciones: 0,00 €')).toBeInTheDocument();
+    });
   });
 
   describe('Cuentas Bancarias (spec 019)', () => {
