@@ -92,6 +92,20 @@
       "when": 1788549859387,
       "tag": "0012_add_stock_purchases_date",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788551057385,
+      "tag": "0013_add_stock_valuations_price_per_share",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788551079957,
+      "tag": "0014_drop_stock_valuations_valuation",
+      "breakpoints": true
     }
   ]
 }

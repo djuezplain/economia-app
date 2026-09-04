@@ -1,0 +1,1 @@
+ALTER TABLE "stock_valuations" DROP COLUMN "valuation";

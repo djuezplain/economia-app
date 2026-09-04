@@ -117,9 +117,12 @@ export const stockValuations = pgTable(
     stockId: uuid('stock_id')
       .notNull()
       .references(() => stocks.id, { onDelete: 'cascade' }),
-    // A diferencia de `bankAccountBalances.euros`, siempre positivo (una
-    // posición no puede valer menos de 0) — `IsMoneyAmount`, no `IsSignedMoneyAmount`.
-    valuation: numeric('valuation', { precision: 12, scale: 2 }).notNull(),
+    // H3 criterio 1 (revisión, §3.ter de spec.md): precio por acción, no el
+    // valor total de la posición — el valor total se calcula (precio ×
+    // `totalShares`, `wealth.calculations.ts`), nunca se guarda, igual que
+    // `purchaseValue`. A diferencia de `bankAccountBalances.euros`, siempre
+    // positivo — `IsMoneyAmount`, no `IsSignedMoneyAmount`.
+    pricePerShare: numeric('price_per_share', { precision: 12, scale: 2 }).notNull(),
     date: date('date').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

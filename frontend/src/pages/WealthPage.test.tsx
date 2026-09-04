@@ -59,7 +59,7 @@ const STOCK_PURCHASE: StockPurchase = {
 const STOCK_VALUATION: StockValuation = {
   id: 'valuation-1',
   stockId: 'stock-1',
-  valuation: '35.00',
+  pricePerShare: '35.00',
   date: '2026-09-04',
   createdAt: '2026-09-04T00:00:00.000Z',
   updatedAt: '2026-09-04T00:00:00.000Z',
@@ -322,7 +322,7 @@ describe('WealthPage', () => {
       expect(await screen.findByText('Todavía no tienes ninguna acción.')).toBeInTheDocument();
     });
 
-    it('lista una acción existente, con sus totales y su valoración más reciente', async () => {
+    it('lista una acción existente, con sus totales y el valor actual calculado (precio por acción × nº de acciones)', async () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
@@ -332,13 +332,16 @@ describe('WealthPage', () => {
 
       const list = await screen.findByRole('list', { name: 'Tus acciones' });
       expect(within(list).getByText('Inditex · BBVA')).toBeInTheDocument();
-      expect(within(list).getByText(/10.0000 acciones · Coste total/)).toHaveTextContent('Última fecha: 2026-09-04');
+      // 10.0000 acciones × 35,00 €/acción (STOCK_VALUATION) = 350,00 €.
+      expect(within(list).getByText('350,00 €')).toBeInTheDocument();
+      expect(within(list).getByText(/10.0000 acciones · Coste total/)).toHaveTextContent('Precio actual: 35,00 €/acción · Última fecha: 2026-09-04');
 
       const purchaseHistory = within(list).getByRole('list', { name: 'Historial de compras de Inditex · BBVA' });
       expect(within(purchaseHistory).getByText(/10.0000 acciones @/)).toBeInTheDocument();
 
       const valuationHistory = within(list).getByRole('list', { name: 'Historial de valoraciones de Inditex · BBVA' });
       expect(within(valuationHistory).getByText('2026-09-04')).toBeInTheDocument();
+      expect(within(valuationHistory).getByText('35,00 €/acción')).toBeInTheDocument();
     });
 
     it('una acción sin ninguna valoración muestra "Sin valoración"', async () => {
@@ -534,13 +537,28 @@ describe('WealthPage', () => {
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir valoración: Inditex' });
 
-      await userEvent.type(within(form).getByLabelText('Valoración actual'), '35.00');
+      await userEvent.type(within(form).getByLabelText('Precio por acción actual'), '35.00');
       await userEvent.click(within(form).getByRole('button', { name: 'Añadir valoración' }));
 
       await waitFor(() =>
-        expect(createSpy).toHaveBeenCalledWith({ stockId: STOCK.id, valuation: '35.00', date: todayIso() }),
+        expect(createSpy).toHaveBeenCalledWith({ stockId: STOCK.id, pricePerShare: '35.00', date: todayIso() }),
       );
       await waitFor(() => expect(listValuationsSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('el formulario de valoración calcula el valor total (precio por acción × nº de acciones ya compradas)', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir valoración: Inditex' });
+
+      await userEvent.type(within(form).getByLabelText('Precio por acción actual'), '35.00');
+
+      // 10.0000 acciones (STOCK_PURCHASE) × 35.00 = 350,00 €.
+      expect(within(form).getByText(/Valor total:/)).toHaveTextContent('350,00');
     });
 
     it('edita una valoración del historial', async () => {
@@ -555,13 +573,13 @@ describe('WealthPage', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Editar valoración de Inditex del 2026-09-04' }));
       const editForm = screen.getByRole('form', { name: 'Editar valoración de Inditex del 2026-09-04' });
-      const valuationInput = within(editForm).getByLabelText('Valoración actual');
+      const valuationInput = within(editForm).getByLabelText('Precio por acción actual');
       await userEvent.clear(valuationInput);
       await userEvent.type(valuationInput, '40.00');
       await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
 
       await waitFor(() =>
-        expect(updateSpy).toHaveBeenCalledWith(STOCK_VALUATION.id, { valuation: '40.00', date: '2026-09-04' }),
+        expect(updateSpy).toHaveBeenCalledWith(STOCK_VALUATION.id, { pricePerShare: '40.00', date: '2026-09-04' }),
       );
     });
 

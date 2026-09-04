@@ -18,3 +18,13 @@ export function totalShares(purchases: Array<{ shareCount: string }>): string {
 export function totalCost(purchases: Array<{ shareCount: string; purchasePrice: string }>): string {
   return purchases.reduce((sum, p) => sum.plus(purchaseValue(p.purchasePrice, p.shareCount)), new Decimal(0)).toFixed(2);
 }
+
+/**
+ * H3 criterio 1 (spec 020, revisión §3.ter de spec.md): Valor actual de la
+ * posición = Precio por acción actual (última valoración) × nº total de
+ * acciones (`totalShares`, sobre el historial de compras). Se calcula, no
+ * se guarda — mismo criterio que `purchaseValue`.
+ */
+export function currentValue(pricePerShare: string, shareCount: string): string {
+  return new Decimal(pricePerShare).times(shareCount).toFixed(2);
+}
