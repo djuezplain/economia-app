@@ -384,8 +384,10 @@ export function DashboardPage() {
     <main>
       <h1>Dashboard</h1>
 
-      <section>
-        <h2>Comparativa temporal</h2>
+      <details className="dashboard-section">
+        <summary>
+          <h2>Comparativa temporal</h2>
+        </summary>
 
         <div className="comparison-toolbar">
           <div className="seg" role="radiogroup" aria-label="Tipo de movimiento a comparar">
@@ -465,10 +467,12 @@ export function DashboardPage() {
             </p>
           </>
         )}
-      </section>
+      </details>
 
-      <section>
-        <h2>Categorías por periodo</h2>
+      <details className="dashboard-section">
+        <summary>
+          <h2>Categorías por periodo</h2>
+        </summary>
 
         <div className="comparison-toolbar">
           <div className="seg" role="radiogroup" aria-label="Tipo de movimiento por categoría">
@@ -546,10 +550,12 @@ export function DashboardPage() {
             })}
           </ul>
         )}
-      </section>
+      </details>
 
-      <section>
-        <h2>Análisis estacional</h2>
+      <details className="dashboard-section">
+        <summary>
+          <h2>Análisis estacional</h2>
+        </summary>
 
         <div className="comparison-toolbar">
           <div className="seg" role="radiogroup" aria-label="Tipo de movimiento a analizar">
@@ -655,10 +661,12 @@ export function DashboardPage() {
             </p>
           </>
         )}
-      </section>
+      </details>
 
-      <section>
-        <h2>Resumen del mes</h2>
+      <details className="dashboard-section">
+        <summary>
+          <h2>Resumen del mes</h2>
+        </summary>
         <div className="field" style={{ maxWidth: 220 }}>
           <label htmlFor="month">Mes</label>
           <input id="month" type="month" className="input" value={month} onChange={(e) => setMonth(e.target.value)} />
@@ -730,10 +738,12 @@ export function DashboardPage() {
             )}
           </>
         )}
-      </section>
+      </details>
 
-      <section>
-        <h2>Vista anual</h2>
+      <details className="dashboard-section">
+        <summary>
+          <h2>Vista anual</h2>
+        </summary>
         <div className="field" style={{ maxWidth: 220 }}>
           <label htmlFor="year">Año</label>
           <input id="year" type="number" className="input" value={year} onChange={(e) => setYear(e.target.value)} />
@@ -791,7 +801,7 @@ export function DashboardPage() {
             </table>
           </>
         )}
-      </section>
+      </details>
     </main>
   );
 }
