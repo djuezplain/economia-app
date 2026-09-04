@@ -2,15 +2,17 @@ import { pgTable, uuid, varchar, numeric, date, timestamp, index } from 'drizzle
 import { relations } from 'drizzle-orm';
 import { users } from './auth.schema.js';
 
-// --- Tables (spec 018, plan.md §1) ---------------------------------------
+// --- Tables ----------------------------------------------------------------
 
 /**
- * H2 (spec 018): historial de "fotos" del saldo de una cuenta bancaria, no
- * un valor único por cuenta — el mismo banco/número de cuenta puede
- * aparecer en varias filas con fechas distintas (decisión 1 de spec.md).
+ * H1 (spec 019): una cuenta bancaria (banco + número de cuenta) es una
+ * entidad única por usuario — sustituye al histórico plano de spec 018
+ * (`bankAccountEntries`, retirada). "Misma cuenta dos veces" se valida en
+ * `BankAccountsService.create()`/`update()` (409), no con una constraint SQL
+ * — mismo criterio que `savingsGoals` (goals.schema.ts).
  */
-export const bankAccountEntries = pgTable(
-  'bank_account_entries',
+export const bankAccounts = pgTable(
+  'bank_accounts',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     userId: uuid('user_id')
@@ -18,6 +20,28 @@ export const bankAccountEntries = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     bank: varchar('bank', { length: 100 }).notNull(),
     accountNumber: varchar('account_number', { length: 50 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('bank_accounts_user_idx').on(table.userId)],
+);
+
+/**
+ * H2 (spec 019): historial de "fotos" del saldo de una cuenta — muchas por
+ * cuenta, ninguna es la cuenta en sí (a diferencia de spec 018, donde banco
+ * + número de cuenta se repetían en cada fila). Sin `userId` propio: el
+ * aislamiento por usuario pasa siempre por `bankAccounts.userId` (normalizado).
+ */
+export const bankAccountBalances = pgTable(
+  'bank_account_balances',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    // `onDelete: 'cascade'` (a diferencia de `transactions.category_id`, que
+    // es `restrict`): H1 criterio 4 pide explícitamente que borrar la cuenta
+    // se lleve su historial por delante, no que lo bloquee.
+    bankAccountId: uuid('bank_account_id')
+      .notNull()
+      .references(() => bankAccounts.id, { onDelete: 'cascade' }),
     // H2 criterio 3: a diferencia de `transactions.amount`, admite negativo
     // (un descubierto) — validado con `IsSignedMoneyAmount`, no `IsMoneyAmount`.
     euros: numeric('euros', { precision: 12, scale: 2 }).notNull(),
@@ -27,14 +51,14 @@ export const bankAccountEntries = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('bank_account_entries_user_date_idx').on(table.userId, table.date)],
+  (table) => [index('bank_account_balances_account_date_idx').on(table.bankAccountId, table.date)],
 );
 
 /**
  * H3 (spec 018): historial de compras de acciones — igual que
- * `bankAccountEntries`, varias filas de la misma acción son varias compras
+ * `bankAccountBalances`, varias filas de la misma acción son varias compras
  * distintas, no una sola posición que se sobrescribe. Sin `date` propia
- * (spec.md H3 no la pide, a diferencia de H2).
+ * (spec.md H3 no la pide). Sin cambios en spec 019 (plan.md §5).
  */
 export const stockEntries = pgTable(
   'stock_entries',
@@ -58,8 +82,13 @@ export const stockEntries = pgTable(
 
 // --- Relations ------------------------------------------------------------
 
-export const bankAccountEntriesRelations = relations(bankAccountEntries, ({ one }) => ({
-  user: one(users, { fields: [bankAccountEntries.userId], references: [users.id] }),
+export const bankAccountsRelations = relations(bankAccounts, ({ one, many }) => ({
+  user: one(users, { fields: [bankAccounts.userId], references: [users.id] }),
+  balances: many(bankAccountBalances),
+}));
+
+export const bankAccountBalancesRelations = relations(bankAccountBalances, ({ one }) => ({
+  bankAccount: one(bankAccounts, { fields: [bankAccountBalances.bankAccountId], references: [bankAccounts.id] }),
 }));
 
 export const stockEntriesRelations = relations(stockEntries, ({ one }) => ({
