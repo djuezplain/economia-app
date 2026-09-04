@@ -1,6 +1,6 @@
 import { IsDateString, IsOptional } from 'class-validator';
-import { IsMoneyAmount } from '../../common/is-money-amount.decorator.js';
 import { IsShareCount } from '../../common/is-share-count.decorator.js';
+import { IsSharePrice } from '../../common/is-share-price.decorator.js';
 
 /**
  * H2 criterio 5 (spec 020). `stockId` no es editable (mismo criterio que
@@ -13,7 +13,7 @@ export class UpdateStockPurchaseDto {
   shareCount?: string;
 
   @IsOptional()
-  @IsMoneyAmount()
+  @IsSharePrice()
   purchasePrice?: string;
 
   @IsOptional()

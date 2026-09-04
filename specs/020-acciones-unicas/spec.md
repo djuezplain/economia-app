@@ -22,7 +22,7 @@ Como usuario quiero registrar cada posición (Banco Custodia + Acción) una úni
 
 Como usuario quiero anotar, dentro de una acción ya creada, cada compra que hago (cuándo, cuántas acciones y a qué precio), para llevar el histórico de mis compras a precios distintos.
 
-- Criterio 1: cada compra tiene Número de acciones, Precio de compra y Fecha de compra, con el día de hoy por defecto. *(Revisión tras feedback de Diego sobre la primera implementación: faltaba Fecha de compra, que sí se pedía para valoraciones — H3 — pero no se había pedido para compras; se añade aquí para que ambos historiales sean simétricos.)*
+- Criterio 1: cada compra tiene Número de acciones, Precio de compra y Fecha de compra, con el día de hoy por defecto. *(Revisión tras feedback de Diego sobre la primera implementación: faltaba Fecha de compra, que sí se pedía para valoraciones — H3 — pero no se había pedido para compras; se añade aquí para que ambos historiales sean simétricos.)* Número de acciones y Precio de compra admiten hasta 8 decimales (no 2/4), para posiciones muy fraccionadas — cripto-acciones, fondos indexados fraccionarios, etc. *(Revisión §3.sexies.)*
 - Criterio 2: una acción puede tener cualquier número de compras — mismo criterio que ya existía en spec 018 (varias compras a precios distintos), ahora como historial dentro de la acción en vez de filas sueltas.
 - Criterio 3: el Valor de compra de cada compra (Precio de compra × Número de acciones) se muestra calculado, nunca se guarda — igual que en spec 018.
 - Criterio 4: la posición muestra, además, el número total de acciones (suma de todas las compras) y el coste total (suma de los valores de compra de todas las compras).
@@ -90,7 +90,15 @@ Diego pidió, sobre las revisiones anteriores, añadir al principio de Resumen P
 - Acciones: para cada acción, su valor actual (`currentValue`, igual que en su propia tarjeta) — 0 si no tiene ninguna valoración.
 - Fuera de alcance de esta tarjeta: cualquier otra de las 5 categorías sin implementar (Fondos Inversión, Cripto, Vehículos, Fondo Pensiones, Efectivo) no entra en la suma — no tienen datos que sumar todavía.
 
-## 3. Decisiones tomadas con Diego antes de escribir el plan
+## 3.sexies Revisión: 8 decimales en Número de acciones y Precio de compra (H2 criterio 1)
+
+Diego pidió que el historial de compras (H2) admitiera hasta 8 decimales tanto en Número de acciones como en Precio de compra — antes 4 y 2 respectivamente.
+
+- Nuevo decorador `IsSharePrice` (8 decimales, positivo) para `purchasePrice` — no se reutiliza `IsMoneyAmount` (2 decimales) porque ese decorador se usa en importes de euros por todo el resto de la app (movimientos, presupuestos, saldos bancarios, precio por acción de una valoración) que no cambian de precisión.
+- `IsShareCount` (ya existía) pasa de 4 a 8 decimales — se usa exclusivamente para `shareCount`, así que se edita directamente sin necesidad de un decorador nuevo.
+- Columnas `stock_purchases.share_count`/`purchase_price`: `numeric(18,8)` (antes `numeric(14,4)`/`numeric(12,2)`) — ensanchar la precisión de una columna `numeric` ya existente es una operación segura (no reescribe ni trunca los valores ya guardados).
+- `totalShares` (backend y frontend) pasa de 4 a 8 decimales en su salida, para no perder la precisión añadida al sumar varias compras.
+- El Precio por acción actual de una valoración (H3) no cambia — sigue en 2 decimales (`IsMoneyAmount`); esta revisión es solo sobre el historial de compras.
 
 1. Modelo en tres niveles: **acción** (Banco Custodia + Acción, única por usuario), **compra** (Número de acciones + Precio de compra, muchas por acción) y **valoración** (Valoración actual + Fecha, muchas por acción) — dos historiales independientes dentro de la misma acción, no uno solo. Decidido explícitamente frente a la alternativa de un único historial de valoraciones fechadas (que habría obligado a fijar Número de acciones/Precio de compra en la propia acción, perdiendo la posibilidad ya existente de varias compras a precios distintos).
 2. La unicidad de una acción (Banco Custodia + Acción) se valida en el servicio, no con una constraint SQL — mismo criterio que `bankAccounts` (spec 019) y `savingsGoals`.

@@ -124,3 +124,12 @@ Tres recursos, sustituyen a `/stock-entries` (spec 018) — se elimina ese contr
   - `stocksTotal(stocks, purchases, valuations)`: para cada acción, `valuations.find(...)` (misma idea) y, si existe, `currentValue(esa valoración, totalShares(sus compras))` — 0 si no hay ninguna valoración.
 - Se renderiza justo debajo de `<h1>`, en un `const canShowTotal = accounts !== null && balances !== null && stockList !== null && purchases !== null && valuations !== null` — TypeScript estrecha los cinco arrays dentro del bloque `canShowTotal && (...)` (control flow analysis de condiciones con alias, no hace falta un type guard aparte).
 - Tarjeta simple `<div className="card elev-sm">` (no `<details>`, no es plegable — se quiere ver siempre) con `card-title`/`card-amount`/`card-meta`, mismas clases que el resto de tarjetas de la página.
+
+## 11. Revisión (§3.sexies de spec.md): 8 decimales en compras
+
+- `backend/src/common/is-share-price.decorator.ts` (nuevo): `IsSharePrice`, mismo patrón que `IsMoneyAmount`/`IsSignedMoneyAmount` (regex + `registerDecorator`), regex `^\d+(\.\d{1,8})?$`.
+- `backend/src/common/is-share-count.decorator.ts`: regex `\d{1,4}` → `\d{1,8}`, mensaje actualizado.
+- `create-stock-purchase.dto.ts`/`update-stock-purchase.dto.ts`: `purchasePrice` pasa de `@IsMoneyAmount()` a `@IsSharePrice()`.
+- `wealth.schema.ts`: `stockPurchases.shareCount`/`purchasePrice` de `numeric(14,4)`/`numeric(12,2)` a `numeric(18,8)` — migración `0015_widen_stock_purchases_precision.sql`, `ALTER COLUMN ... SET DATA TYPE numeric(18,8)` puro (sin ambigüedad de rename, sin necesidad del truco en dos pasos — ensanchar precisión/escala de un `numeric` ya existente no trunca ni reescribe los valores guardados).
+- `wealth.calculations.ts`: `totalShares` de `.toFixed(4)` a `.toFixed(8)`. `purchaseValue`/`totalCost`/`currentValue` no cambian — siguen en `.toFixed(2)` (son importes en euros, no cantidades de acciones).
+- Frontend, `WealthPage.tsx`: mismo cambio de `.toFixed(4)` a `.toFixed(8)` en la función local `totalShares` (duplicada del backend, mismo criterio que el resto de cálculos de esta página).

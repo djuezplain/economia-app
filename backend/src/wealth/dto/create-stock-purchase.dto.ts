@@ -1,6 +1,6 @@
 import { IsDateString, IsUUID } from 'class-validator';
-import { IsMoneyAmount } from '../../common/is-money-amount.decorator.js';
 import { IsShareCount } from '../../common/is-share-count.decorator.js';
+import { IsSharePrice } from '../../common/is-share-price.decorator.js';
 
 /** H2 (spec 020). */
 export class CreateStockPurchaseDto {
@@ -10,7 +10,7 @@ export class CreateStockPurchaseDto {
   @IsShareCount()
   shareCount!: string;
 
-  @IsMoneyAmount()
+  @IsSharePrice()
   purchasePrice!: string;
 
   @IsDateString()
