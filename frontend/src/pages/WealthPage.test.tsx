@@ -331,10 +331,13 @@ describe('WealthPage', () => {
       renderPage();
 
       const list = await screen.findByRole('list', { name: 'Tus acciones' });
-      expect(within(list).getByText('Inditex · BBVA')).toBeInTheDocument();
+      expect(within(list).getByText(/Inditex · BBVA/)).toBeInTheDocument();
       // 10.0000 acciones × 35,00 €/acción (STOCK_VALUATION) = 350,00 €.
       expect(within(list).getByText('350,00 €')).toBeInTheDocument();
       expect(within(list).getByText(/10.0000 acciones · Coste total/)).toHaveTextContent('Precio actual: 35,00 €/acción · Última fecha: 2026-09-04');
+      // Coste total 300,00 € (10 × 30,00 €), valor actual 350,00 € → +16.67% de ganancia, en verde.
+      const gainLossEl = within(list).getByText('+16.67%');
+      expect(gainLossEl).toHaveStyle({ color: 'var(--status-green)' });
 
       const purchaseHistory = within(list).getByRole('list', { name: 'Historial de compras de Inditex · BBVA' });
       expect(within(purchaseHistory).getByText(/10.0000 acciones @/)).toBeInTheDocument();
@@ -342,6 +345,33 @@ describe('WealthPage', () => {
       const valuationHistory = within(list).getByRole('list', { name: 'Historial de valoraciones de Inditex · BBVA' });
       expect(within(valuationHistory).getByText('2026-09-04')).toBeInTheDocument();
       expect(within(valuationHistory).getByText('35,00 €/acción')).toBeInTheDocument();
+    });
+
+    it('con pérdidas, el % se muestra en rojo', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([{ ...STOCK_VALUATION, pricePerShare: '24.00' }]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      // Coste total 300,00 € (10 × 30,00 €), valor actual 240,00 € (10 × 24,00 €) → -20.00%, en rojo.
+      const gainLossEl = within(list).getByText('-20.00%');
+      expect(gainLossEl).toHaveStyle({ color: 'var(--status-red)' });
+    });
+
+    it('sin ninguna compra, no muestra % de ganancia/pérdida aunque haya valoración', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      await within(list).findByText(/Inditex · BBVA/);
+      expect(within(list).queryByText(/%$/)).not.toBeInTheDocument();
     });
 
     it('una acción sin ninguna valoración muestra "Sin valoración"', async () => {
