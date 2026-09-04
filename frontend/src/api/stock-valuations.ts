@@ -1,10 +1,11 @@
 import { api } from './client';
 
 // H3 (spec 020). Espejo de `StockValuation` en el backend (`stock-valuations.service.ts`).
+// `pricePerShare`, no el valor total de la posición (revisión §3.ter de spec.md).
 export interface StockValuation {
   id: string;
   stockId: string;
-  valuation: string;
+  pricePerShare: string;
   date: string;
   createdAt: string;
   updatedAt: string;
@@ -12,12 +13,12 @@ export interface StockValuation {
 
 export interface CreateStockValuationInput {
   stockId: string;
-  valuation: string;
+  pricePerShare: string;
   date: string;
 }
 
 export interface UpdateStockValuationInput {
-  valuation?: string;
+  pricePerShare?: string;
   date?: string;
 }
 

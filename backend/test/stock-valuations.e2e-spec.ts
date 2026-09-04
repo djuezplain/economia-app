@@ -70,9 +70,9 @@ describe('Historial de valoraciones de acciones (e2e) — spec 020 H3', () => {
       const ownerStock = await createStock(owner.id, 'BBVA', 'Inditex');
       const otherStock = await createStock(other.id, 'DeGiro', 'Apple');
       await db.insert(stockValuations).values([
-        { stockId: ownerStock.id, valuation: '320.00', date: '2026-08-01' },
-        { stockId: ownerStock.id, valuation: '350.00', date: '2026-09-01' },
-        { stockId: otherStock.id, valuation: '999.00', date: '2026-09-01' },
+        { stockId: ownerStock.id, pricePerShare: '320.00', date: '2026-08-01' },
+        { stockId: ownerStock.id, pricePerShare: '350.00', date: '2026-09-01' },
+        { stockId: otherStock.id, pricePerShare: '999.00', date: '2026-09-01' },
       ]);
       const token = await login(owner.email);
 
@@ -93,11 +93,11 @@ describe('Historial de valoraciones de acciones (e2e) — spec 020 H3', () => {
       const res = await request(app.getHttpServer())
         .post('/stock-valuations')
         .set('Authorization', auth(token))
-        .send({ stockId: stock.id, valuation: '350.00', date: '2026-09-04' })
+        .send({ stockId: stock.id, pricePerShare: '350.00', date: '2026-09-04' })
         .expect(201);
 
       expect(res.body.stockId).toBe(stock.id);
-      expect(res.body.valuation).toBe('350.00');
+      expect(res.body.pricePerShare).toBe('350.00');
       expect(res.body.date).toBe('2026-09-04');
     });
 
@@ -109,12 +109,12 @@ describe('Historial de valoraciones de acciones (e2e) — spec 020 H3', () => {
       await request(app.getHttpServer())
         .post('/stock-valuations')
         .set('Authorization', auth(token))
-        .send({ stockId: stock.id, valuation: '320.00', date: '2026-08-01' })
+        .send({ stockId: stock.id, pricePerShare: '320.00', date: '2026-08-01' })
         .expect(201);
       await request(app.getHttpServer())
         .post('/stock-valuations')
         .set('Authorization', auth(token))
-        .send({ stockId: stock.id, valuation: '350.00', date: '2026-09-01' })
+        .send({ stockId: stock.id, pricePerShare: '350.00', date: '2026-09-01' })
         .expect(201);
 
       const valuations = await db.query.stockValuations.findMany({ where: (v, { eq }) => eq(v.stockId, stock.id) });
@@ -128,7 +128,7 @@ describe('Historial de valoraciones de acciones (e2e) — spec 020 H3', () => {
       await request(app.getHttpServer())
         .post('/stock-valuations')
         .set('Authorization', auth(token))
-        .send({ stockId: stock.id, valuation: '-50.00', date: '2026-09-04' })
+        .send({ stockId: stock.id, pricePerShare: '-50.00', date: '2026-09-04' })
         .expect(400);
     });
 
@@ -141,7 +141,7 @@ describe('Historial de valoraciones de acciones (e2e) — spec 020 H3', () => {
       await request(app.getHttpServer())
         .post('/stock-valuations')
         .set('Authorization', auth(token))
-        .send({ stockId: ownerStock.id, valuation: '350.00', date: '2026-09-04' })
+        .send({ stockId: ownerStock.id, pricePerShare: '350.00', date: '2026-09-04' })
         .expect(404);
     });
   });
@@ -153,16 +153,16 @@ describe('Historial de valoraciones de acciones (e2e) — spec 020 H3', () => {
       const token = await login(user.email);
       const [valuation] = await db
         .insert(stockValuations)
-        .values({ stockId: stock.id, valuation: '320.00', date: '2026-08-01' })
+        .values({ stockId: stock.id, pricePerShare: '320.00', date: '2026-08-01' })
         .returning();
 
       const res = await request(app.getHttpServer())
         .patch(`/stock-valuations/${valuation.id}`)
         .set('Authorization', auth(token))
-        .send({ valuation: '350.00', date: '2026-09-01' })
+        .send({ pricePerShare: '350.00', date: '2026-09-01' })
         .expect(200);
 
-      expect(res.body.valuation).toBe('350.00');
+      expect(res.body.pricePerShare).toBe('350.00');
       expect(res.body.date).toBe('2026-09-01');
     });
 
@@ -172,14 +172,14 @@ describe('Historial de valoraciones de acciones (e2e) — spec 020 H3', () => {
       const stock = await createStock(owner.id, 'BBVA', 'Inditex');
       const [valuation] = await db
         .insert(stockValuations)
-        .values({ stockId: stock.id, valuation: '320.00', date: '2026-08-01' })
+        .values({ stockId: stock.id, pricePerShare: '320.00', date: '2026-08-01' })
         .returning();
       const token = await login(other.email);
 
       await request(app.getHttpServer())
         .patch(`/stock-valuations/${valuation.id}`)
         .set('Authorization', auth(token))
-        .send({ valuation: '999.00' })
+        .send({ pricePerShare: '999.00' })
         .expect(404);
     });
   });
@@ -191,9 +191,9 @@ describe('Historial de valoraciones de acciones (e2e) — spec 020 H3', () => {
       const token = await login(user.email);
       const [valuationA] = await db
         .insert(stockValuations)
-        .values({ stockId: stock.id, valuation: '320.00', date: '2026-08-01' })
+        .values({ stockId: stock.id, pricePerShare: '320.00', date: '2026-08-01' })
         .returning();
-      await db.insert(stockValuations).values({ stockId: stock.id, valuation: '350.00', date: '2026-09-01' });
+      await db.insert(stockValuations).values({ stockId: stock.id, pricePerShare: '350.00', date: '2026-09-01' });
 
       await request(app.getHttpServer()).delete(`/stock-valuations/${valuationA.id}`).set('Authorization', auth(token)).expect(204);
 
@@ -209,7 +209,7 @@ describe('Historial de valoraciones de acciones (e2e) — spec 020 H3', () => {
       const stock = await createStock(owner.id, 'BBVA', 'Inditex');
       const [valuation] = await db
         .insert(stockValuations)
-        .values({ stockId: stock.id, valuation: '320.00', date: '2026-08-01' })
+        .values({ stockId: stock.id, pricePerShare: '320.00', date: '2026-08-01' })
         .returning();
       const token = await login(other.email);
 

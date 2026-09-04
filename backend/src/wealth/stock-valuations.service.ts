@@ -40,7 +40,7 @@ export class StockValuationsService {
 
     const [valuation] = await this.db
       .insert(stockValuations)
-      .values({ stockId: dto.stockId, valuation: dto.valuation, date: dto.date })
+      .values({ stockId: dto.stockId, pricePerShare: dto.pricePerShare, date: dto.date })
       .returning();
     return valuation;
   }
@@ -51,7 +51,7 @@ export class StockValuationsService {
     const [updated] = await this.db
       .update(stockValuations)
       .set({
-        ...(dto.valuation !== undefined && { valuation: dto.valuation }),
+        ...(dto.pricePerShare !== undefined && { pricePerShare: dto.pricePerShare }),
         ...(dto.date !== undefined && { date: dto.date }),
         updatedAt: new Date(),
       })

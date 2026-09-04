@@ -7,7 +7,7 @@ export class CreateStockValuationDto {
   stockId!: string;
 
   @IsMoneyAmount()
-  valuation!: string;
+  pricePerShare!: string;
 
   @IsDateString()
   date!: string;

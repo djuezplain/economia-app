@@ -33,9 +33,9 @@ Como usuario quiero anotar, dentro de una acción ya creada, cada compra que hag
 
 Como usuario quiero anotar, dentro de una acción ya creada, cuánto vale mi posición en distintos momentos, para ver su evolución en el tiempo — igual que ya se puede hacer con el saldo de una cuenta bancaria (spec 019).
 
-- Criterio 1: cada entrada de valoración tiene Valoración actual y Fecha, con el día de hoy por defecto.
+- Criterio 1: cada entrada de valoración tiene Precio por acción actual y Fecha, con el día de hoy por defecto. *(Revisión §3.ter: antes pedía el valor total de la posición — ver más abajo.)*
 - Criterio 2: una acción puede tener cualquier número de entradas de valoración, en cualquier fecha.
-- Criterio 3: el historial de valoraciones de una acción se muestra ordenado de la más reciente a la más antigua; la posición muestra la valoración más reciente como su valor "actual".
+- Criterio 3: el historial de valoraciones de una acción se muestra ordenado de la más reciente a la más antigua; la posición muestra, como su valor "actual", el precio por acción de la valoración más reciente **multiplicado por el nº total de acciones** (H2 criterio 4) — no un valor guardado.
 - Criterio 4: cada entrada de valoración se puede editar o eliminar, sin afectar a las demás ni a la acción.
 - Criterio 5: mismo aislamiento por usuario que H2 criterio 6.
 
@@ -53,6 +53,14 @@ Tras implementar y desplegar (en rama, sin fusionar) la primera versión de esta
 
 1. **Fecha de compra**: el historial de compras (H2) no llevaba fecha — se añade (criterio 1 de H2, arriba), simétrico con el historial de valoraciones (H3), que sí la lleva desde el principio.
 2. **Alta en un solo paso**: el formulario "Añadir acción" solo pedía Banco Custodia y Acción; había que crear la acción primero y luego, dentro de su tarjeta ya expandida, añadir la primera compra por separado. Diego prefiere dar de alta la acción y su primera compra a la vez: el formulario "Añadir acción" pasa a pedir también Número de acciones, Precio de compra y Fecha de compra, y al enviarlo se crean la acción y esa primera compra en el mismo paso. Añadir compras siguientes, y anotar valoraciones, se sigue haciendo por separado dentro de la tarjeta de la acción ya creada (sin cambios en H3).
+
+## 3.ter Revisión: valoración = precio por acción, no valor total de la posición
+
+Tras probar la revisión anterior, Diego pidió un tercer cambio: al anotar una valoración (H3), el campo pedía el **valor total** de la posición (lo que valen todas las acciones que se poseen); Diego quiere anotar el **precio por acción** (la cotización en ese momento), no el total.
+
+- El campo se renombra de "Valoración actual" a "Precio por acción actual" (`stockValuations.pricePerShare`, antes `valuation`).
+- El valor total de la posición (lo que antes se guardaba directamente) pasa a **calcularse**: precio por acción de la valoración más reciente × nº total de acciones (H2 criterio 4, sobre el historial de compras) — mismo criterio que `purchaseValue`/`totalCost`, nunca se guarda (`currentValue`, `wealth.calculations.ts`).
+- Migración: las valoraciones ya guardadas bajo el modelo anterior (con el valor total) se trasladan tal cual a `pricePerShare` — no hay forma fiable de reconstruir a posteriori qué precio por acción correspondía a un valor total histórico (el nº de acciones poseídas en cada fecha pasada no se registra), así que la migración es una copia literal del número, no una conversión. Dado que esta spec aún no tenía datos reales en producción (solo pruebas), no se considera pérdida de información relevante.
 
 ## 3. Decisiones tomadas con Diego antes de escribir el plan
 

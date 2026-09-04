@@ -39,7 +39,7 @@ const EMPTY_ACCOUNT_FORM: BankAccountInput = { bank: '', accountNumber: '' };
 const EMPTY_BALANCE_FORM: UpdateBankAccountBalanceInput = { euros: '', date: todayIso() };
 const EMPTY_STOCK_FORM: StockInput = { custodyBank: '', stock: '' };
 const EMPTY_PURCHASE_FORM: UpdateStockPurchaseInput = { shareCount: '', purchasePrice: '', date: todayIso() };
-const EMPTY_VALUATION_FORM: UpdateStockValuationInput = { valuation: '', date: todayIso() };
+const EMPTY_VALUATION_FORM: UpdateStockValuationInput = { pricePerShare: '', date: todayIso() };
 
 /** Formulario "Añadir acción" (nivel superior): crea la acción y su primera
  *  compra en un solo paso (spec 020, revisión §3.bis) — dos llamadas
@@ -67,7 +67,7 @@ function purchaseFormFromEntity(purchase: StockPurchase): UpdateStockPurchaseInp
 }
 
 function valuationFormFromEntity(valuation: StockValuation): UpdateStockValuationInput {
-  return { valuation: valuation.valuation, date: valuation.date };
+  return { pricePerShare: valuation.pricePerShare, date: valuation.date };
 }
 
 /** H2 criterio 3 (spec 020): calculado, nunca guardado — ver `wealth.calculations.ts` en el backend. */
@@ -86,6 +86,15 @@ function totalShares(purchases: StockPurchase[]): string {
 /** H2 criterio 4 (spec 020): coste total de una posición, sumando el valor de compra de todas sus compras. */
 function totalCost(purchases: StockPurchase[]): string {
   return purchases.reduce((sum, p) => sum + parseFloat(purchaseValue(p.purchasePrice, p.shareCount) || '0'), 0).toFixed(2);
+}
+
+/** H3 criterio 1/3 (spec 020, revisión §3.ter): valor actual de la posición = precio por
+ *  acción de la valoración más reciente × nº total de acciones — calculado, nunca guardado. */
+function currentValue(pricePerShare: string, shareCount: string): string {
+  const price = parseFloat(pricePerShare);
+  const shares = parseFloat(shareCount);
+  if (Number.isNaN(price) || Number.isNaN(shares)) return '';
+  return (price * shares).toFixed(2);
 }
 
 /** Las 5 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3). */
@@ -496,7 +505,7 @@ export function WealthPage() {
   }
 
   function getNewValuationForm(stockId: string): UpdateStockValuationInput {
-    return newValuationForms[stockId] ?? { valuation: '', date: todayIso() };
+    return newValuationForms[stockId] ?? { pricePerShare: '', date: todayIso() };
   }
 
   function setNewValuationForm(stockId: string, form: UpdateStockValuationInput) {
@@ -509,8 +518,8 @@ export function WealthPage() {
     setCreatingValuationForStockId(stockId);
     try {
       const form = getNewValuationForm(stockId);
-      await createStockValuation({ stockId, valuation: form.valuation ?? '', date: form.date ?? todayIso() });
-      setNewValuationForm(stockId, { valuation: '', date: todayIso() });
+      await createStockValuation({ stockId, pricePerShare: form.pricePerShare ?? '', date: form.date ?? todayIso() });
+      setNewValuationForm(stockId, { pricePerShare: '', date: todayIso() });
       await reloadValuations();
     } catch (err) {
       setCreateValuationError(err instanceof ApiError ? err.message : 'No se ha podido añadir la valoración.');
@@ -895,11 +904,18 @@ export function WealthPage() {
                     <span className="card-title">
                       {stock.stock} · {stock.custodyBank}
                     </span>
-                    <span className="card-amount">{lastValuation ? formatCurrency(lastValuation.valuation) : 'Sin valoración'}</span>
+                    <span className="card-amount">
+                      {lastValuation ? formatCurrency(currentValue(lastValuation.pricePerShare, totalShares(stockPurchases))) : 'Sin valoración'}
+                    </span>
                   </div>
                   <p className="card-meta">
                     {totalShares(stockPurchases)} acciones · Coste total: {formatCurrency(totalCost(stockPurchases))}
-                    {lastValuation && <> · Última fecha: {lastValuation.date}</>}
+                    {lastValuation && (
+                      <>
+                        {' '}
+                        · Precio actual: {formatCurrency(lastValuation.pricePerShare)}/acción · Última fecha: {lastValuation.date}
+                      </>
+                    )}
                   </p>
                   <div>
                     <button
@@ -1097,13 +1113,13 @@ export function WealthPage() {
                                   noValidate
                                 >
                                   <div className="field">
-                                    <label htmlFor={`valuation-${valuation.id}-valuation`}>Valoración actual</label>
+                                    <label htmlFor={`valuation-${valuation.id}-pricePerShare`}>Precio por acción actual</label>
                                     <input
-                                      id={`valuation-${valuation.id}-valuation`}
+                                      id={`valuation-${valuation.id}-pricePerShare`}
                                       className="input"
                                       inputMode="decimal"
-                                      value={editingValuationForm.valuation}
-                                      onChange={(e) => setEditingValuationForm({ ...editingValuationForm, valuation: e.target.value })}
+                                      value={editingValuationForm.pricePerShare}
+                                      onChange={(e) => setEditingValuationForm({ ...editingValuationForm, pricePerShare: e.target.value })}
                                       required
                                     />
                                   </div>
@@ -1118,6 +1134,12 @@ export function WealthPage() {
                                       required
                                     />
                                   </div>
+                                  <p className="card-meta">
+                                    Valor total:{' '}
+                                    {formatCurrency(
+                                      currentValue(editingValuationForm.pricePerShare ?? '', totalShares(stockPurchases)) || '0.00',
+                                    )}
+                                  </p>
                                   {editValuationError && <p role="alert">{editValuationError}</p>}
                                   <button type="submit" className="btn btn-primary" disabled={isSavingValuation}>
                                     {isSavingValuation ? 'Guardando…' : 'Guardar'}
@@ -1137,7 +1159,7 @@ export function WealthPage() {
 
                           return (
                             <li key={valuation.id}>
-                              <span>{valuation.date}</span> <span>{formatCurrency(valuation.valuation)}</span>{' '}
+                              <span>{valuation.date}</span> <span>{formatCurrency(valuation.pricePerShare)}/acción</span>{' '}
                               <button
                                 type="button"
                                 className="btn btn-secondary"
@@ -1167,13 +1189,13 @@ export function WealthPage() {
                       noValidate
                     >
                       <div className="field">
-                        <label htmlFor={`new-valuation-${stock.id}-valuation`}>Valoración actual</label>
+                        <label htmlFor={`new-valuation-${stock.id}-pricePerShare`}>Precio por acción actual</label>
                         <input
-                          id={`new-valuation-${stock.id}-valuation`}
+                          id={`new-valuation-${stock.id}-pricePerShare`}
                           className="input"
                           inputMode="decimal"
-                          value={newValuationForm.valuation}
-                          onChange={(e) => setNewValuationForm(stock.id, { ...newValuationForm, valuation: e.target.value })}
+                          value={newValuationForm.pricePerShare}
+                          onChange={(e) => setNewValuationForm(stock.id, { ...newValuationForm, pricePerShare: e.target.value })}
                           required
                         />
                       </div>
@@ -1188,6 +1210,10 @@ export function WealthPage() {
                           required
                         />
                       </div>
+                      <p className="card-meta">
+                        Valor total:{' '}
+                        {formatCurrency(currentValue(newValuationForm.pricePerShare ?? '', totalShares(stockPurchases)) || '0.00')}
+                      </p>
                       {createValuationError && <p role="alert">{createValuationError}</p>}
                       <button type="submit" className="btn btn-primary" disabled={creatingValuationForStockId === stock.id}>
                         {creatingValuationForStockId === stock.id ? 'Añadiendo…' : 'Añadir valoración'}

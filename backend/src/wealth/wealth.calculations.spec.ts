@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { purchaseValue, totalCost, totalShares } from './wealth.calculations.js';
+import { currentValue, purchaseValue, totalCost, totalShares } from './wealth.calculations.js';
 
 describe('wealth.calculations', () => {
   describe('purchaseValue', () => {
@@ -37,6 +37,20 @@ describe('wealth.calculations', () => {
 
     it('sin ninguna compra, 0', () => {
       expect(totalCost([])).toBe('0.00');
+    });
+  });
+
+  describe('currentValue (spec 020, revisión)', () => {
+    it('precio por acción × número de acciones', () => {
+      expect(currentValue('35.00', '15')).toBe('525.00');
+    });
+
+    it('admite un número de acciones fraccionario', () => {
+      expect(currentValue('100.00', '0.5')).toBe('50.00');
+    });
+
+    it('redondea a 2 decimales', () => {
+      expect(currentValue('3.333', '3')).toBe('10.00');
     });
   });
 });

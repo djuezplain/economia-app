@@ -5,7 +5,7 @@ import { IsMoneyAmount } from '../../common/is-money-amount.decorator.js';
 export class UpdateStockValuationDto {
   @IsOptional()
   @IsMoneyAmount()
-  valuation?: string;
+  pricePerShare?: string;
 
   @IsOptional()
   @IsDateString()
