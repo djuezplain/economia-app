@@ -22,6 +22,7 @@ export class StockPurchasesService {
     private readonly stocksService: StocksService,
   ) {}
 
+  /** De la más reciente a la más antigua — mismo criterio que `StockValuationsService.list()`. */
   async list(userId: string): Promise<StockPurchase[]> {
     const ownStocks = await this.db.query.stocks.findMany({ where: eq(stocks.userId, userId), columns: { id: true } });
     if (ownStocks.length === 0) return [];
@@ -31,7 +32,7 @@ export class StockPurchasesService {
         stockPurchases.stockId,
         ownStocks.map((s) => s.id),
       ),
-      orderBy: [desc(stockPurchases.createdAt)],
+      orderBy: [desc(stockPurchases.date), desc(stockPurchases.createdAt)],
     });
   }
 
@@ -41,7 +42,7 @@ export class StockPurchasesService {
 
     const [purchase] = await this.db
       .insert(stockPurchases)
-      .values({ stockId: dto.stockId, shareCount: dto.shareCount, purchasePrice: dto.purchasePrice })
+      .values({ stockId: dto.stockId, shareCount: dto.shareCount, purchasePrice: dto.purchasePrice, date: dto.date })
       .returning();
     return purchase;
   }
@@ -54,6 +55,7 @@ export class StockPurchasesService {
       .set({
         ...(dto.shareCount !== undefined && { shareCount: dto.shareCount }),
         ...(dto.purchasePrice !== undefined && { purchasePrice: dto.purchasePrice }),
+        ...(dto.date !== undefined && { date: dto.date }),
         updatedAt: new Date(),
       })
       .where(eq(stockPurchases.id, id))

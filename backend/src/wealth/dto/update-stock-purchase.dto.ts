@@ -1,4 +1,4 @@
-import { IsOptional } from 'class-validator';
+import { IsDateString, IsOptional } from 'class-validator';
 import { IsMoneyAmount } from '../../common/is-money-amount.decorator.js';
 import { IsShareCount } from '../../common/is-share-count.decorator.js';
 
@@ -15,4 +15,8 @@ export class UpdateStockPurchaseDto {
   @IsOptional()
   @IsMoneyAmount()
   purchasePrice?: string;
+
+  @IsOptional()
+  @IsDateString()
+  date?: string;
 }

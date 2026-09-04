@@ -51,6 +51,7 @@ const STOCK_PURCHASE: StockPurchase = {
   stockId: 'stock-1',
   shareCount: '10.0000',
   purchasePrice: '30.00',
+  date: '2026-09-04',
   createdAt: '2026-09-04T00:00:00.000Z',
   updatedAt: '2026-09-04T00:00:00.000Z',
 };
@@ -354,22 +355,51 @@ describe('WealthPage', () => {
       expect(within(list).getByText('Todavía no hay ninguna valoración registrada en esta acción.')).toBeInTheDocument();
     });
 
-    it('crea una acción desde el formulario de alta', async () => {
+    it('el formulario de alta trae la fecha de hoy por defecto y calcula el valor de compra', async () => {
       mockOtherApis();
-      const listSpy = vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
-      const createSpy = vi.spyOn(stocksApi, 'createStock').mockResolvedValue(STOCK);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir acción' });
+
+      expect(within(form).getByLabelText('Fecha de compra')).toHaveValue(todayIso());
+
+      await userEvent.type(within(form).getByLabelText('Número acciones'), '4');
+      await userEvent.type(within(form).getByLabelText('Precio compra'), '10.50');
+
+      expect(within(form).getByText(/Valor compra:/)).toHaveTextContent('42,00');
+    });
+
+    it('crea una acción y su primera compra desde el formulario de alta, en un solo paso', async () => {
+      mockOtherApis();
+      const listStocksSpy = vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+      const listPurchasesSpy = vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      const createStockSpy = vi.spyOn(stocksApi, 'createStock').mockResolvedValue(STOCK);
+      const createPurchaseSpy = vi.spyOn(stockPurchasesApi, 'createStockPurchase').mockResolvedValue(STOCK_PURCHASE);
 
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir acción' });
 
       await userEvent.type(within(form).getByLabelText('Banco Custodia'), 'BBVA');
       await userEvent.type(within(form).getByLabelText('Acción'), 'Inditex');
+      await userEvent.type(within(form).getByLabelText('Número acciones'), '10');
+      await userEvent.type(within(form).getByLabelText('Precio compra'), '30.00');
       await userEvent.click(within(form).getByRole('button', { name: 'Añadir acción' }));
 
-      await waitFor(() => expect(createSpy).toHaveBeenCalledWith({ custodyBank: 'BBVA', stock: 'Inditex' }));
-      await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(createStockSpy).toHaveBeenCalledWith({ custodyBank: 'BBVA', stock: 'Inditex' }));
+      await waitFor(() =>
+        expect(createPurchaseSpy).toHaveBeenCalledWith({
+          stockId: STOCK.id,
+          shareCount: '10',
+          purchasePrice: '30.00',
+          date: todayIso(),
+        }),
+      );
+      await waitFor(() => expect(listStocksSpy).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(listPurchasesSpy).toHaveBeenCalledTimes(2));
     });
 
     it('edita una acción existente', async () => {
@@ -437,7 +467,7 @@ describe('WealthPage', () => {
       await userEvent.click(within(form).getByRole('button', { name: 'Añadir compra' }));
 
       await waitFor(() =>
-        expect(createSpy).toHaveBeenCalledWith({ stockId: STOCK.id, shareCount: '10', purchasePrice: '30.00' }),
+        expect(createSpy).toHaveBeenCalledWith({ stockId: STOCK.id, shareCount: '10', purchasePrice: '30.00', date: todayIso() }),
       );
       await waitFor(() => expect(listPurchasesSpy).toHaveBeenCalledTimes(2));
     });
@@ -452,15 +482,16 @@ describe('WealthPage', () => {
       renderPage();
       await screen.findByRole('list', { name: 'Tus acciones' });
 
-      await userEvent.click(screen.getByRole('button', { name: 'Editar compra de Inditex: 10.0000 acciones a 30.00€' }));
-      const editForm = screen.getByRole('form', { name: 'Editar compra de Inditex: 10.0000 acciones a 30.00€' });
+      const purchaseLabel = 'Editar compra de Inditex: 2026-09-04 · 10.0000 acciones a 30.00€';
+      await userEvent.click(screen.getByRole('button', { name: purchaseLabel }));
+      const editForm = screen.getByRole('form', { name: purchaseLabel });
       const shareCountInput = within(editForm).getByLabelText('Número acciones');
       await userEvent.clear(shareCountInput);
       await userEvent.type(shareCountInput, '15');
       await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
 
       await waitFor(() =>
-        expect(updateSpy).toHaveBeenCalledWith(STOCK_PURCHASE.id, { shareCount: '15', purchasePrice: '30.00' }),
+        expect(updateSpy).toHaveBeenCalledWith(STOCK_PURCHASE.id, { shareCount: '15', purchasePrice: '30.00', date: '2026-09-04' }),
       );
     });
 
@@ -475,7 +506,7 @@ describe('WealthPage', () => {
       renderPage();
       await screen.findByRole('list', { name: 'Tus acciones' });
 
-      await userEvent.click(screen.getByRole('button', { name: 'Eliminar compra de Inditex: 10.0000 acciones a 30.00€' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar compra de Inditex: 2026-09-04 · 10.0000 acciones a 30.00€' }));
 
       await waitFor(() => expect(deletePurchaseSpy).toHaveBeenCalledWith(STOCK_PURCHASE.id));
       expect(deleteStockSpy).not.toHaveBeenCalled();

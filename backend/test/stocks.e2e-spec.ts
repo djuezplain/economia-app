@@ -188,7 +188,7 @@ describe('Acciones (e2e) — spec 020 H1', () => {
       const user = await createUser('eliminar@example.com');
       const token = await login(user.email);
       const [stock] = await db.insert(stocks).values({ userId: user.id, custodyBank: 'BBVA', stock: 'Inditex' }).returning();
-      await db.insert(stockPurchases).values({ stockId: stock.id, shareCount: '10.0000', purchasePrice: '28.50' });
+      await db.insert(stockPurchases).values({ stockId: stock.id, shareCount: '10.0000', purchasePrice: '28.50', date: '2026-09-01' });
       await db.insert(stockValuations).values({ stockId: stock.id, valuation: '350.00', date: '2026-09-01' });
 
       await request(app.getHttpServer()).delete(`/stocks/${stock.id}`).set('Authorization', auth(token)).expect(204);
