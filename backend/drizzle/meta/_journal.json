@@ -50,6 +50,13 @@
       "when": 1788379421241,
       "tag": "0006_add_category_icon",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788544870137,
+      "tag": "0007_secret_bill_hollister",
+      "breakpoints": true
     }
   ]
 }

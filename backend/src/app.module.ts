@@ -12,6 +12,7 @@ import { TransactionsModule } from './transactions/transactions.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { ImportModule } from './import/import.module.js';
 import { GoalsModule } from './goals/goals.module.js';
+import { WealthModule } from './wealth/wealth.module.js';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { GoalsModule } from './goals/goals.module.js';
     DashboardModule,
     ImportModule,
     GoalsModule,
+    WealthModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

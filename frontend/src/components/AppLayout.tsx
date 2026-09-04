@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { to: '/categories', end: false, label: 'Categorías' },
   { to: '/movements', end: false, label: 'Ingresos y gastos' },
   { to: '/dashboard', end: false, label: 'Dashboard' },
+  { to: '/patrimonio', end: false, label: 'Resumen Patrimonio' },
   { to: '/import', end: false, label: 'Importar Excel' },
   { to: '/goals', end: false, label: 'Objetivos y presupuestos' },
   { to: '/profile', end: false, label: 'Tu perfil' },
