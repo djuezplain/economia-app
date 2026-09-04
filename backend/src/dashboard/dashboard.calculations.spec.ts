@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   absoluteDifference,
   bucketBySeason,
+  categoryComparison,
   clippedDaysInRange,
   comparisonChanges,
   comparisonMetrics,
@@ -415,6 +416,54 @@ describe('dashboard.calculations', () => {
 
       expect(result.seasons.every((s) => s.total === '0.00' && s.count === 0)).toBe(true);
       expect(result.comparison).toBeNull();
+    });
+  });
+
+  describe('categoryComparison (spec 015)', () => {
+    it('agrupa por categoría, calcula la variación y ordena de mayor a menor importe', () => {
+      const current = [
+        { categoryId: 'food', type: 'EXPENSE' as const, amount: '30.00' },
+        { categoryId: 'food', type: 'EXPENSE' as const, amount: '20.00' },
+        { categoryId: 'transport', type: 'EXPENSE' as const, amount: '80.00' },
+        { categoryId: 'food', type: 'INCOME' as const, amount: '1000.00' }, // otro tipo, no cuenta
+      ];
+      const previous = [
+        { categoryId: 'food', type: 'EXPENSE' as const, amount: '40.00' },
+        { categoryId: 'transport', type: 'EXPENSE' as const, amount: '40.00' },
+      ];
+
+      expect(categoryComparison(current, previous, 'EXPENSE')).toEqual([
+        { categoryId: 'transport', total: '80.00', previousTotal: '40.00', change: '100.00' },
+        { categoryId: 'food', total: '50.00', previousTotal: '40.00', change: '25.00' },
+      ]);
+    });
+
+    it('categoría nueva (sin movimientos en el periodo anterior): change null, no un % infinito', () => {
+      const current = [{ categoryId: 'travel', type: 'EXPENSE' as const, amount: '200.00' }];
+      const result = categoryComparison(current, [], 'EXPENSE');
+
+      expect(result).toEqual([{ categoryId: 'travel', total: '200.00', previousTotal: '0.00', change: null }]);
+    });
+
+    it('mismo importe en ambos periodos: change "0.00", no null', () => {
+      const current = [{ categoryId: 'food', type: 'EXPENSE' as const, amount: '50.00' }];
+      const previous = [{ categoryId: 'food', type: 'EXPENSE' as const, amount: '50.00' }];
+
+      expect(categoryComparison(current, previous, 'EXPENSE')).toEqual([
+        { categoryId: 'food', total: '50.00', previousTotal: '50.00', change: '0.00' },
+      ]);
+    });
+
+    it('una categoría con movimientos solo en el periodo anterior no aparece en el resultado', () => {
+      const previous = [{ categoryId: 'gone', type: 'EXPENSE' as const, amount: '30.00' }];
+
+      expect(categoryComparison([], previous, 'EXPENSE')).toEqual([]);
+    });
+
+    it('lista vacía si no hay movimientos del tipo pedido en el periodo actual', () => {
+      const current = [{ categoryId: 'food', type: 'INCOME' as const, amount: '50.00' }];
+
+      expect(categoryComparison(current, [], 'EXPENSE')).toEqual([]);
     });
   });
 });

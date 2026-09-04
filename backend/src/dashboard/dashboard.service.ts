@@ -6,6 +6,7 @@ import { transactions } from '../db/schema/index.js';
 import { average, groupByCategory, sumByType } from '../transactions/transactions.calculations.js';
 import type { MovementType } from '../transactions/transactions.calculations.js';
 import {
+  categoryComparison,
   comparisonChanges,
   comparisonMetrics,
   currentMonthIso,
@@ -18,6 +19,7 @@ import {
   seasonalSummary,
 } from './dashboard.calculations.js';
 import type {
+  CategoryComparisonEntry,
   ComparisonChanges,
   ComparisonMetrics,
   ComparisonPeriod,
@@ -51,6 +53,19 @@ export interface ComparisonSummary {
   current: ComparisonMetrics;
   previous: ComparisonMetrics;
   changes: ComparisonChanges;
+}
+
+export type CategoryComparisonPeriod = 'month' | 'year';
+
+export interface CategoryComparisonSummary {
+  period: CategoryComparisonPeriod;
+  type: MovementType;
+  days: number;
+  currentLabel: string;
+  previousLabel: string;
+  periodTotal: string;
+  previousPeriodTotal: string;
+  categories: CategoryComparisonEntry[];
 }
 
 export type SeasonalScopeKind = 'historic' | 'year';
@@ -175,6 +190,42 @@ export class DashboardService {
       current,
       previous,
       changes: comparisonChanges(current, previous),
+    };
+  }
+
+  /** H1/H2/H3 (spec 015). Desglose por categoría del periodo actual (mes o año), con la variación de cada categoría respecto al mismo periodo anterior. */
+  async categoryComparison(
+    userId: string,
+    periodParam: CategoryComparisonPeriod | undefined,
+    typeParam: MovementType | undefined,
+    now: Date = new Date(),
+  ): Promise<CategoryComparisonSummary> {
+    const period = periodParam ?? 'month';
+    const type = typeParam ?? 'EXPENSE';
+    const ranges = periodRanges(period, now);
+
+    const [currentItems, previousItems] = await Promise.all([
+      this.db.query.transactions.findMany({
+        where: and(eq(transactions.userId, userId), gte(transactions.date, ranges.currentStart), lte(transactions.date, ranges.currentEnd)),
+      }),
+      this.db.query.transactions.findMany({
+        where: and(
+          eq(transactions.userId, userId),
+          gte(transactions.date, ranges.previousStart),
+          lte(transactions.date, ranges.previousEnd),
+        ),
+      }),
+    ]);
+
+    return {
+      period,
+      type,
+      days: ranges.days,
+      currentLabel: periodLabel(period, ranges.currentStart),
+      previousLabel: periodLabel(period, ranges.previousStart),
+      periodTotal: sumByType(currentItems, type),
+      previousPeriodTotal: sumByType(previousItems, type),
+      categories: categoryComparison(currentItems, previousItems, type),
     };
   }
 
