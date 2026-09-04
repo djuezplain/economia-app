@@ -993,15 +993,19 @@ main ul li:last-child {
 .dashboard-section > summary > h2 {
   margin: 0;
 }
+/* Spec 017: icono de maximizar/minimizar — dos glifos distintos (no el
+   mismo rotado), para que sea el propio icono el que cambie según el
+   estado, no solo su orientación. */
 .dashboard-section > summary::after {
-  content: '▾';
+  content: '+';
   margin-inline-start: auto;
   padding-inline-start: var(--space-3);
+  font-size: 20px;
+  line-height: 1;
   color: color-mix(in srgb, var(--text) 60%, transparent);
-  transition: transform 0.15s ease;
 }
 .dashboard-section[open] > summary::after {
-  transform: rotate(180deg);
+  content: '−';
 }
 .dashboard-section > summary:focus-visible {
   outline: 2px solid var(--accent);

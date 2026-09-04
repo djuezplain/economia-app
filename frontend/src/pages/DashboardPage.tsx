@@ -386,7 +386,7 @@ export function DashboardPage() {
 
       <details className="dashboard-section">
         <summary>
-          <h2>Comparativa temporal</h2>
+          <h2>⚖️ Comparativa temporal</h2>
         </summary>
 
         <div className="comparison-toolbar">
@@ -471,7 +471,7 @@ export function DashboardPage() {
 
       <details className="dashboard-section">
         <summary>
-          <h2>Categorías por periodo</h2>
+          <h2>🗂️ Categorías por periodo</h2>
         </summary>
 
         <div className="comparison-toolbar">
@@ -554,7 +554,7 @@ export function DashboardPage() {
 
       <details className="dashboard-section">
         <summary>
-          <h2>Análisis estacional</h2>
+          <h2>🌦️ Análisis estacional</h2>
         </summary>
 
         <div className="comparison-toolbar">
@@ -665,7 +665,7 @@ export function DashboardPage() {
 
       <details className="dashboard-section">
         <summary>
-          <h2>Resumen del mes</h2>
+          <h2>🗓️ Resumen del mes</h2>
         </summary>
         <div className="field" style={{ maxWidth: 220 }}>
           <label htmlFor="month">Mes</label>
@@ -742,7 +742,7 @@ export function DashboardPage() {
 
       <details className="dashboard-section">
         <summary>
-          <h2>Vista anual</h2>
+          <h2>📈 Vista anual</h2>
         </summary>
         <div className="field" style={{ maxWidth: 220 }}>
           <label htmlFor="year">Año</label>
