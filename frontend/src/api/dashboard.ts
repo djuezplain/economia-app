@@ -57,6 +57,35 @@ export function getComparison(period: ComparisonPeriod, type: 'INCOME' | 'EXPENS
   return api.get<ComparisonSummary>(`/dashboard/comparison?period=${period}&type=${type}`);
 }
 
+// Spec 015 (categorías con comparativa de periodo). Espejo de
+// `CategoryComparisonSummary` en el backend.
+export type CategoryComparisonPeriod = 'month' | 'year';
+
+export interface CategoryComparisonEntry {
+  categoryId: string;
+  total: string;
+  previousTotal: string;
+  change: string | null;
+}
+
+export interface CategoryComparisonSummary {
+  period: CategoryComparisonPeriod;
+  type: 'INCOME' | 'EXPENSE';
+  days: number;
+  currentLabel: string;
+  previousLabel: string;
+  periodTotal: string;
+  previousPeriodTotal: string;
+  categories: CategoryComparisonEntry[];
+}
+
+export function getCategoryComparison(
+  period: CategoryComparisonPeriod,
+  type: 'INCOME' | 'EXPENSE',
+): Promise<CategoryComparisonSummary> {
+  return api.get<CategoryComparisonSummary>(`/dashboard/category-comparison?period=${period}&type=${type}`);
+}
+
 // Spec 014 (análisis estacional). Espejo de `SeasonalSummary` en el backend.
 export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 export type SeasonalScope = 'historic' | 'year';

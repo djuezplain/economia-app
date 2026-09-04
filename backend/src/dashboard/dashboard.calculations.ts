@@ -1,5 +1,5 @@
 import { Decimal } from 'decimal.js';
-import { average, sumAmounts, sumByType } from '../transactions/transactions.calculations.js';
+import { average, groupByCategory, sumAmounts, sumByType } from '../transactions/transactions.calculations.js';
 import type { MovementType } from '../transactions/transactions.calculations.js';
 
 export interface MonthlyEvolutionEntry {
@@ -491,4 +491,44 @@ export function seasonalSummary(
       percent: percentChange(best.total, worst.total)!,
     },
   };
+}
+
+export interface CategoryComparisonEntry {
+  categoryId: string;
+  total: string;
+  previousTotal: string;
+  /** `null` = categoría nueva este periodo (`previousTotal` era 0) — spec 015 H3 criterio 3. */
+  change: string | null;
+}
+
+/**
+ * Spec 015 (categorías con comparativa de periodo). Desglose por categoría
+ * del periodo actual (ya filtrado a `type`, vía `groupByCategory` — H2
+ * criterio 1: una categoría sin movimientos en `currentTransactions` nunca
+ * genera una entrada, no aparece "a 0 €"), con el importe de esa misma
+ * categoría en el periodo anterior y su variación (`percentChange`, spec
+ * 013 — `null` si `previousTotal` es 0, que aquí solo puede significar
+ * "categoría nueva" porque `total` ya es > 0 por construcción).
+ *
+ * Una categoría con movimientos solo en `previousTransactions` (no en
+ * `currentTransactions`) nunca aparece en el resultado — consecuencia
+ * directa de partir de `groupByCategory(currentTransactions...)`, sin
+ * lógica adicional (spec.md, fuera de alcance).
+ */
+export function categoryComparison(
+  currentTransactions: Array<{ categoryId: string; type: MovementType; amount: string }>,
+  previousTransactions: Array<{ categoryId: string; type: MovementType; amount: string }>,
+  type: MovementType,
+): CategoryComparisonEntry[] {
+  const current = groupByCategory(currentTransactions.filter((t) => t.type === type));
+  const previousByCategory = new Map(
+    groupByCategory(previousTransactions.filter((t) => t.type === type)).map((entry) => [entry.categoryId, entry.total]),
+  );
+
+  return current
+    .map((entry) => {
+      const previousTotal = previousByCategory.get(entry.categoryId) ?? '0.00';
+      return { categoryId: entry.categoryId, total: entry.total, previousTotal, change: percentChange(entry.total, previousTotal) };
+    })
+    .sort((a, b) => new Decimal(b.total).minus(a.total).toNumber());
 }

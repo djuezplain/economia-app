@@ -16,8 +16,10 @@ import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { listCategories } from '../api/categories';
 import type { Category } from '../api/categories';
-import { getComparison, getMonthSummary, getSeasonal, getYearSummary } from '../api/dashboard';
+import { getCategoryComparison, getComparison, getMonthSummary, getSeasonal, getYearSummary } from '../api/dashboard';
 import type {
+  CategoryComparisonPeriod,
+  CategoryComparisonSummary,
   ComparisonPeriod,
   ComparisonSummary,
   MonthSummary,
@@ -91,6 +93,26 @@ function changeTag(change: string | null, type: 'INCOME' | 'EXPENSE'): { classNa
   const isGood = type === 'INCOME' ? value > 0 : value < 0;
   const arrow = value > 0 ? '↑' : '↓';
   return { className: isGood ? 'tag tag-accent' : 'tag tag-accent-2', text: `${arrow} ${Math.abs(value).toFixed(2)}%` };
+}
+
+// Spec 015 (categorías con comparativa de periodo), plan.md §4.
+const CATEGORY_COMPARISON_PERIOD_OPTIONS: Array<{ value: CategoryComparisonPeriod; label: string }> = [
+  { value: 'month', label: 'Mes actual' },
+  { value: 'year', label: 'Año actual' },
+];
+
+/**
+ * Etiqueta de variación de una categoría (H3): envuelve `changeTag`
+ * (Comparativa temporal, spec 013) con dos textos propios en vez de los
+ * suyos — "nuevo" en lugar de "sin datos" cuando `change` es `null`
+ * (decisión 6 de spec.md: es una categoría sin importe el periodo
+ * anterior, no un fallo de datos) y "= 0.00%" en lugar de "· 0.00%" para
+ * que se lea como "igual" (H3 criterio 4).
+ */
+function categoryChangeTag(change: string | null, type: 'INCOME' | 'EXPENSE'): { className: string; text: string } {
+  if (change === null) return { className: 'tag tag-neutral', text: 'nuevo' };
+  if (parseFloat(change) === 0) return { className: 'tag tag-neutral', text: '= 0.00%' };
+  return changeTag(change, type);
 }
 
 /** Texto-resumen de H3 criterio 3. */
@@ -178,6 +200,14 @@ export function DashboardPage() {
   const [comparisonSummary, setComparisonSummary] = useState<ComparisonSummary | null>(null);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
 
+  // Spec 015 (categorías con comparativa de periodo). Selector propio,
+  // independiente del de "Comparativa temporal" y "Análisis estacional" —
+  // mismo criterio de independencia entre secciones (plan.md 014 §4).
+  const [categoryComparisonType, setCategoryComparisonType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
+  const [categoryComparisonPeriod, setCategoryComparisonPeriod] = useState<CategoryComparisonPeriod>('month');
+  const [categoryComparisonData, setCategoryComparisonData] = useState<CategoryComparisonSummary | null>(null);
+  const [categoryComparisonError, setCategoryComparisonError] = useState<string | null>(null);
+
   // Spec 014 (análisis estacional). Selector propio, independiente del de
   // "Comparativa temporal" (plan.md §4) — mismo criterio de independencia
   // que ya tienen "Resumen del mes" y "Vista anual" entre sí.
@@ -254,6 +284,27 @@ export function DashboardPage() {
       cancelled = true;
     };
   }, [isAuthenticated, isOnline, comparisonPeriod, comparisonType]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const summary = await getCategoryComparison(categoryComparisonPeriod, categoryComparisonType);
+        if (!cancelled) {
+          setCategoryComparisonData(summary);
+          setCategoryComparisonError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCategoryComparisonError(err instanceof ApiError ? err.message : 'No se han podido cargar las categorías.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline, categoryComparisonPeriod, categoryComparisonType]);
 
   useEffect(() => {
     if (!isAuthenticated || !isOnline) return;
@@ -413,6 +464,87 @@ export function DashboardPage() {
               {comparisonSummaryText(comparisonSummary)}
             </p>
           </>
+        )}
+      </section>
+
+      <section>
+        <h2>Categorías por periodo</h2>
+
+        <div className="comparison-toolbar">
+          <div className="seg" role="radiogroup" aria-label="Tipo de movimiento por categoría">
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="category-comparison-type"
+                value="EXPENSE"
+                checked={categoryComparisonType === 'EXPENSE'}
+                onChange={() => setCategoryComparisonType('EXPENSE')}
+              />
+              Gastos
+            </label>
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="category-comparison-type"
+                value="INCOME"
+                checked={categoryComparisonType === 'INCOME'}
+                onChange={() => setCategoryComparisonType('INCOME')}
+              />
+              Ingresos
+            </label>
+          </div>
+
+          <div className="seg" role="radiogroup" aria-label="Intervalo de categorías">
+            {CATEGORY_COMPARISON_PERIOD_OPTIONS.map((option) => (
+              <label className="seg-opt" key={option.value}>
+                <input
+                  type="radio"
+                  name="category-comparison-period"
+                  value={option.value}
+                  checked={categoryComparisonPeriod === option.value}
+                  onChange={() => setCategoryComparisonPeriod(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {categoryComparisonError && <p role="alert">{categoryComparisonError}</p>}
+
+        {categoryComparisonData && categoryComparisonData.categories.length === 0 && (
+          <p>Sin {categoryComparisonData.type === 'EXPENSE' ? 'gastos' : 'ingresos'} en este periodo.</p>
+        )}
+
+        {categoryComparisonData && categoryComparisonData.categories.length > 0 && (
+          <ul id="dashboard-category-comparison-list">
+            {categoryComparisonData.categories.map((entry) => {
+              const name = categories?.find((c) => c.id === entry.categoryId)?.name ?? entry.categoryId;
+              const periodTotal = parseFloat(categoryComparisonData.periodTotal);
+              const percent = periodTotal > 0 ? (parseFloat(entry.total) / periodTotal) * 100 : 0;
+              const amount = formatCurrency(entry.total);
+              const tag = categoryChangeTag(entry.change, categoryComparisonData.type);
+              return (
+                <li key={entry.categoryId}>
+                  <div>
+                    <span>{name}</span>
+                    <span>{amount}</span>
+                    <span className={tag.className}>{tag.text}</span>
+                  </div>
+                  <div
+                    className="bar"
+                    role="progressbar"
+                    aria-valuenow={Math.round(percent)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`${name}: ${amount}`}
+                  >
+                    <div className="bar-fill" style={{ width: `${Math.min(percent, 100)}%` }} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </section>
 

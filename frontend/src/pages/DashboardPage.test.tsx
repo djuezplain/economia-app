@@ -9,7 +9,7 @@ import * as usersApi from '../api/users';
 import * as categoriesApi from '../api/categories';
 import * as dashboardApi from '../api/dashboard';
 import type { Category } from '../api/categories';
-import type { ComparisonSummary, MonthSummary, SeasonalSummary, YearSummary } from '../api/dashboard';
+import type { CategoryComparisonSummary, ComparisonSummary, MonthSummary, SeasonalSummary, YearSummary } from '../api/dashboard';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 import { resetForTests } from '../offline/connectivity';
@@ -103,6 +103,31 @@ const COMPARISON_SUMMARY_SIN_ANTERIOR: ComparisonSummary = {
   changes: { count: null, total: null, averagePerDay: null },
 };
 
+const CATEGORY_COMPARISON_SUMMARY_EXPENSE: CategoryComparisonSummary = {
+  period: 'month',
+  type: 'EXPENSE',
+  days: 31,
+  currentLabel: 'Agosto 2026',
+  previousLabel: 'Julio 2026',
+  periodTotal: '130.00',
+  previousPeriodTotal: '70.00',
+  categories: [
+    { categoryId: 'cat-expense-1', total: '100.00', previousTotal: '50.00', change: '100.00' },
+    { categoryId: 'cat-expense-2', total: '30.00', previousTotal: '0.00', change: null },
+  ],
+};
+
+const CATEGORY_COMPARISON_SUMMARY_SIN_CATEGORIAS: CategoryComparisonSummary = {
+  period: 'month',
+  type: 'EXPENSE',
+  days: 31,
+  currentLabel: 'Agosto 2026',
+  previousLabel: 'Julio 2026',
+  periodTotal: '0.00',
+  previousPeriodTotal: '0.00',
+  categories: [],
+};
+
 const SEASONAL_SUMMARY_EXPENSE: SeasonalSummary = {
   scope: 'historic',
   year: null,
@@ -174,6 +199,7 @@ describe('DashboardPage', () => {
     const monthSpy = vi.spyOn(dashboardApi, 'getMonthSummary');
     const yearSpy = vi.spyOn(dashboardApi, 'getYearSummary');
     const comparisonSpy = vi.spyOn(dashboardApi, 'getComparison');
+    const categoryComparisonSpy = vi.spyOn(dashboardApi, 'getCategoryComparison');
     const seasonalSpy = vi.spyOn(dashboardApi, 'getSeasonal');
     const categoriesSpy = vi.spyOn(categoriesApi, 'listCategories');
 
@@ -183,6 +209,7 @@ describe('DashboardPage', () => {
     expect(monthSpy).not.toHaveBeenCalled();
     expect(yearSpy).not.toHaveBeenCalled();
     expect(comparisonSpy).not.toHaveBeenCalled();
+    expect(categoryComparisonSpy).not.toHaveBeenCalled();
     expect(seasonalSpy).not.toHaveBeenCalled();
     expect(categoriesSpy).not.toHaveBeenCalled();
   });
@@ -193,6 +220,7 @@ describe('DashboardPage', () => {
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
     vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+    vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
     vi.spyOn(dashboardApi, 'getSeasonal').mockResolvedValue(SEASONAL_SUMMARY_EXPENSE);
 
     renderPage();
@@ -225,6 +253,7 @@ describe('DashboardPage', () => {
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY_SIN_GASTOS);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
     vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+    vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
     vi.spyOn(dashboardApi, 'getSeasonal').mockResolvedValue(SEASONAL_SUMMARY_EXPENSE);
 
     renderPage();
@@ -243,6 +272,7 @@ describe('DashboardPage', () => {
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
     vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+    vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
     vi.spyOn(dashboardApi, 'getSeasonal').mockResolvedValue(SEASONAL_SUMMARY_EXPENSE);
 
     renderPage();
@@ -265,6 +295,7 @@ describe('DashboardPage', () => {
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildEmptyYearSummary());
     vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+    vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
     vi.spyOn(dashboardApi, 'getSeasonal').mockResolvedValue(SEASONAL_SUMMARY_EXPENSE);
 
     renderPage();
@@ -280,6 +311,7 @@ describe('DashboardPage', () => {
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
     vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+    vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
     vi.spyOn(dashboardApi, 'getSeasonal').mockResolvedValue(SEASONAL_SUMMARY_EXPENSE);
 
     renderPage();
@@ -294,6 +326,7 @@ describe('DashboardPage', () => {
     const monthSpy = vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
     vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+    vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
     vi.spyOn(dashboardApi, 'getSeasonal').mockResolvedValue(SEASONAL_SUMMARY_EXPENSE);
 
     renderPage();
@@ -314,6 +347,7 @@ describe('DashboardPage', () => {
     vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
     const yearSpy = vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
     vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+    vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
     vi.spyOn(dashboardApi, 'getSeasonal').mockResolvedValue(SEASONAL_SUMMARY_EXPENSE);
 
     renderPage();
@@ -333,6 +367,7 @@ describe('DashboardPage', () => {
     const listCategoriesSpy = vi.spyOn(categoriesApi, 'listCategories');
     const monthSpy = vi.spyOn(dashboardApi, 'getMonthSummary');
     const comparisonSpy = vi.spyOn(dashboardApi, 'getComparison');
+    const categoryComparisonSpy = vi.spyOn(dashboardApi, 'getCategoryComparison');
     const seasonalSpy = vi.spyOn(dashboardApi, 'getSeasonal');
     resetForTests(false);
 
@@ -348,6 +383,7 @@ describe('DashboardPage', () => {
     expect(listCategoriesSpy).not.toHaveBeenCalled();
     expect(monthSpy).not.toHaveBeenCalled();
     expect(comparisonSpy).not.toHaveBeenCalled();
+    expect(categoryComparisonSpy).not.toHaveBeenCalled();
     expect(seasonalSpy).not.toHaveBeenCalled();
   });
 
@@ -357,6 +393,7 @@ describe('DashboardPage', () => {
       vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY]);
       vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
       vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
+      vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
       vi.spyOn(dashboardApi, 'getSeasonal').mockResolvedValue(SEASONAL_SUMMARY_EXPENSE);
     }
 
@@ -436,6 +473,7 @@ describe('DashboardPage', () => {
       vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
       vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
       vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+      vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
     }
 
     function seasonalSection() {
@@ -527,6 +565,95 @@ describe('DashboardPage', () => {
       await userEvent.type(yearInput, '2025');
 
       await waitFor(() => expect(seasonalSpy).toHaveBeenLastCalledWith('EXPENSE', 'year', '2025'));
+    });
+  });
+
+  describe('Categorías por periodo (spec 015)', () => {
+    function mockOtherEndpoints() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(categoriesApi, 'listCategories').mockResolvedValue([INCOME_CATEGORY, EXPENSE_FOOD, EXPENSE_TRANSPORT]);
+      vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(MONTH_SUMMARY);
+      vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(buildYearSummary());
+      vi.spyOn(dashboardApi, 'getComparison').mockResolvedValue(COMPARISON_SUMMARY_EXPENSE);
+      vi.spyOn(dashboardApi, 'getSeasonal').mockResolvedValue(SEASONAL_SUMMARY_EXPENSE);
+    }
+
+    function categorySection() {
+      return screen.getByRole('heading', { name: 'Categorías por periodo' }).closest('section') as HTMLElement;
+    }
+
+    // `getByText` normaliza (colapsa) los espacios del propio DOM al comparar,
+    // pero no el patrón que se le pasa — mismo motivo que en Comparativa
+    // temporal/Análisis estacional (specs 013/014).
+    function eur(amount: string): string {
+      return formatCurrency(amount).replace(/ /g, ' ');
+    }
+
+    it('muestra cada categoría con su importe, su barra y su etiqueta de variación', async () => {
+      mockOtherEndpoints();
+      vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
+
+      renderPage();
+      await screen.findByText(eur('100.00'));
+
+      const section = within(categorySection());
+      expect(section.getByText('Comida')).toBeInTheDocument();
+      expect(section.getByText('↑ 100.00%')).toBeInTheDocument();
+      expect(section.getByText('Transporte')).toBeInTheDocument();
+      expect(section.getByText(eur('30.00'))).toBeInTheDocument();
+      // Transporte no tenía movimientos en julio (previousTotal "0.00") — se
+      // marca como "nuevo", no como un % de subida infinito (H3 criterio 3).
+      expect(section.getByText('nuevo')).toBeInTheDocument();
+
+      // `toHaveAccessibleName` compara el `aria-label` tal cual, sin el
+      // colapso de espacios que sí aplica `getByText` — se compara contra
+      // `formatCurrency` directamente (mismo criterio que "Gastos por
+      // categoría" más arriba), no contra `eur()`.
+      const bars = section.getAllByRole('progressbar');
+      expect(bars[0]).toHaveAccessibleName(`Comida: ${formatCurrency('100.00')}`);
+      expect(bars[0]).toHaveAttribute('aria-valuenow', '77'); // 100/130 redondeado
+      expect(bars[1]).toHaveAccessibleName(`Transporte: ${formatCurrency('30.00')}`);
+      expect(bars[1]).toHaveAttribute('aria-valuenow', '23');
+    });
+
+    it('sin categorías con movimientos en el periodo, muestra un aviso en vez de una lista vacía', async () => {
+      mockOtherEndpoints();
+      vi.spyOn(dashboardApi, 'getCategoryComparison').mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_SIN_CATEGORIAS);
+
+      renderPage();
+
+      expect(await screen.findByText('Sin gastos en este periodo.')).toBeInTheDocument();
+    });
+
+    it('cambia el tipo (Gastos/Ingresos) y vuelve a pedir el desglose con ese tipo', async () => {
+      mockOtherEndpoints();
+      const categoryComparisonSpy = vi
+        .spyOn(dashboardApi, 'getCategoryComparison')
+        .mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
+
+      renderPage();
+      await screen.findByText(eur('100.00'));
+      expect(categoryComparisonSpy).toHaveBeenLastCalledWith('month', 'EXPENSE');
+
+      // spec 013/014 tienen sus propios radios "Ingresos" en otras secciones
+      // — se acota la búsqueda a esta sección para no ambigüar la consulta.
+      await userEvent.click(within(categorySection()).getByRole('radio', { name: 'Ingresos' }));
+
+      await waitFor(() => expect(categoryComparisonSpy).toHaveBeenLastCalledWith('month', 'INCOME'));
+    });
+
+    it('cambia el intervalo (Mes actual/Año actual) y vuelve a pedir el desglose con ese intervalo', async () => {
+      mockOtherEndpoints();
+      const categoryComparisonSpy = vi
+        .spyOn(dashboardApi, 'getCategoryComparison')
+        .mockResolvedValue(CATEGORY_COMPARISON_SUMMARY_EXPENSE);
+
+      renderPage();
+      await screen.findByText(eur('100.00'));
+
+      await userEvent.click(within(categorySection()).getByRole('radio', { name: 'Año actual' }));
+
+      await waitFor(() => expect(categoryComparisonSpy).toHaveBeenLastCalledWith('year', 'EXPENSE'));
     });
   });
 });
