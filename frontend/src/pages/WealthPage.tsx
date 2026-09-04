@@ -3,13 +3,15 @@ import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
+import { createBankAccount, deleteBankAccount, listBankAccounts, updateBankAccount } from '../api/bank-accounts';
+import type { BankAccount, BankAccountInput } from '../api/bank-accounts';
 import {
-  createBankAccountEntry,
-  deleteBankAccountEntry,
-  listBankAccountEntries,
-  updateBankAccountEntry,
-} from '../api/bank-account-entries';
-import type { BankAccountEntry, BankAccountEntryInput } from '../api/bank-account-entries';
+  createBankAccountBalance,
+  deleteBankAccountBalance,
+  listBankAccountBalances,
+  updateBankAccountBalance,
+} from '../api/bank-account-balances';
+import type { BankAccountBalance, UpdateBankAccountBalanceInput } from '../api/bank-account-balances';
 import { createStockEntry, deleteStockEntry, listStockEntries, updateStockEntry } from '../api/stock-entries';
 import type { StockEntry, StockEntryInput } from '../api/stock-entries';
 import { ApiError } from '../api/client';
@@ -19,11 +21,16 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-const EMPTY_BANK_FORM: BankAccountEntryInput = { bank: '', accountNumber: '', euros: '', date: todayIso() };
+const EMPTY_ACCOUNT_FORM: BankAccountInput = { bank: '', accountNumber: '' };
+const EMPTY_BALANCE_FORM: UpdateBankAccountBalanceInput = { euros: '', date: todayIso() };
 const EMPTY_STOCK_FORM: StockEntryInput = { custodyBank: '', stock: '', shareCount: '', purchasePrice: '', currentValuation: '' };
 
-function bankFormFromEntry(entry: BankAccountEntry): BankAccountEntryInput {
-  return { bank: entry.bank, accountNumber: entry.accountNumber, euros: entry.euros, date: entry.date };
+function accountFormFromEntity(account: BankAccount): BankAccountInput {
+  return { bank: account.bank, accountNumber: account.accountNumber };
+}
+
+function balanceFormFromEntity(balance: BankAccountBalance): UpdateBankAccountBalanceInput {
+  return { euros: balance.euros, date: balance.date };
 }
 
 function stockFormFromEntry(entry: StockEntry): StockEntryInput {
@@ -44,7 +51,7 @@ function purchaseValue(purchasePrice: string, shareCount: string): string {
   return (price * shares).toFixed(2);
 }
 
-/** Las 5 categorías de spec.md §2 sin funcionalidad todavía (H1 criterio 3). */
+/** Las 5 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3). */
 const PLACEHOLDER_SECTIONS = [
   { icon: '💹', label: 'Fondos Inversión' },
   { icon: '₿', label: 'Cripto' },
@@ -54,28 +61,40 @@ const PLACEHOLDER_SECTIONS = [
 ];
 
 /**
- * Spec 018 (Resumen Patrimonio). 7 secciones plegables (H1 criterio 1/2,
+ * Spec 018 (Resumen Patrimonio) / spec 019 (cuentas bancarias únicas, con
+ * historial de saldos). 7 secciones plegables (H1 criterio 1/2 de spec 018,
  * mismo patrón `<details className="dashboard-section">` que el Dashboard,
- * spec 016/017 — la clase ya es genérica, no exclusiva de esa página): las
- * 2 primeras con CRUD completo (lista + alta + edición in-line + borrado,
- * mismo patrón que "Presupuestos de gasto" en `GoalsPage.tsx`), las otras 5
- * con un aviso de "Próximamente." (H1 criterio 3).
+ * spec 016/017): "Cuentas Bancarias" en dos niveles (cuenta → historial de
+ * saldos anidado, spec 019), "Acciones" igual que en spec 018 (sin cambios),
+ * las otras 5 con un aviso de "Próximamente.".
  */
 export function WealthPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const isOnline = useConnectivity();
 
-  const [bankEntries, setBankEntries] = useState<BankAccountEntry[] | null>(null);
-  const [bankLoadError, setBankLoadError] = useState<string | null>(null);
-  const [newBankForm, setNewBankForm] = useState<BankAccountEntryInput>(EMPTY_BANK_FORM);
-  const [createBankError, setCreateBankError] = useState<string | null>(null);
-  const [isCreatingBank, setIsCreatingBank] = useState(false);
-  const [editingBankId, setEditingBankId] = useState<string | null>(null);
-  const [editingBankForm, setEditingBankForm] = useState<BankAccountEntryInput>(EMPTY_BANK_FORM);
-  const [editBankError, setEditBankError] = useState<string | null>(null);
-  const [isSavingBank, setIsSavingBank] = useState(false);
-  const [pendingDeleteBankId, setPendingDeleteBankId] = useState<string | null>(null);
-  const [bankActionError, setBankActionError] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<BankAccount[] | null>(null);
+  const [accountsLoadError, setAccountsLoadError] = useState<string | null>(null);
+  const [newAccountForm, setNewAccountForm] = useState<BankAccountInput>(EMPTY_ACCOUNT_FORM);
+  const [createAccountError, setCreateAccountError] = useState<string | null>(null);
+  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [editingAccountForm, setEditingAccountForm] = useState<BankAccountInput>(EMPTY_ACCOUNT_FORM);
+  const [editAccountError, setEditAccountError] = useState<string | null>(null);
+  const [isSavingAccount, setIsSavingAccount] = useState(false);
+  const [pendingDeleteAccountId, setPendingDeleteAccountId] = useState<string | null>(null);
+  const [accountActionError, setAccountActionError] = useState<string | null>(null);
+
+  const [balances, setBalances] = useState<BankAccountBalance[] | null>(null);
+  const [balancesLoadError, setBalancesLoadError] = useState<string | null>(null);
+  const [newBalanceForms, setNewBalanceForms] = useState<Record<string, UpdateBankAccountBalanceInput>>({});
+  const [createBalanceError, setCreateBalanceError] = useState<string | null>(null);
+  const [creatingBalanceForAccountId, setCreatingBalanceForAccountId] = useState<string | null>(null);
+  const [editingBalanceId, setEditingBalanceId] = useState<string | null>(null);
+  const [editingBalanceForm, setEditingBalanceForm] = useState<UpdateBankAccountBalanceInput>(EMPTY_BALANCE_FORM);
+  const [editBalanceError, setEditBalanceError] = useState<string | null>(null);
+  const [isSavingBalance, setIsSavingBalance] = useState(false);
+  const [pendingDeleteBalanceId, setPendingDeleteBalanceId] = useState<string | null>(null);
+  const [balanceActionError, setBalanceActionError] = useState<string | null>(null);
 
   const [stockEntries, setStockEntries] = useState<StockEntry[] | null>(null);
   const [stockLoadError, setStockLoadError] = useState<string | null>(null);
@@ -89,8 +108,12 @@ export function WealthPage() {
   const [pendingDeleteStockId, setPendingDeleteStockId] = useState<string | null>(null);
   const [stockActionError, setStockActionError] = useState<string | null>(null);
 
-  async function reloadBankEntries() {
-    setBankEntries(await listBankAccountEntries());
+  async function reloadAccounts() {
+    setAccounts(await listBankAccounts());
+  }
+
+  async function reloadBalances() {
+    setBalances(await listBankAccountBalances());
   }
 
   async function reloadStockEntries() {
@@ -102,9 +125,24 @@ export function WealthPage() {
     let cancelled = false;
     (async () => {
       try {
-        await reloadBankEntries();
+        await reloadAccounts();
       } catch (err) {
-        if (!cancelled) setBankLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar las cuentas bancarias.');
+        if (!cancelled) setAccountsLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar las cuentas bancarias.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadBalances();
+      } catch (err) {
+        if (!cancelled) setBalancesLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de saldos.');
       }
     })();
     return () => {
@@ -127,53 +165,112 @@ export function WealthPage() {
     };
   }, [isAuthenticated, isOnline]);
 
-  async function handleCreateBank(event: FormEvent<HTMLFormElement>) {
+  async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setCreateBankError(null);
-    setIsCreatingBank(true);
+    setCreateAccountError(null);
+    setIsCreatingAccount(true);
     try {
-      await createBankAccountEntry(newBankForm);
-      setNewBankForm({ ...EMPTY_BANK_FORM, date: todayIso() });
-      await reloadBankEntries();
+      await createBankAccount(newAccountForm);
+      setNewAccountForm(EMPTY_ACCOUNT_FORM);
+      await reloadAccounts();
     } catch (err) {
-      setCreateBankError(err instanceof ApiError ? err.message : 'No se ha podido crear la entrada.');
+      setCreateAccountError(err instanceof ApiError ? err.message : 'No se ha podido crear la cuenta.');
     } finally {
-      setIsCreatingBank(false);
+      setIsCreatingAccount(false);
     }
   }
 
-  function startEditBank(entry: BankAccountEntry) {
-    setEditBankError(null);
-    setEditingBankId(entry.id);
-    setEditingBankForm(bankFormFromEntry(entry));
+  function startEditAccount(account: BankAccount) {
+    setEditAccountError(null);
+    setEditingAccountId(account.id);
+    setEditingAccountForm(accountFormFromEntity(account));
   }
 
-  async function handleEditBank(event: FormEvent<HTMLFormElement>) {
+  async function handleEditAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!editingBankId) return;
-    setEditBankError(null);
-    setIsSavingBank(true);
+    if (!editingAccountId) return;
+    setEditAccountError(null);
+    setIsSavingAccount(true);
     try {
-      await updateBankAccountEntry(editingBankId, editingBankForm);
-      setEditingBankId(null);
-      await reloadBankEntries();
+      await updateBankAccount(editingAccountId, editingAccountForm);
+      setEditingAccountId(null);
+      await reloadAccounts();
     } catch (err) {
-      setEditBankError(err instanceof ApiError ? err.message : 'No se ha podido guardar la entrada.');
+      setEditAccountError(err instanceof ApiError ? err.message : 'No se ha podido guardar la cuenta.');
     } finally {
-      setIsSavingBank(false);
+      setIsSavingAccount(false);
     }
   }
 
-  async function handleDeleteBank(id: string) {
-    setBankActionError(null);
-    setPendingDeleteBankId(id);
+  async function handleDeleteAccount(id: string) {
+    setAccountActionError(null);
+    setPendingDeleteAccountId(id);
     try {
-      await deleteBankAccountEntry(id);
-      await reloadBankEntries();
+      await deleteBankAccount(id);
+      await Promise.all([reloadAccounts(), reloadBalances()]);
     } catch (err) {
-      setBankActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la entrada.');
+      setAccountActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la cuenta.');
     } finally {
-      setPendingDeleteBankId(null);
+      setPendingDeleteAccountId(null);
+    }
+  }
+
+  function getNewBalanceForm(accountId: string): UpdateBankAccountBalanceInput {
+    return newBalanceForms[accountId] ?? { euros: '', date: todayIso() };
+  }
+
+  function setNewBalanceForm(accountId: string, form: UpdateBankAccountBalanceInput) {
+    setNewBalanceForms((prev) => ({ ...prev, [accountId]: form }));
+  }
+
+  async function handleCreateBalance(accountId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateBalanceError(null);
+    setCreatingBalanceForAccountId(accountId);
+    try {
+      const form = getNewBalanceForm(accountId);
+      await createBankAccountBalance({ bankAccountId: accountId, euros: form.euros ?? '', date: form.date ?? todayIso() });
+      setNewBalanceForm(accountId, { euros: '', date: todayIso() });
+      await reloadBalances();
+    } catch (err) {
+      setCreateBalanceError(err instanceof ApiError ? err.message : 'No se ha podido añadir el saldo.');
+    } finally {
+      setCreatingBalanceForAccountId(null);
+    }
+  }
+
+  function startEditBalance(balance: BankAccountBalance) {
+    setEditBalanceError(null);
+    setEditingBalanceId(balance.id);
+    setEditingBalanceForm(balanceFormFromEntity(balance));
+  }
+
+  async function handleEditBalance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingBalanceId) return;
+    setEditBalanceError(null);
+    setIsSavingBalance(true);
+    try {
+      await updateBankAccountBalance(editingBalanceId, editingBalanceForm);
+      setEditingBalanceId(null);
+      await reloadBalances();
+    } catch (err) {
+      setEditBalanceError(err instanceof ApiError ? err.message : 'No se ha podido guardar el saldo.');
+    } finally {
+      setIsSavingBalance(false);
+    }
+  }
+
+  async function handleDeleteBalance(id: string) {
+    setBalanceActionError(null);
+    setPendingDeleteBalanceId(id);
+    try {
+      await deleteBankAccountBalance(id);
+      await reloadBalances();
+    } catch (err) {
+      setBalanceActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar el saldo.');
+    } finally {
+      setPendingDeleteBalanceId(null);
     }
   }
 
@@ -266,67 +363,55 @@ export function WealthPage() {
           <h2>🏦 Cuentas Bancarias</h2>
         </summary>
 
-        {bankLoadError && <p role="alert">{bankLoadError}</p>}
-        {bankActionError && <p role="alert">{bankActionError}</p>}
+        {accountsLoadError && <p role="alert">{accountsLoadError}</p>}
+        {balancesLoadError && <p role="alert">{balancesLoadError}</p>}
+        {accountActionError && <p role="alert">{accountActionError}</p>}
+        {balanceActionError && <p role="alert">{balanceActionError}</p>}
 
-        {bankEntries && bankEntries.length === 0 && <p>Todavía no tienes ninguna entrada de cuentas bancarias.</p>}
+        {accounts && accounts.length === 0 && <p>Todavía no tienes ninguna cuenta bancaria.</p>}
 
-        {bankEntries && bankEntries.length > 0 && (
-          <ul id="wealth-bank-account-list" aria-label="Tus entradas de cuentas bancarias">
-            {bankEntries.map((entry) => {
-              const isEditing = editingBankId === entry.id;
+        {accounts && accounts.length > 0 && (
+          <ul id="wealth-bank-account-list" aria-label="Tus cuentas bancarias">
+            {accounts.map((account) => {
+              const isEditingAccount = editingAccountId === account.id;
+              const accountBalances = (balances ?? []).filter((b) => b.bankAccountId === account.id);
+              const lastBalance = accountBalances[0] ?? null; // `balances` ya viene ordenado por fecha descendente
+              const newBalanceForm = getNewBalanceForm(account.id);
 
-              if (isEditing) {
+              if (isEditingAccount) {
                 return (
-                  <li className="card elev-sm" key={entry.id}>
-                    <form onSubmit={handleEditBank} aria-label={`Editar entrada: ${entry.bank}`} noValidate>
+                  <li className="card elev-sm" key={account.id}>
+                    <form onSubmit={handleEditAccount} aria-label={`Editar cuenta: ${account.bank}`} noValidate>
                       <div className="field">
-                        <label htmlFor={`bank-${entry.id}-bank`}>Banco</label>
+                        <label htmlFor={`account-${account.id}-bank`}>Banco</label>
                         <input
-                          id={`bank-${entry.id}-bank`}
+                          id={`account-${account.id}-bank`}
                           className="input"
-                          value={editingBankForm.bank}
-                          onChange={(e) => setEditingBankForm({ ...editingBankForm, bank: e.target.value })}
+                          value={editingAccountForm.bank}
+                          onChange={(e) => setEditingAccountForm({ ...editingAccountForm, bank: e.target.value })}
                           required
                         />
                       </div>
                       <div className="field">
-                        <label htmlFor={`bank-${entry.id}-accountNumber`}>Número de Cuenta</label>
+                        <label htmlFor={`account-${account.id}-accountNumber`}>Número de Cuenta</label>
                         <input
-                          id={`bank-${entry.id}-accountNumber`}
+                          id={`account-${account.id}-accountNumber`}
                           className="input"
-                          value={editingBankForm.accountNumber}
-                          onChange={(e) => setEditingBankForm({ ...editingBankForm, accountNumber: e.target.value })}
+                          value={editingAccountForm.accountNumber}
+                          onChange={(e) => setEditingAccountForm({ ...editingAccountForm, accountNumber: e.target.value })}
                           required
                         />
                       </div>
-                      <div className="field">
-                        <label htmlFor={`bank-${entry.id}-euros`}>Euros</label>
-                        <input
-                          id={`bank-${entry.id}-euros`}
-                          className="input"
-                          inputMode="decimal"
-                          value={editingBankForm.euros}
-                          onChange={(e) => setEditingBankForm({ ...editingBankForm, euros: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <div className="field">
-                        <label htmlFor={`bank-${entry.id}-date`}>Fecha</label>
-                        <input
-                          id={`bank-${entry.id}-date`}
-                          type="date"
-                          className="input"
-                          value={editingBankForm.date}
-                          onChange={(e) => setEditingBankForm({ ...editingBankForm, date: e.target.value })}
-                          required
-                        />
-                      </div>
-                      {editBankError && <p role="alert">{editBankError}</p>}
-                      <button type="submit" className="btn btn-primary" disabled={isSavingBank}>
-                        {isSavingBank ? 'Guardando…' : 'Guardar'}
+                      {editAccountError && <p role="alert">{editAccountError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={isSavingAccount}>
+                        {isSavingAccount ? 'Guardando…' : 'Guardar'}
                       </button>{' '}
-                      <button type="button" className="btn btn-secondary" disabled={isSavingBank} onClick={() => setEditingBankId(null)}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={isSavingAccount}
+                        onClick={() => setEditingAccountId(null)}
+                      >
                         Cancelar
                       </button>
                     </form>
@@ -335,81 +420,181 @@ export function WealthPage() {
               }
 
               return (
-                <li className="card elev-sm" key={entry.id}>
+                <li className="card elev-sm" key={account.id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="card-title">
-                      {entry.bank} · {entry.accountNumber}
+                      {account.bank} · {account.accountNumber}
                     </span>
-                    <span className="card-amount">{formatCurrency(entry.euros)}</span>
+                    <span className="card-amount">{lastBalance ? formatCurrency(lastBalance.euros) : 'Sin saldo'}</span>
                   </div>
-                  <p className="card-meta">Fecha: {entry.date}</p>
+                  {lastBalance && <p className="card-meta">Última fecha: {lastBalance.date}</p>}
                   <div>
-                    <button type="button" className="btn btn-secondary" onClick={() => startEditBank(entry)}>
+                    {/* Nombre accesible propio (spec 019): con el historial de saldos anidado, "Editar"/"Eliminar"
+                        a secas se repite en dos niveles (la cuenta, y cada saldo dentro de su historial) — sin
+                        distinguirlos, un lector de pantalla no podría saber cuál es cuál al tabular por la página. */}
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      aria-label={`Editar cuenta: ${account.bank} · ${account.accountNumber}`}
+                      onClick={() => startEditAccount(account)}
+                    >
                       Editar
                     </button>{' '}
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      disabled={pendingDeleteBankId === entry.id}
-                      onClick={() => void handleDeleteBank(entry.id)}
+                      aria-label={`Eliminar cuenta: ${account.bank} · ${account.accountNumber}`}
+                      disabled={pendingDeleteAccountId === account.id}
+                      onClick={() => void handleDeleteAccount(account.id)}
                     >
-                      {pendingDeleteBankId === entry.id ? 'Eliminando…' : 'Eliminar'}
+                      {pendingDeleteAccountId === account.id ? 'Eliminando…' : 'Eliminar'}
                     </button>
                   </div>
+
+                  <details>
+                    <summary>Historial ({accountBalances.length})</summary>
+
+                    {accountBalances.length === 0 && <p>Todavía no hay ningún saldo registrado en esta cuenta.</p>}
+
+                    {accountBalances.length > 0 && (
+                      <ul aria-label={`Historial de ${account.bank} · ${account.accountNumber}`}>
+                        {accountBalances.map((balance) => {
+                          const isEditingBalance = editingBalanceId === balance.id;
+
+                          if (isEditingBalance) {
+                            return (
+                              <li key={balance.id}>
+                                <form onSubmit={handleEditBalance} aria-label={`Editar saldo del ${balance.date}`} noValidate>
+                                  <div className="field">
+                                    <label htmlFor={`balance-${balance.id}-euros`}>Euros</label>
+                                    <input
+                                      id={`balance-${balance.id}-euros`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingBalanceForm.euros}
+                                      onChange={(e) => setEditingBalanceForm({ ...editingBalanceForm, euros: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`balance-${balance.id}-date`}>Fecha</label>
+                                    <input
+                                      id={`balance-${balance.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingBalanceForm.date}
+                                      onChange={(e) => setEditingBalanceForm({ ...editingBalanceForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  {editBalanceError && <p role="alert">{editBalanceError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingBalance}>
+                                    {isSavingBalance ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingBalance}
+                                    onClick={() => setEditingBalanceId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={balance.id}>
+                              <span>{balance.date}</span> <span>{formatCurrency(balance.euros)}</span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar saldo del ${balance.date}`}
+                                onClick={() => startEditBalance(balance)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar saldo del ${balance.date}`}
+                                disabled={pendingDeleteBalanceId === balance.id}
+                                onClick={() => void handleDeleteBalance(balance.id)}
+                              >
+                                {pendingDeleteBalanceId === balance.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreateBalance(account.id, e)}
+                      aria-label={`Añadir saldo: ${account.bank}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-balance-${account.id}-euros`}>Euros</label>
+                        <input
+                          id={`new-balance-${account.id}-euros`}
+                          className="input"
+                          inputMode="decimal"
+                          placeholder="p. ej. 1500.00 o -50.00"
+                          value={newBalanceForm.euros}
+                          onChange={(e) => setNewBalanceForm(account.id, { ...newBalanceForm, euros: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-balance-${account.id}-date`}>Fecha</label>
+                        <input
+                          id={`new-balance-${account.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newBalanceForm.date}
+                          onChange={(e) => setNewBalanceForm(account.id, { ...newBalanceForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {createBalanceError && <p role="alert">{createBalanceError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingBalanceForAccountId === account.id}>
+                        {creatingBalanceForAccountId === account.id ? 'Añadiendo…' : 'Añadir saldo'}
+                      </button>
+                    </form>
+                  </details>
                 </li>
               );
             })}
           </ul>
         )}
 
-        <h3>Añadir entrada</h3>
-        <form onSubmit={handleCreateBank} aria-label="Añadir entrada de cuenta bancaria" noValidate>
+        <h3>Añadir cuenta</h3>
+        <form onSubmit={handleCreateAccount} aria-label="Añadir cuenta bancaria" noValidate>
           <div className="field">
-            <label htmlFor="new-bank-bank">Banco</label>
+            <label htmlFor="new-account-bank">Banco</label>
             <input
-              id="new-bank-bank"
+              id="new-account-bank"
               className="input"
-              value={newBankForm.bank}
-              onChange={(e) => setNewBankForm({ ...newBankForm, bank: e.target.value })}
+              value={newAccountForm.bank}
+              onChange={(e) => setNewAccountForm({ ...newAccountForm, bank: e.target.value })}
               required
             />
           </div>
           <div className="field">
-            <label htmlFor="new-bank-accountNumber">Número de Cuenta</label>
+            <label htmlFor="new-account-accountNumber">Número de Cuenta</label>
             <input
-              id="new-bank-accountNumber"
+              id="new-account-accountNumber"
               className="input"
-              value={newBankForm.accountNumber}
-              onChange={(e) => setNewBankForm({ ...newBankForm, accountNumber: e.target.value })}
+              value={newAccountForm.accountNumber}
+              onChange={(e) => setNewAccountForm({ ...newAccountForm, accountNumber: e.target.value })}
               required
             />
           </div>
-          <div className="field">
-            <label htmlFor="new-bank-euros">Euros</label>
-            <input
-              id="new-bank-euros"
-              className="input"
-              inputMode="decimal"
-              placeholder="p. ej. 1500.00 o -50.00"
-              value={newBankForm.euros}
-              onChange={(e) => setNewBankForm({ ...newBankForm, euros: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-bank-date">Fecha</label>
-            <input
-              id="new-bank-date"
-              type="date"
-              className="input"
-              value={newBankForm.date}
-              onChange={(e) => setNewBankForm({ ...newBankForm, date: e.target.value })}
-              required
-            />
-          </div>
-          {createBankError && <p role="alert">{createBankError}</p>}
-          <button type="submit" className="btn btn-primary" disabled={isCreatingBank}>
-            {isCreatingBank ? 'Creando…' : 'Añadir entrada'}
+          {createAccountError && <p role="alert">{createAccountError}</p>}
+          <button type="submit" className="btn btn-primary" disabled={isCreatingAccount}>
+            {isCreatingAccount ? 'Creando…' : 'Añadir cuenta'}
           </button>
         </form>
       </details>

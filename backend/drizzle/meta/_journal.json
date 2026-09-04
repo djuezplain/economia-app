@@ -57,6 +57,20 @@
       "when": 1788544870137,
       "tag": "0007_secret_bill_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788546534737,
+      "tag": "0008_add_bank_accounts_and_balances",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788546566607,
+      "tag": "0009_drop_bank_account_entries",
+      "breakpoints": true
     }
   ]
 }
