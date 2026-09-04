@@ -20,9 +20,9 @@ Como usuario quiero registrar cada posición (Banco Custodia + Acción) una úni
 
 **H2 — Registrar cada compra de una acción**
 
-Como usuario quiero anotar, dentro de una acción ya creada, cada compra que hago (cuántas acciones y a qué precio), para llevar el histórico de mis compras a precios distintos.
+Como usuario quiero anotar, dentro de una acción ya creada, cada compra que hago (cuándo, cuántas acciones y a qué precio), para llevar el histórico de mis compras a precios distintos.
 
-- Criterio 1: cada compra tiene Número de acciones y Precio de compra.
+- Criterio 1: cada compra tiene Número de acciones, Precio de compra y Fecha de compra, con el día de hoy por defecto. *(Revisión tras feedback de Diego sobre la primera implementación: faltaba Fecha de compra, que sí se pedía para valoraciones — H3 — pero no se había pedido para compras; se añade aquí para que ambos historiales sean simétricos.)*
 - Criterio 2: una acción puede tener cualquier número de compras — mismo criterio que ya existía en spec 018 (varias compras a precios distintos), ahora como historial dentro de la acción en vez de filas sueltas.
 - Criterio 3: el Valor de compra de cada compra (Precio de compra × Número de acciones) se muestra calculado, nunca se guarda — igual que en spec 018.
 - Criterio 4: la posición muestra, además, el número total de acciones (suma de todas las compras) y el coste total (suma de los valores de compra de todas las compras).
@@ -46,6 +46,13 @@ Como usuario quiero anotar, dentro de una acción ya creada, cuánto vale mi pos
 - Cotización automática de acciones — la Valoración actual sigue siendo un campo manual, no se consulta ninguna fuente de mercado (sin cambios respecto a spec 018).
 - Vender acciones o reducir una compra existente — el historial de compras es aditivo (registrar lo comprado), no lleva ventas; queda para una spec futura si se decide.
 - Migrar automáticamente acciones que en spec 018 se escribieron con variaciones de texto (p. ej. "BBVA" vs "Bbva") a una única posición — mismo criterio que la decisión equivalente de spec 019.
+
+## 3.bis Revisión tras la primera implementación
+
+Tras implementar y desplegar (en rama, sin fusionar) la primera versión de esta spec, Diego pidió dos cambios sobre lo ya construido:
+
+1. **Fecha de compra**: el historial de compras (H2) no llevaba fecha — se añade (criterio 1 de H2, arriba), simétrico con el historial de valoraciones (H3), que sí la lleva desde el principio.
+2. **Alta en un solo paso**: el formulario "Añadir acción" solo pedía Banco Custodia y Acción; había que crear la acción primero y luego, dentro de su tarjeta ya expandida, añadir la primera compra por separado. Diego prefiere dar de alta la acción y su primera compra a la vez: el formulario "Añadir acción" pasa a pedir también Número de acciones, Precio de compra y Fecha de compra, y al enviarlo se crean la acción y esa primera compra en el mismo paso. Añadir compras siguientes, y anotar valoraciones, se sigue haciendo por separado dentro de la tarjeta de la acción ya creada (sin cambios en H3).
 
 ## 3. Decisiones tomadas con Diego antes de escribir el plan
 

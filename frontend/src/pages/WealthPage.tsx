@@ -38,8 +38,17 @@ function todayIso(): string {
 const EMPTY_ACCOUNT_FORM: BankAccountInput = { bank: '', accountNumber: '' };
 const EMPTY_BALANCE_FORM: UpdateBankAccountBalanceInput = { euros: '', date: todayIso() };
 const EMPTY_STOCK_FORM: StockInput = { custodyBank: '', stock: '' };
-const EMPTY_PURCHASE_FORM: UpdateStockPurchaseInput = { shareCount: '', purchasePrice: '' };
+const EMPTY_PURCHASE_FORM: UpdateStockPurchaseInput = { shareCount: '', purchasePrice: '', date: todayIso() };
 const EMPTY_VALUATION_FORM: UpdateStockValuationInput = { valuation: '', date: todayIso() };
+
+/** Formulario "Añadir acción" (nivel superior): crea la acción y su primera
+ *  compra en un solo paso (spec 020, revisión §3.bis) — dos llamadas
+ *  encadenadas (`createStock` + `createStockPurchase`), un solo formulario. */
+type NewStockForm = StockInput & { shareCount: string; purchasePrice: string; date: string };
+
+function emptyNewStockForm(): NewStockForm {
+  return { custodyBank: '', stock: '', shareCount: '', purchasePrice: '', date: todayIso() };
+}
 
 function accountFormFromEntity(account: BankAccount): BankAccountInput {
   return { bank: account.bank, accountNumber: account.accountNumber };
@@ -54,7 +63,7 @@ function stockFormFromEntity(stock: Stock): StockInput {
 }
 
 function purchaseFormFromEntity(purchase: StockPurchase): UpdateStockPurchaseInput {
-  return { shareCount: purchase.shareCount, purchasePrice: purchase.purchasePrice };
+  return { shareCount: purchase.shareCount, purchasePrice: purchase.purchasePrice, date: purchase.date };
 }
 
 function valuationFormFromEntity(valuation: StockValuation): UpdateStockValuationInput {
@@ -128,7 +137,7 @@ export function WealthPage() {
 
   const [stockList, setStockList] = useState<Stock[] | null>(null);
   const [stocksLoadError, setStocksLoadError] = useState<string | null>(null);
-  const [newStockForm, setNewStockForm] = useState<StockInput>(EMPTY_STOCK_FORM);
+  const [newStockForm, setNewStockForm] = useState<NewStockForm>(emptyNewStockForm);
   const [createStockError, setCreateStockError] = useState<string | null>(null);
   const [isCreatingStock, setIsCreatingStock] = useState(false);
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
@@ -371,9 +380,15 @@ export function WealthPage() {
     setCreateStockError(null);
     setIsCreatingStock(true);
     try {
-      await createStock(newStockForm);
-      setNewStockForm(EMPTY_STOCK_FORM);
-      await reloadStocks();
+      const stock = await createStock({ custodyBank: newStockForm.custodyBank, stock: newStockForm.stock });
+      await createStockPurchase({
+        stockId: stock.id,
+        shareCount: newStockForm.shareCount,
+        purchasePrice: newStockForm.purchasePrice,
+        date: newStockForm.date,
+      });
+      setNewStockForm(emptyNewStockForm());
+      await Promise.all([reloadStocks(), reloadPurchases()]);
     } catch (err) {
       setCreateStockError(err instanceof ApiError ? err.message : 'No se ha podido crear la acción.');
     } finally {
@@ -417,7 +432,7 @@ export function WealthPage() {
   }
 
   function getNewPurchaseForm(stockId: string): UpdateStockPurchaseInput {
-    return newPurchaseForms[stockId] ?? { shareCount: '', purchasePrice: '' };
+    return newPurchaseForms[stockId] ?? { shareCount: '', purchasePrice: '', date: todayIso() };
   }
 
   function setNewPurchaseForm(stockId: string, form: UpdateStockPurchaseInput) {
@@ -430,8 +445,13 @@ export function WealthPage() {
     setCreatingPurchaseForStockId(stockId);
     try {
       const form = getNewPurchaseForm(stockId);
-      await createStockPurchase({ stockId, shareCount: form.shareCount ?? '', purchasePrice: form.purchasePrice ?? '' });
-      setNewPurchaseForm(stockId, { shareCount: '', purchasePrice: '' });
+      await createStockPurchase({
+        stockId,
+        shareCount: form.shareCount ?? '',
+        purchasePrice: form.purchasePrice ?? '',
+        date: form.date ?? todayIso(),
+      });
+      setNewPurchaseForm(stockId, { shareCount: '', purchasePrice: '', date: todayIso() });
       await reloadPurchases();
     } catch (err) {
       setCreatePurchaseError(err instanceof ApiError ? err.message : 'No se ha podido añadir la compra.');
@@ -912,7 +932,7 @@ export function WealthPage() {
                           const isEditingPurchase = editingPurchaseId === purchase.id;
                           // Nombre accesible construido con los valores en crudo (sin `formatCurrency`): evita depender
                           // del formato de `Intl.NumberFormat` (incluye un espacio no separable) para identificar el elemento.
-                          const purchaseLabel = `${purchase.shareCount} acciones a ${purchase.purchasePrice}€`;
+                          const purchaseLabel = `${purchase.date} · ${purchase.shareCount} acciones a ${purchase.purchasePrice}€`;
 
                           if (isEditingPurchase) {
                             return (
@@ -944,6 +964,17 @@ export function WealthPage() {
                                       required
                                     />
                                   </div>
+                                  <div className="field">
+                                    <label htmlFor={`purchase-${purchase.id}-date`}>Fecha de compra</label>
+                                    <input
+                                      id={`purchase-${purchase.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingPurchaseForm.date}
+                                      onChange={(e) => setEditingPurchaseForm({ ...editingPurchaseForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
                                   <p className="card-meta">
                                     Valor compra:{' '}
                                     {formatCurrency(
@@ -970,6 +1001,7 @@ export function WealthPage() {
 
                           return (
                             <li key={purchase.id}>
+                              <span>{purchase.date}</span>{' '}
                               <span>
                                 {purchase.shareCount} acciones @ {formatCurrency(purchase.purchasePrice)} ={' '}
                                 {formatCurrency(purchaseValue(purchase.purchasePrice, purchase.shareCount))}
@@ -1021,6 +1053,17 @@ export function WealthPage() {
                           inputMode="decimal"
                           value={newPurchaseForm.purchasePrice}
                           onChange={(e) => setNewPurchaseForm(stock.id, { ...newPurchaseForm, purchasePrice: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-purchase-${stock.id}-date`}>Fecha de compra</label>
+                        <input
+                          id={`new-purchase-${stock.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newPurchaseForm.date}
+                          onChange={(e) => setNewPurchaseForm(stock.id, { ...newPurchaseForm, date: e.target.value })}
                           required
                         />
                       </div>
@@ -1179,6 +1222,42 @@ export function WealthPage() {
               required
             />
           </div>
+          <div className="field">
+            <label htmlFor="new-stock-shareCount">Número acciones</label>
+            <input
+              id="new-stock-shareCount"
+              className="input"
+              inputMode="decimal"
+              value={newStockForm.shareCount}
+              onChange={(e) => setNewStockForm({ ...newStockForm, shareCount: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-stock-purchasePrice">Precio compra</label>
+            <input
+              id="new-stock-purchasePrice"
+              className="input"
+              inputMode="decimal"
+              value={newStockForm.purchasePrice}
+              onChange={(e) => setNewStockForm({ ...newStockForm, purchasePrice: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-stock-date">Fecha de compra</label>
+            <input
+              id="new-stock-date"
+              type="date"
+              className="input"
+              value={newStockForm.date}
+              onChange={(e) => setNewStockForm({ ...newStockForm, date: e.target.value })}
+              required
+            />
+          </div>
+          <p className="card-meta">
+            Valor compra: {formatCurrency(purchaseValue(newStockForm.purchasePrice, newStockForm.shareCount) || '0.00')}
+          </p>
           {createStockError && <p role="alert">{createStockError}</p>}
           <button type="submit" className="btn btn-primary" disabled={isCreatingStock}>
             {isCreatingStock ? 'Creando…' : 'Añadir acción'}

@@ -6,6 +6,7 @@ export interface StockPurchase {
   stockId: string;
   shareCount: string;
   purchasePrice: string;
+  date: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -14,11 +15,13 @@ export interface CreateStockPurchaseInput {
   stockId: string;
   shareCount: string;
   purchasePrice: string;
+  date: string;
 }
 
 export interface UpdateStockPurchaseInput {
   shareCount?: string;
   purchasePrice?: string;
+  date?: string;
 }
 
 export function listStockPurchases(): Promise<StockPurchase[]> {

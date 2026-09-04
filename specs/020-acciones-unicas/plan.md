@@ -25,9 +25,15 @@ export const stockPurchases = pgTable('stock_purchases', {
   stockId: uuid('stock_id').notNull().references(() => stocks.id, { onDelete: 'cascade' }),
   shareCount: numeric('share_count', { precision: 14, scale: 4 }).notNull(),
   purchasePrice: numeric('purchase_price', { precision: 12, scale: 2 }).notNull(),
+  // H2 criterio 1 (revisión, §3.bis de spec.md): añadida tras la primera
+  // implementación — simétrica con `stockValuations.date`.
+  date: date('date').notNull(),
   createdAt: timestamp(...).notNull().defaultNow(),
   updatedAt: timestamp(...).notNull().defaultNow(),
-}, (table) => [index('stock_purchases_stock_idx').on(table.stockId)]);
+}, (table) => [
+  index('stock_purchases_stock_idx').on(table.stockId),
+  index('stock_purchases_stock_date_idx').on(table.stockId, table.date),
+]);
 
 export const stockValuations = pgTable('stock_valuations', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -90,3 +96,10 @@ Tres recursos, sustituyen a `/stock-entries` (spec 018) — se elimina ese contr
 ## 6. Fuera de este plan
 
 - No se toca `bank-accounts`/`bank-account-balances` (spec 019) ni las 5 categorías sin implementar.
+
+## 7. Revisión (§3.bis de spec.md): fecha de compra + alta en un solo paso
+
+- Migración `0012_add_stock_purchases_date.sql`: añade `stock_purchases.date` (nullable, backfill con `created_at::date` para filas ya existentes, luego `NOT NULL`) + índice `stock_purchases_stock_date_idx` — mismo patrón en dos pasos que las migraciones que preservan datos (spec 019/020 §2), aquí porque `ADD COLUMN ... NOT NULL` sin default falla si la tabla ya tiene filas.
+- `CreateStockPurchaseDto`/`UpdateStockPurchaseDto`: `date` con `IsDateString()` (obligatorio en create, opcional en update) — mismo patrón que `*StockValuationDto`.
+- `StockPurchasesService.list()`: ordena por `[desc(date), desc(createdAt)]` en vez de solo `desc(createdAt)` — mismo criterio que `StockValuationsService.list()`.
+- Frontend, `WealthPage.tsx`: el formulario "Añadir acción" (nivel superior) se amplía con Número de acciones, Precio de compra y Fecha de compra (hoy por defecto); al enviarlo, llama a `createStock()` y, con el id devuelto, a `createStockPurchase()` — dos llamadas encadenadas, un solo formulario. El formulario "Añadir compra" (dentro de la tarjeta de una acción ya creada, para compras siguientes) y el formulario de edición de una compra ganan el campo Fecha. Si `createStock()` tiene éxito pero `createStockPurchase()` falla, la acción queda creada (estado válido) y se muestra el error para que la compra se añada a mano desde su historial.

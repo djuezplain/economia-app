@@ -85,6 +85,13 @@
       "when": 1788548143974,
       "tag": "0011_drop_stock_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788549859387,
+      "tag": "0012_add_stock_purchases_date",
+      "breakpoints": true
     }
   ]
 }

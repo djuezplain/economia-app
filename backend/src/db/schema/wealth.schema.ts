@@ -78,10 +78,9 @@ export const stocks = pgTable(
 
 /**
  * H2 (spec 020): historial de compras de una acción — muchas por acción,
- * ninguna es la acción en sí. Sin `userId`/`date` propios: el aislamiento
- * por usuario pasa siempre por `stocks.userId` (normalizado, igual que
- * `bankAccountBalances`); sin fecha porque H2 no la pide (a diferencia de
- * `stockValuations`, justo debajo).
+ * ninguna es la acción en sí. Sin `userId` propio: el aislamiento por
+ * usuario pasa siempre por `stocks.userId` (normalizado, igual que
+ * `bankAccountBalances`).
  */
 export const stockPurchases = pgTable(
   'stock_purchases',
@@ -96,10 +95,13 @@ export const stockPurchases = pgTable(
     // comprar "0.5 acciones") — precisión a 4 decimales, no 2.
     shareCount: numeric('share_count', { precision: 14, scale: 4 }).notNull(),
     purchasePrice: numeric('purchase_price', { precision: 12, scale: 2 }).notNull(),
+    // H2 criterio 1 (revisión): fecha de la compra, con el día de hoy por
+    // defecto — mismo criterio que `stockValuations.date`.
+    date: date('date').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('stock_purchases_stock_idx').on(table.stockId)],
+  (table) => [index('stock_purchases_stock_idx').on(table.stockId), index('stock_purchases_stock_date_idx').on(table.stockId, table.date)],
 );
 
 /**
