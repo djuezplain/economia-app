@@ -9,9 +9,10 @@ export function purchaseValue(purchasePrice: string, shareCount: string): string
   return new Decimal(purchasePrice).times(shareCount).toFixed(2);
 }
 
-/** H2 criterio 4 (spec 020): nº total de acciones de una posición, sumando todas sus compras. */
+/** H2 criterio 4 (spec 020): nº total de acciones de una posición, sumando todas sus compras.
+ *  8 decimales, no 4 — mismo criterio de precisión que `shareCount` (revisión, `IsShareCount`). */
 export function totalShares(purchases: Array<{ shareCount: string }>): string {
-  return purchases.reduce((sum, p) => sum.plus(p.shareCount), new Decimal(0)).toFixed(4);
+  return purchases.reduce((sum, p) => sum.plus(p.shareCount), new Decimal(0)).toFixed(8);
 }
 
 /** H2 criterio 4 (spec 020): coste total de una posición, sumando el valor de compra de todas sus compras. */

@@ -377,7 +377,7 @@ describe('WealthPage', () => {
       expect(within(list).getByText(/Inditex · BBVA/)).toBeInTheDocument();
       // 10.0000 acciones × 35,00 €/acción (STOCK_VALUATION) = 350,00 €.
       expect(within(list).getByText('350,00 €')).toBeInTheDocument();
-      expect(within(list).getByText(/10.0000 acciones · Coste total/)).toHaveTextContent('Precio actual: 35,00 €/acción · Última fecha: 2026-09-04');
+      expect(within(list).getByText(/10.00000000 acciones · Coste total/)).toHaveTextContent('Precio actual: 35,00 €/acción · Última fecha: 2026-09-04');
       // Coste total 300,00 € (10 × 30,00 €), valor actual 350,00 € → +16.67% de ganancia, en verde.
       const gainLossEl = within(list).getByText('+16.67%');
       expect(gainLossEl).toHaveStyle({ color: 'var(--status-green)' });
@@ -548,6 +548,30 @@ describe('WealthPage', () => {
       await waitFor(() => expect(listPurchasesSpy).toHaveBeenCalledTimes(2));
     });
 
+    it('admite hasta 8 decimales en número de acciones y precio de compra (revisión)', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      const createSpy = vi.spyOn(stockPurchasesApi, 'createStockPurchase').mockResolvedValue(STOCK_PURCHASE);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir compra: Inditex' });
+
+      await userEvent.type(within(form).getByLabelText('Número acciones'), '0.12345678');
+      await userEvent.type(within(form).getByLabelText('Precio compra'), '28123.87654321');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir compra' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({
+          stockId: STOCK.id,
+          shareCount: '0.12345678',
+          purchasePrice: '28123.87654321',
+          date: todayIso(),
+        }),
+      );
+    });
+
     it('edita una compra del historial', async () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
@@ -630,7 +654,7 @@ describe('WealthPage', () => {
 
       await userEvent.type(within(form).getByLabelText('Precio por acción actual'), '35.00');
 
-      // 10.0000 acciones (STOCK_PURCHASE) × 35.00 = 350,00 €.
+      // 10 acciones (STOCK_PURCHASE) × 35.00 = 350,00 €.
       expect(within(form).getByText(/Valor total:/)).toHaveTextContent('350,00');
     });
 

@@ -97,8 +97,8 @@ describe('Historial de compras de acciones (e2e) — spec 020 H2', () => {
         .expect(201);
 
       expect(res.body.stockId).toBe(stock.id);
-      expect(res.body.shareCount).toBe('10.0000');
-      expect(res.body.purchasePrice).toBe('28.50');
+      expect(res.body.shareCount).toBe('10.00000000');
+      expect(res.body.purchasePrice).toBe('28.50000000');
       expect(res.body.date).toBe('2026-09-04');
     });
 
@@ -113,7 +113,46 @@ describe('Historial de compras de acciones (e2e) — spec 020 H2', () => {
         .send({ stockId: stock.id, shareCount: '0.5', purchasePrice: '150.00', date: '2026-09-04' })
         .expect(201);
 
-      expect(res.body.shareCount).toBe('0.5000');
+      expect(res.body.shareCount).toBe('0.50000000');
+    });
+
+    it('H2 criterio 1 (revisión): número de acciones y precio de compra admiten hasta 8 decimales', async () => {
+      const user = await createUser('ocho-decimales@example.com');
+      const stock = await createStock(user.id, 'Kraken', 'BTC-tokenizado');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .post('/stock-purchases')
+        .set('Authorization', auth(token))
+        .send({ stockId: stock.id, shareCount: '0.12345678', purchasePrice: '28123.87654321', date: '2026-09-04' })
+        .expect(201);
+
+      expect(res.body.shareCount).toBe('0.12345678');
+      expect(res.body.purchasePrice).toBe('28123.87654321');
+    });
+
+    it('más de 8 decimales en el número de acciones → 400', async () => {
+      const user = await createUser('nueve-decimales-acciones@example.com');
+      const stock = await createStock(user.id, 'BBVA', 'Inditex');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/stock-purchases')
+        .set('Authorization', auth(token))
+        .send({ stockId: stock.id, shareCount: '0.123456789', purchasePrice: '28.50', date: '2026-09-04' })
+        .expect(400);
+    });
+
+    it('más de 8 decimales en el precio de compra → 400', async () => {
+      const user = await createUser('nueve-decimales-precio@example.com');
+      const stock = await createStock(user.id, 'BBVA', 'Inditex');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/stock-purchases')
+        .set('Authorization', auth(token))
+        .send({ stockId: stock.id, shareCount: '10', purchasePrice: '28.123456789', date: '2026-09-04' })
+        .expect(400);
     });
 
     it('H2 criterio 2: admite varias compras en la misma acción, en fechas distintas', async () => {
@@ -188,8 +227,8 @@ describe('Historial de compras de acciones (e2e) — spec 020 H2', () => {
         .send({ shareCount: '12', purchasePrice: '29.00', date: '2026-09-01' })
         .expect(200);
 
-      expect(res.body.shareCount).toBe('12.0000');
-      expect(res.body.purchasePrice).toBe('29.00');
+      expect(res.body.shareCount).toBe('12.00000000');
+      expect(res.body.purchasePrice).toBe('29.00000000');
       expect(res.body.date).toBe('2026-09-01');
     });
 

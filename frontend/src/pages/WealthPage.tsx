@@ -78,9 +78,10 @@ function purchaseValue(purchasePrice: string, shareCount: string): string {
   return (price * shares).toFixed(2);
 }
 
-/** H2 criterio 4 (spec 020): nº total de acciones de una posición, sumando todas sus compras — calculado, nunca guardado. */
+/** H2 criterio 4 (spec 020): nº total de acciones de una posición, sumando todas sus compras — calculado, nunca guardado.
+ *  8 decimales, no 4 — mismo criterio de precisión que `shareCount` (revisión). */
 function totalShares(purchases: StockPurchase[]): string {
-  return purchases.reduce((sum, p) => sum + parseFloat(p.shareCount), 0).toFixed(4);
+  return purchases.reduce((sum, p) => sum + parseFloat(p.shareCount), 0).toFixed(8);
 }
 
 /** H2 criterio 4 (spec 020): coste total de una posición, sumando el valor de compra de todas sus compras. */

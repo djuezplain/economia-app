@@ -91,10 +91,12 @@ export const stockPurchases = pgTable(
     stockId: uuid('stock_id')
       .notNull()
       .references(() => stocks.id, { onDelete: 'cascade' }),
-    // H2 criterio 1: puede ser fraccionario (brokers modernos permiten
-    // comprar "0.5 acciones") — precisión a 4 decimales, no 2.
-    shareCount: numeric('share_count', { precision: 14, scale: 4 }).notNull(),
-    purchasePrice: numeric('purchase_price', { precision: 12, scale: 2 }).notNull(),
+    // H2 criterio 1 (revisión): puede ser fraccionario (brokers modernos
+    // permiten comprar "0.5 acciones") — precisión a 8 decimales, no 2, para
+    // posiciones muy fraccionadas (cripto-acciones, fondos indexados
+    // fraccionarios, etc.). `IsShareCount`/`IsSharePrice` validan lo mismo.
+    shareCount: numeric('share_count', { precision: 18, scale: 8 }).notNull(),
+    purchasePrice: numeric('purchase_price', { precision: 18, scale: 8 }).notNull(),
     // H2 criterio 1 (revisión): fecha de la compra, con el día de hoy por
     // defecto — mismo criterio que `stockValuations.date`.
     date: date('date').notNull(),

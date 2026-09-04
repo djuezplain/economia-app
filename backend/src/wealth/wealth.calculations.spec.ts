@@ -14,19 +14,27 @@ describe('wealth.calculations', () => {
     it('redondea a 2 decimales', () => {
       expect(purchaseValue('3.333', '3')).toBe('10.00');
     });
+
+    it('admite un precio de compra con hasta 8 decimales (revisión)', () => {
+      expect(purchaseValue('0.12345678', '2')).toBe('0.25');
+    });
   });
 
   describe('totalShares (spec 020)', () => {
     it('suma el número de acciones de todas las compras', () => {
-      expect(totalShares([{ shareCount: '10' }, { shareCount: '5' }])).toBe('15.0000');
+      expect(totalShares([{ shareCount: '10' }, { shareCount: '5' }])).toBe('15.00000000');
     });
 
     it('admite compras fraccionarias', () => {
-      expect(totalShares([{ shareCount: '0.5' }, { shareCount: '0.25' }])).toBe('0.7500');
+      expect(totalShares([{ shareCount: '0.5' }, { shareCount: '0.25' }])).toBe('0.75000000');
+    });
+
+    it('admite hasta 8 decimales (revisión, posiciones muy fraccionadas)', () => {
+      expect(totalShares([{ shareCount: '0.12345678' }, { shareCount: '0.00000001' }])).toBe('0.12345679');
     });
 
     it('sin ninguna compra, 0', () => {
-      expect(totalShares([])).toBe('0.0000');
+      expect(totalShares([])).toBe('0.00000000');
     });
   });
 
