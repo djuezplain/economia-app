@@ -69,6 +69,22 @@ import {
   updateVehicleValuation,
 } from '../api/vehicle-valuations';
 import type { UpdateVehicleValuationInput, VehicleValuation } from '../api/vehicle-valuations';
+import { createPensionPlan, deletePensionPlan, listPensionPlans, updatePensionPlan } from '../api/pension-plans';
+import type { PensionPlan, PensionPlanInput } from '../api/pension-plans';
+import {
+  createPensionPlanContribution,
+  deletePensionPlanContribution,
+  listPensionPlanContributions,
+  updatePensionPlanContribution,
+} from '../api/pension-plan-contributions';
+import type { PensionPlanContribution, UpdatePensionPlanContributionInput } from '../api/pension-plan-contributions';
+import {
+  createPensionPlanValuation,
+  deletePensionPlanValuation,
+  listPensionPlanValuations,
+  updatePensionPlanValuation,
+} from '../api/pension-plan-valuations';
+import type { PensionPlanValuation, UpdatePensionPlanValuationInput } from '../api/pension-plan-valuations';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 
@@ -89,6 +105,9 @@ const EMPTY_CRYPTO_PURCHASE_FORM: UpdateCryptoPurchaseInput = { quantity: '', pu
 const EMPTY_CRYPTO_VALUATION_FORM: UpdateCryptoValuationInput = { pricePerUnit: '', date: todayIso() };
 const EMPTY_VEHICLE_FORM: VehicleInput = { brandModel: '', plate: '', purchasePrice: '', purchaseDate: todayIso() };
 const EMPTY_VEHICLE_VALUATION_FORM: UpdateVehicleValuationInput = { value: '', date: todayIso() };
+const EMPTY_PENSION_PLAN_FORM: PensionPlanInput = { managingEntity: '', plan: '' };
+const EMPTY_PENSION_PLAN_CONTRIBUTION_FORM: UpdatePensionPlanContributionInput = { amount: '', date: todayIso() };
+const EMPTY_PENSION_PLAN_VALUATION_FORM: UpdatePensionPlanValuationInput = { value: '', date: todayIso() };
 
 /** Formulario "Añadir acción" (nivel superior): crea la acción y su primera
  *  compra en un solo paso (spec 020, revisión §3.bis) — dos llamadas
@@ -114,6 +133,15 @@ type NewCryptoForm = CryptoInput & { quantity: string; purchasePrice: string; da
 
 function emptyNewCryptoForm(): NewCryptoForm {
   return { exchange: '', crypto: '', quantity: '', purchasePrice: '', date: todayIso() };
+}
+
+/** Formulario "Añadir plan" de Fondo Pensiones (spec 024): mismo patrón en un solo paso que
+ *  "Añadir posición" de Cripto (spec 022), pero sin cantidad/precio — la primera aportación
+ *  es solo un importe (decisión explícita con Diego, spec.md §3). */
+type NewPensionPlanForm = PensionPlanInput & { amount: string; date: string };
+
+function emptyNewPensionPlanForm(): NewPensionPlanForm {
+  return { managingEntity: '', plan: '', amount: '', date: todayIso() };
 }
 
 function accountFormFromEntity(account: BankAccount): BankAccountInput {
@@ -176,6 +204,23 @@ function vehicleLabel(vehicle: Vehicle): string {
 }
 
 function vehicleValuationFormFromEntity(valuation: VehicleValuation): UpdateVehicleValuationInput {
+  return { value: valuation.value, date: valuation.date };
+}
+
+function pensionPlanFormFromEntity(plan: PensionPlan): PensionPlanInput {
+  return { managingEntity: plan.managingEntity, plan: plan.plan };
+}
+
+/** Espejo accesible del plan (spec 024): mismo criterio que `vehicleLabel` (spec 023). */
+function pensionPlanLabel(plan: PensionPlan): string {
+  return `${plan.plan} · ${plan.managingEntity}`;
+}
+
+function pensionPlanContributionFormFromEntity(contribution: PensionPlanContribution): UpdatePensionPlanContributionInput {
+  return { amount: contribution.amount, date: contribution.date };
+}
+
+function pensionPlanValuationFormFromEntity(valuation: PensionPlanValuation): UpdatePensionPlanValuationInput {
   return { value: valuation.value, date: valuation.date };
 }
 
@@ -295,13 +340,27 @@ function vehiclesTotal(vehicles: Vehicle[], valuations: VehicleValuation[]): str
     .toFixed(2);
 }
 
-/** Las 2 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3, spec 018) —
- *  "Fondos Inversión" (spec 021), "Cripto" (spec 022) y "Vehículos" (spec 023) pasan a
- *  tener funcionalidad propia. */
-const PLACEHOLDER_SECTIONS = [
-  { icon: '👴', label: 'Fondo Pensiones' },
-  { icon: '💵', label: 'Efectivo' },
-];
+/** H2 criterio 4 (spec 024): total aportado a un plan de pensiones, sumando todas sus aportaciones
+ *  — calculado, nunca guardado. Suma directa de importes, sin cantidad ni precio que multiplicar
+ *  (a diferencia de `totalCost`/`totalCryptoCost`; decisión explícita con Diego, spec.md §3). */
+function totalContributions(contributions: PensionPlanContribution[]): string {
+  return contributions.reduce((sum, c) => sum + parseFloat(c.amount), 0).toFixed(2);
+}
+
+/** H4 (spec 024): sexto sumando de la tarjeta "Total" — mismo criterio que `vehiclesTotal`
+ *  (último valor conocido de cada posición, o 0 si no tiene ninguna valoración todavía). */
+function pensionPlansTotal(plans: PensionPlan[], valuations: PensionPlanValuation[]): string {
+  return plans
+    .reduce((sum, plan) => {
+      const lastValuation = valuations.find((v) => v.pensionPlanId === plan.id); // ya ordenado por fecha descendente
+      return sum + (lastValuation ? parseFloat(lastValuation.value) : 0);
+    }, 0)
+    .toFixed(2);
+}
+
+/** La única categoría de spec 018 §2 que sigue sin funcionalidad tras spec 024
+ *  (H1 criterio 3, spec 018). */
+const PLACEHOLDER_SECTIONS = [{ icon: '💵', label: 'Efectivo' }];
 
 /**
  * Spec 018 (Resumen Patrimonio) / spec 019 (cuentas bancarias únicas, con
@@ -474,6 +533,46 @@ export function WealthPage() {
   const [pendingDeleteVehicleValuationId, setPendingDeleteVehicleValuationId] = useState<string | null>(null);
   const [vehicleValuationActionError, setVehicleValuationActionError] = useState<string | null>(null);
 
+  const [pensionPlanList, setPensionPlanList] = useState<PensionPlan[] | null>(null);
+  const [pensionPlansLoadError, setPensionPlansLoadError] = useState<string | null>(null);
+  const [newPensionPlanForm, setNewPensionPlanForm] = useState<NewPensionPlanForm>(emptyNewPensionPlanForm);
+  const [createPensionPlanError, setCreatePensionPlanError] = useState<string | null>(null);
+  const [isCreatingPensionPlan, setIsCreatingPensionPlan] = useState(false);
+  const [editingPensionPlanId, setEditingPensionPlanId] = useState<string | null>(null);
+  const [editingPensionPlanForm, setEditingPensionPlanForm] = useState<PensionPlanInput>(EMPTY_PENSION_PLAN_FORM);
+  const [editPensionPlanError, setEditPensionPlanError] = useState<string | null>(null);
+  const [isSavingPensionPlan, setIsSavingPensionPlan] = useState(false);
+  const [pendingDeletePensionPlanId, setPendingDeletePensionPlanId] = useState<string | null>(null);
+  const [pensionPlanActionError, setPensionPlanActionError] = useState<string | null>(null);
+
+  const [pensionPlanContributionList, setPensionPlanContributionList] = useState<PensionPlanContribution[] | null>(null);
+  const [pensionPlanContributionsLoadError, setPensionPlanContributionsLoadError] = useState<string | null>(null);
+  const [newPensionPlanContributionForms, setNewPensionPlanContributionForms] = useState<
+    Record<string, UpdatePensionPlanContributionInput>
+  >({});
+  const [createPensionPlanContributionError, setCreatePensionPlanContributionError] = useState<string | null>(null);
+  const [creatingPensionPlanContributionForPlanId, setCreatingPensionPlanContributionForPlanId] = useState<string | null>(null);
+  const [editingPensionPlanContributionId, setEditingPensionPlanContributionId] = useState<string | null>(null);
+  const [editingPensionPlanContributionForm, setEditingPensionPlanContributionForm] =
+    useState<UpdatePensionPlanContributionInput>(EMPTY_PENSION_PLAN_CONTRIBUTION_FORM);
+  const [editPensionPlanContributionError, setEditPensionPlanContributionError] = useState<string | null>(null);
+  const [isSavingPensionPlanContribution, setIsSavingPensionPlanContribution] = useState(false);
+  const [pendingDeletePensionPlanContributionId, setPendingDeletePensionPlanContributionId] = useState<string | null>(null);
+  const [pensionPlanContributionActionError, setPensionPlanContributionActionError] = useState<string | null>(null);
+
+  const [pensionPlanValuationList, setPensionPlanValuationList] = useState<PensionPlanValuation[] | null>(null);
+  const [pensionPlanValuationsLoadError, setPensionPlanValuationsLoadError] = useState<string | null>(null);
+  const [newPensionPlanValuationForms, setNewPensionPlanValuationForms] = useState<Record<string, UpdatePensionPlanValuationInput>>({});
+  const [createPensionPlanValuationError, setCreatePensionPlanValuationError] = useState<string | null>(null);
+  const [creatingPensionPlanValuationForPlanId, setCreatingPensionPlanValuationForPlanId] = useState<string | null>(null);
+  const [editingPensionPlanValuationId, setEditingPensionPlanValuationId] = useState<string | null>(null);
+  const [editingPensionPlanValuationForm, setEditingPensionPlanValuationForm] =
+    useState<UpdatePensionPlanValuationInput>(EMPTY_PENSION_PLAN_VALUATION_FORM);
+  const [editPensionPlanValuationError, setEditPensionPlanValuationError] = useState<string | null>(null);
+  const [isSavingPensionPlanValuation, setIsSavingPensionPlanValuation] = useState(false);
+  const [pendingDeletePensionPlanValuationId, setPendingDeletePensionPlanValuationId] = useState<string | null>(null);
+  const [pensionPlanValuationActionError, setPensionPlanValuationActionError] = useState<string | null>(null);
+
   async function reloadAccounts() {
     setAccounts(await listBankAccounts());
   }
@@ -524,6 +623,18 @@ export function WealthPage() {
 
   async function reloadVehicleValuations() {
     setVehicleValuationList(await listVehicleValuations());
+  }
+
+  async function reloadPensionPlans() {
+    setPensionPlanList(await listPensionPlans());
+  }
+
+  async function reloadPensionPlanContributions() {
+    setPensionPlanContributionList(await listPensionPlanContributions());
+  }
+
+  async function reloadPensionPlanValuations() {
+    setPensionPlanValuationList(await listPensionPlanValuations());
   }
 
   useEffect(() => {
@@ -717,6 +828,53 @@ export function WealthPage() {
       } catch (err) {
         if (!cancelled)
           setVehicleValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadPensionPlans();
+      } catch (err) {
+        if (!cancelled) setPensionPlansLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar los planes de pensiones.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadPensionPlanContributions();
+      } catch (err) {
+        if (!cancelled)
+          setPensionPlanContributionsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de aportaciones.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadPensionPlanValuations();
+      } catch (err) {
+        if (!cancelled)
+          setPensionPlanValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
       }
     })();
     return () => {
@@ -1479,6 +1637,179 @@ export function WealthPage() {
     }
   }
 
+  async function handleCreatePensionPlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatePensionPlanError(null);
+    setIsCreatingPensionPlan(true);
+    try {
+      const plan = await createPensionPlan({ managingEntity: newPensionPlanForm.managingEntity, plan: newPensionPlanForm.plan });
+      await createPensionPlanContribution({
+        pensionPlanId: plan.id,
+        amount: newPensionPlanForm.amount,
+        date: newPensionPlanForm.date,
+      });
+      setNewPensionPlanForm(emptyNewPensionPlanForm());
+      await Promise.all([reloadPensionPlans(), reloadPensionPlanContributions()]);
+    } catch (err) {
+      setCreatePensionPlanError(err instanceof ApiError ? err.message : 'No se ha podido crear el plan de pensiones.');
+    } finally {
+      setIsCreatingPensionPlan(false);
+    }
+  }
+
+  function startEditPensionPlan(plan: PensionPlan) {
+    setEditPensionPlanError(null);
+    setEditingPensionPlanId(plan.id);
+    setEditingPensionPlanForm(pensionPlanFormFromEntity(plan));
+  }
+
+  async function handleEditPensionPlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingPensionPlanId) return;
+    setEditPensionPlanError(null);
+    setIsSavingPensionPlan(true);
+    try {
+      await updatePensionPlan(editingPensionPlanId, editingPensionPlanForm);
+      setEditingPensionPlanId(null);
+      await reloadPensionPlans();
+    } catch (err) {
+      setEditPensionPlanError(err instanceof ApiError ? err.message : 'No se ha podido guardar el plan de pensiones.');
+    } finally {
+      setIsSavingPensionPlan(false);
+    }
+  }
+
+  async function handleDeletePensionPlan(id: string) {
+    setPensionPlanActionError(null);
+    setPendingDeletePensionPlanId(id);
+    try {
+      await deletePensionPlan(id);
+      await Promise.all([reloadPensionPlans(), reloadPensionPlanContributions(), reloadPensionPlanValuations()]);
+    } catch (err) {
+      setPensionPlanActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar el plan de pensiones.');
+    } finally {
+      setPendingDeletePensionPlanId(null);
+    }
+  }
+
+  function getNewPensionPlanContributionForm(planId: string): UpdatePensionPlanContributionInput {
+    return newPensionPlanContributionForms[planId] ?? { amount: '', date: todayIso() };
+  }
+
+  function setNewPensionPlanContributionForm(planId: string, form: UpdatePensionPlanContributionInput) {
+    setNewPensionPlanContributionForms((prev) => ({ ...prev, [planId]: form }));
+  }
+
+  async function handleCreatePensionPlanContribution(planId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatePensionPlanContributionError(null);
+    setCreatingPensionPlanContributionForPlanId(planId);
+    try {
+      const form = getNewPensionPlanContributionForm(planId);
+      await createPensionPlanContribution({ pensionPlanId: planId, amount: form.amount ?? '', date: form.date ?? todayIso() });
+      setNewPensionPlanContributionForm(planId, { amount: '', date: todayIso() });
+      await reloadPensionPlanContributions();
+    } catch (err) {
+      setCreatePensionPlanContributionError(err instanceof ApiError ? err.message : 'No se ha podido añadir la aportación.');
+    } finally {
+      setCreatingPensionPlanContributionForPlanId(null);
+    }
+  }
+
+  function startEditPensionPlanContribution(contribution: PensionPlanContribution) {
+    setEditPensionPlanContributionError(null);
+    setEditingPensionPlanContributionId(contribution.id);
+    setEditingPensionPlanContributionForm(pensionPlanContributionFormFromEntity(contribution));
+  }
+
+  async function handleEditPensionPlanContribution(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingPensionPlanContributionId) return;
+    setEditPensionPlanContributionError(null);
+    setIsSavingPensionPlanContribution(true);
+    try {
+      await updatePensionPlanContribution(editingPensionPlanContributionId, editingPensionPlanContributionForm);
+      setEditingPensionPlanContributionId(null);
+      await reloadPensionPlanContributions();
+    } catch (err) {
+      setEditPensionPlanContributionError(err instanceof ApiError ? err.message : 'No se ha podido guardar la aportación.');
+    } finally {
+      setIsSavingPensionPlanContribution(false);
+    }
+  }
+
+  async function handleDeletePensionPlanContribution(id: string) {
+    setPensionPlanContributionActionError(null);
+    setPendingDeletePensionPlanContributionId(id);
+    try {
+      await deletePensionPlanContribution(id);
+      await reloadPensionPlanContributions();
+    } catch (err) {
+      setPensionPlanContributionActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la aportación.');
+    } finally {
+      setPendingDeletePensionPlanContributionId(null);
+    }
+  }
+
+  function getNewPensionPlanValuationForm(planId: string): UpdatePensionPlanValuationInput {
+    return newPensionPlanValuationForms[planId] ?? { value: '', date: todayIso() };
+  }
+
+  function setNewPensionPlanValuationForm(planId: string, form: UpdatePensionPlanValuationInput) {
+    setNewPensionPlanValuationForms((prev) => ({ ...prev, [planId]: form }));
+  }
+
+  async function handleCreatePensionPlanValuation(planId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatePensionPlanValuationError(null);
+    setCreatingPensionPlanValuationForPlanId(planId);
+    try {
+      const form = getNewPensionPlanValuationForm(planId);
+      await createPensionPlanValuation({ pensionPlanId: planId, value: form.value ?? '', date: form.date ?? todayIso() });
+      setNewPensionPlanValuationForm(planId, { value: '', date: todayIso() });
+      await reloadPensionPlanValuations();
+    } catch (err) {
+      setCreatePensionPlanValuationError(err instanceof ApiError ? err.message : 'No se ha podido añadir la valoración.');
+    } finally {
+      setCreatingPensionPlanValuationForPlanId(null);
+    }
+  }
+
+  function startEditPensionPlanValuation(valuation: PensionPlanValuation) {
+    setEditPensionPlanValuationError(null);
+    setEditingPensionPlanValuationId(valuation.id);
+    setEditingPensionPlanValuationForm(pensionPlanValuationFormFromEntity(valuation));
+  }
+
+  async function handleEditPensionPlanValuation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingPensionPlanValuationId) return;
+    setEditPensionPlanValuationError(null);
+    setIsSavingPensionPlanValuation(true);
+    try {
+      await updatePensionPlanValuation(editingPensionPlanValuationId, editingPensionPlanValuationForm);
+      setEditingPensionPlanValuationId(null);
+      await reloadPensionPlanValuations();
+    } catch (err) {
+      setEditPensionPlanValuationError(err instanceof ApiError ? err.message : 'No se ha podido guardar la valoración.');
+    } finally {
+      setIsSavingPensionPlanValuation(false);
+    }
+  }
+
+  async function handleDeletePensionPlanValuation(id: string) {
+    setPensionPlanValuationActionError(null);
+    setPendingDeletePensionPlanValuationId(id);
+    try {
+      await deletePensionPlanValuation(id);
+      await reloadPensionPlanValuations();
+    } catch (err) {
+      setPensionPlanValuationActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la valoración.');
+    } finally {
+      setPendingDeletePensionPlanValuationId(null);
+    }
+  }
+
   if (isAuthLoading) {
     return (
       <main>
@@ -1522,7 +1853,10 @@ export function WealthPage() {
     cryptoPurchaseList !== null &&
     cryptoValuationList !== null &&
     vehicleList !== null &&
-    vehicleValuationList !== null;
+    vehicleValuationList !== null &&
+    pensionPlanList !== null &&
+    pensionPlanContributionList !== null &&
+    pensionPlanValuationList !== null;
 
   return (
     <main>
@@ -1538,7 +1872,8 @@ export function WealthPage() {
                 parseFloat(stocksTotal(stockList, purchases, valuations)) +
                 parseFloat(fundsTotal(fundList, fundPurchases, fundValuations)) +
                 parseFloat(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList)) +
-                parseFloat(vehiclesTotal(vehicleList, vehicleValuationList))
+                parseFloat(vehiclesTotal(vehicleList, vehicleValuationList)) +
+                parseFloat(pensionPlansTotal(pensionPlanList, pensionPlanValuationList))
               ).toFixed(2),
             )}
           </span>
@@ -1547,7 +1882,8 @@ export function WealthPage() {
             {formatCurrency(stocksTotal(stockList, purchases, valuations))} · Fondos Inversión:{' '}
             {formatCurrency(fundsTotal(fundList, fundPurchases, fundValuations))} · Cripto:{' '}
             {formatCurrency(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList))} · Vehículos:{' '}
-            {formatCurrency(vehiclesTotal(vehicleList, vehicleValuationList))}
+            {formatCurrency(vehiclesTotal(vehicleList, vehicleValuationList))} · Fondo Pensiones:{' '}
+            {formatCurrency(pensionPlansTotal(pensionPlanList, pensionPlanValuationList))}
           </p>
         </div>
       )}
@@ -3540,6 +3876,432 @@ export function WealthPage() {
           {createVehicleError && <p role="alert">{createVehicleError}</p>}
           <button type="submit" className="btn btn-primary" disabled={isCreatingVehicle}>
             {isCreatingVehicle ? 'Creando…' : 'Añadir vehículo'}
+          </button>
+        </form>
+      </details>
+
+      <details className="dashboard-section">
+        <summary>
+          <h2>👴 Fondo Pensiones</h2>
+        </summary>
+
+        {pensionPlansLoadError && <p role="alert">{pensionPlansLoadError}</p>}
+        {pensionPlanContributionsLoadError && <p role="alert">{pensionPlanContributionsLoadError}</p>}
+        {pensionPlanValuationsLoadError && <p role="alert">{pensionPlanValuationsLoadError}</p>}
+        {pensionPlanActionError && <p role="alert">{pensionPlanActionError}</p>}
+        {pensionPlanContributionActionError && <p role="alert">{pensionPlanContributionActionError}</p>}
+        {pensionPlanValuationActionError && <p role="alert">{pensionPlanValuationActionError}</p>}
+
+        {pensionPlanList && pensionPlanList.length === 0 && <p>Todavía no tienes ningún plan de pensiones.</p>}
+
+        {pensionPlanList && pensionPlanList.length > 0 && (
+          <ul id="wealth-pension-plan-list" aria-label="Tus planes de pensiones">
+            {pensionPlanList.map((plan) => {
+              const isEditingPlan = editingPensionPlanId === plan.id;
+              const planContributions = (pensionPlanContributionList ?? []).filter((c) => c.pensionPlanId === plan.id);
+              const planValuations = (pensionPlanValuationList ?? []).filter((v) => v.pensionPlanId === plan.id);
+              const lastValuation = planValuations[0] ?? null; // ya viene ordenado por fecha descendente
+              const newContributionForm = getNewPensionPlanContributionForm(plan.id);
+              const newValuationForm = getNewPensionPlanValuationForm(plan.id);
+              const contributed = totalContributions(planContributions);
+              const gainLoss =
+                lastValuation && planContributions.length > 0
+                  ? gainLossPercent(lastValuation.value, contributed)
+                  : null;
+
+              if (isEditingPlan) {
+                return (
+                  <li className="card elev-sm" key={plan.id}>
+                    <form onSubmit={handleEditPensionPlan} aria-label={`Editar plan: ${pensionPlanLabel(plan)}`} noValidate>
+                      <div className="field">
+                        <label htmlFor={`pension-plan-${plan.id}-managingEntity`}>Entidad Gestora</label>
+                        <input
+                          id={`pension-plan-${plan.id}-managingEntity`}
+                          className="input"
+                          value={editingPensionPlanForm.managingEntity}
+                          onChange={(e) => setEditingPensionPlanForm({ ...editingPensionPlanForm, managingEntity: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`pension-plan-${plan.id}-plan`}>Plan</label>
+                        <input
+                          id={`pension-plan-${plan.id}-plan`}
+                          className="input"
+                          value={editingPensionPlanForm.plan}
+                          onChange={(e) => setEditingPensionPlanForm({ ...editingPensionPlanForm, plan: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {editPensionPlanError && <p role="alert">{editPensionPlanError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={isSavingPensionPlan}>
+                        {isSavingPensionPlan ? 'Guardando…' : 'Guardar'}
+                      </button>{' '}
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={isSavingPensionPlan}
+                        onClick={() => setEditingPensionPlanId(null)}
+                      >
+                        Cancelar
+                      </button>
+                    </form>
+                  </li>
+                );
+              }
+
+              return (
+                <li className="card elev-sm" key={plan.id}>
+                  <div className="wealth-item-header">
+                    <span className="card-title">
+                      {pensionPlanLabel(plan)}
+                      {gainLoss !== null && (
+                        <span style={{ color: gainLoss >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                          {' '}
+                          {gainLoss >= 0 ? '+' : ''}
+                          {gainLoss.toFixed(2)}%
+                        </span>
+                      )}
+                    </span>
+                    <span className="card-amount">{lastValuation ? formatCurrency(lastValuation.value) : 'Sin valoración'}</span>
+                  </div>
+                  <p className="card-meta">
+                    Total aportado: {formatCurrency(contributed)}
+                    {lastValuation && (
+                      <>
+                        {' '}
+                        · Última fecha: {lastValuation.date}
+                      </>
+                    )}
+                  </p>
+                  <div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      aria-label={`Editar plan: ${pensionPlanLabel(plan)}`}
+                      onClick={() => startEditPensionPlan(plan)}
+                    >
+                      Editar
+                    </button>{' '}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      aria-label={`Eliminar plan: ${pensionPlanLabel(plan)}`}
+                      disabled={pendingDeletePensionPlanId === plan.id}
+                      onClick={() => void handleDeletePensionPlan(plan.id)}
+                    >
+                      {pendingDeletePensionPlanId === plan.id ? 'Eliminando…' : 'Eliminar'}
+                    </button>
+                  </div>
+
+                  <details>
+                    <summary>Historial de aportaciones ({planContributions.length})</summary>
+
+                    {planContributions.length === 0 && <p>Todavía no hay ninguna aportación registrada en este plan.</p>}
+
+                    {planContributions.length > 0 && (
+                      <ul aria-label={`Historial de aportaciones de ${pensionPlanLabel(plan)}`}>
+                        {planContributions.map((contribution) => {
+                          const isEditingContribution = editingPensionPlanContributionId === contribution.id;
+                          const contributionLabel = `${contribution.date} · ${contribution.amount}€`;
+
+                          if (isEditingContribution) {
+                            return (
+                              <li key={contribution.id}>
+                                <form
+                                  onSubmit={handleEditPensionPlanContribution}
+                                  aria-label={`Editar aportación de ${pensionPlanLabel(plan)}: ${contributionLabel}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`pension-plan-contribution-${contribution.id}-amount`}>Importe</label>
+                                    <input
+                                      id={`pension-plan-contribution-${contribution.id}-amount`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingPensionPlanContributionForm.amount}
+                                      onChange={(e) =>
+                                        setEditingPensionPlanContributionForm({
+                                          ...editingPensionPlanContributionForm,
+                                          amount: e.target.value,
+                                        })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`pension-plan-contribution-${contribution.id}-date`}>Fecha de aportación</label>
+                                    <input
+                                      id={`pension-plan-contribution-${contribution.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingPensionPlanContributionForm.date}
+                                      onChange={(e) =>
+                                        setEditingPensionPlanContributionForm({
+                                          ...editingPensionPlanContributionForm,
+                                          date: e.target.value,
+                                        })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  {editPensionPlanContributionError && <p role="alert">{editPensionPlanContributionError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingPensionPlanContribution}>
+                                    {isSavingPensionPlanContribution ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingPensionPlanContribution}
+                                    onClick={() => setEditingPensionPlanContributionId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={contribution.id}>
+                              <span>{contribution.date}</span> <span>{formatCurrency(contribution.amount)}</span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar aportación de ${pensionPlanLabel(plan)}: ${contributionLabel}`}
+                                onClick={() => startEditPensionPlanContribution(contribution)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar aportación de ${pensionPlanLabel(plan)}: ${contributionLabel}`}
+                                disabled={pendingDeletePensionPlanContributionId === contribution.id}
+                                onClick={() => void handleDeletePensionPlanContribution(contribution.id)}
+                              >
+                                {pendingDeletePensionPlanContributionId === contribution.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreatePensionPlanContribution(plan.id, e)}
+                      aria-label={`Añadir aportación: ${pensionPlanLabel(plan)}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-pension-plan-contribution-${plan.id}-amount`}>Importe</label>
+                        <input
+                          id={`new-pension-plan-contribution-${plan.id}-amount`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newContributionForm.amount}
+                          onChange={(e) =>
+                            setNewPensionPlanContributionForm(plan.id, { ...newContributionForm, amount: e.target.value })
+                          }
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-pension-plan-contribution-${plan.id}-date`}>Fecha de aportación</label>
+                        <input
+                          id={`new-pension-plan-contribution-${plan.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newContributionForm.date}
+                          onChange={(e) => setNewPensionPlanContributionForm(plan.id, { ...newContributionForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {createPensionPlanContributionError && <p role="alert">{createPensionPlanContributionError}</p>}
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={creatingPensionPlanContributionForPlanId === plan.id}
+                      >
+                        {creatingPensionPlanContributionForPlanId === plan.id ? 'Añadiendo…' : 'Añadir aportación'}
+                      </button>
+                    </form>
+                  </details>
+
+                  <details>
+                    <summary>Historial de valoraciones ({planValuations.length})</summary>
+
+                    {planValuations.length === 0 && <p>Todavía no hay ninguna valoración registrada en este plan.</p>}
+
+                    {planValuations.length > 0 && (
+                      <ul aria-label={`Historial de valoraciones de ${pensionPlanLabel(plan)}`}>
+                        {planValuations.map((valuation) => {
+                          const isEditingValuation = editingPensionPlanValuationId === valuation.id;
+
+                          if (isEditingValuation) {
+                            return (
+                              <li key={valuation.id}>
+                                <form
+                                  onSubmit={handleEditPensionPlanValuation}
+                                  aria-label={`Editar valoración de ${pensionPlanLabel(plan)} del ${valuation.date}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`pension-plan-valuation-${valuation.id}-value`}>Valor total actual</label>
+                                    <input
+                                      id={`pension-plan-valuation-${valuation.id}-value`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingPensionPlanValuationForm.value}
+                                      onChange={(e) =>
+                                        setEditingPensionPlanValuationForm({ ...editingPensionPlanValuationForm, value: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`pension-plan-valuation-${valuation.id}-date`}>Fecha</label>
+                                    <input
+                                      id={`pension-plan-valuation-${valuation.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingPensionPlanValuationForm.date}
+                                      onChange={(e) =>
+                                        setEditingPensionPlanValuationForm({ ...editingPensionPlanValuationForm, date: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  {editPensionPlanValuationError && <p role="alert">{editPensionPlanValuationError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingPensionPlanValuation}>
+                                    {isSavingPensionPlanValuation ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingPensionPlanValuation}
+                                    onClick={() => setEditingPensionPlanValuationId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={valuation.id}>
+                              <span>{valuation.date}</span> <span>{formatCurrency(valuation.value)}</span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar valoración de ${pensionPlanLabel(plan)} del ${valuation.date}`}
+                                onClick={() => startEditPensionPlanValuation(valuation)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar valoración de ${pensionPlanLabel(plan)} del ${valuation.date}`}
+                                disabled={pendingDeletePensionPlanValuationId === valuation.id}
+                                onClick={() => void handleDeletePensionPlanValuation(valuation.id)}
+                              >
+                                {pendingDeletePensionPlanValuationId === valuation.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreatePensionPlanValuation(plan.id, e)}
+                      aria-label={`Añadir valoración: ${pensionPlanLabel(plan)}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-pension-plan-valuation-${plan.id}-value`}>Valor total actual</label>
+                        <input
+                          id={`new-pension-plan-valuation-${plan.id}-value`}
+                          className="input"
+                          inputMode="decimal"
+                          placeholder="p. ej. 1950.00"
+                          value={newValuationForm.value}
+                          onChange={(e) => setNewPensionPlanValuationForm(plan.id, { ...newValuationForm, value: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-pension-plan-valuation-${plan.id}-date`}>Fecha</label>
+                        <input
+                          id={`new-pension-plan-valuation-${plan.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newValuationForm.date}
+                          onChange={(e) => setNewPensionPlanValuationForm(plan.id, { ...newValuationForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {createPensionPlanValuationError && <p role="alert">{createPensionPlanValuationError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingPensionPlanValuationForPlanId === plan.id}>
+                        {creatingPensionPlanValuationForPlanId === plan.id ? 'Añadiendo…' : 'Añadir valoración'}
+                      </button>
+                    </form>
+                  </details>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <h3>Añadir plan</h3>
+        <form onSubmit={handleCreatePensionPlan} aria-label="Añadir plan de pensiones" noValidate>
+          <div className="field">
+            <label htmlFor="new-pension-plan-managingEntity">Entidad Gestora</label>
+            <input
+              id="new-pension-plan-managingEntity"
+              className="input"
+              value={newPensionPlanForm.managingEntity}
+              onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, managingEntity: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-pension-plan-plan">Plan</label>
+            <input
+              id="new-pension-plan-plan"
+              className="input"
+              value={newPensionPlanForm.plan}
+              onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, plan: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-pension-plan-amount">Importe</label>
+            <input
+              id="new-pension-plan-amount"
+              className="input"
+              inputMode="decimal"
+              value={newPensionPlanForm.amount}
+              onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, amount: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-pension-plan-date">Fecha de aportación</label>
+            <input
+              id="new-pension-plan-date"
+              type="date"
+              className="input"
+              value={newPensionPlanForm.date}
+              onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, date: e.target.value })}
+              required
+            />
+          </div>
+          {createPensionPlanError && <p role="alert">{createPensionPlanError}</p>}
+          <button type="submit" className="btn btn-primary" disabled={isCreatingPensionPlan}>
+            {isCreatingPensionPlan ? 'Creando…' : 'Añadir plan'}
           </button>
         </form>
       </details>
