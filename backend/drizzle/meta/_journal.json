@@ -117,10 +117,15 @@
     {
       "idx": 16,
       "version": "7",
-      "when": 1788599924466,
-      "tag": "0016_add_bank_accounts_alias",
       "when": 1788594194355,
       "tag": "0016_add_funds_purchases_valuations",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788603600221,
+      "tag": "0017_add_bank_accounts_alias",
       "breakpoints": true
     }
   ]
