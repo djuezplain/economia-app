@@ -113,6 +113,13 @@
       "when": 1788554313928,
       "tag": "0015_widen_stock_purchases_precision",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788599924466,
+      "tag": "0016_add_bank_accounts_alias",
+      "breakpoints": true
     }
   ]
 }

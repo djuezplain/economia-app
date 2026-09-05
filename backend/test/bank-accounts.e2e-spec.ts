@@ -226,4 +226,84 @@ describe('Cuentas bancarias (e2e) — spec 019 H1', () => {
       expect(stillThere).toBeDefined();
     });
   });
+
+  describe('Alias (spec 021 H1)', () => {
+    it('crea una cuenta con alias', async () => {
+      const user = await createUser('alias-crear@example.com');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .post('/bank-accounts')
+        .set('Authorization', auth(token))
+        .send({ bank: 'BBVA', accountNumber: 'ES1234', alias: 'Nómina' })
+        .expect(201);
+
+      expect(res.body.alias).toBe('Nómina');
+    });
+
+    it('crea una cuenta sin alias → null', async () => {
+      const user = await createUser('alias-sin@example.com');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .post('/bank-accounts')
+        .set('Authorization', auth(token))
+        .send({ bank: 'BBVA', accountNumber: 'ES1234' })
+        .expect(201);
+
+      expect(res.body.alias).toBeNull();
+    });
+
+    it('H1 criterio 2: edita para añadir y luego quitar el alias', async () => {
+      const user = await createUser('alias-editar@example.com');
+      const token = await login(user.email);
+      const [account] = await db.insert(bankAccounts).values({ userId: user.id, bank: 'BBVA', accountNumber: 'ES1234' }).returning();
+
+      const withAlias = await request(app.getHttpServer())
+        .patch(`/bank-accounts/${account.id}`)
+        .set('Authorization', auth(token))
+        .send({ alias: 'Ahorro emergencia' })
+        .expect(200);
+      expect(withAlias.body.alias).toBe('Ahorro emergencia');
+
+      const withoutAlias = await request(app.getHttpServer())
+        .patch(`/bank-accounts/${account.id}`)
+        .set('Authorization', auth(token))
+        .send({ alias: '' })
+        .expect(200);
+      expect(withoutAlias.body.alias).toBeNull();
+    });
+
+    it('H1 criterio 4: el alias no participa en la unicidad — mismo alias en dos cuentas distintas no choca', async () => {
+      const user = await createUser('alias-no-unico@example.com');
+      const token = await login(user.email);
+      await request(app.getHttpServer())
+        .post('/bank-accounts')
+        .set('Authorization', auth(token))
+        .send({ bank: 'BBVA', accountNumber: 'ES1234', alias: 'Ahorro' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/bank-accounts')
+        .set('Authorization', auth(token))
+        .send({ bank: 'Santander', accountNumber: 'ES9999', alias: 'Ahorro' })
+        .expect(201);
+    });
+
+    it('H1 criterio 4: misma cuenta con alias distinto sigue dando 409', async () => {
+      const user = await createUser('alias-sigue-409@example.com');
+      const token = await login(user.email);
+      await request(app.getHttpServer())
+        .post('/bank-accounts')
+        .set('Authorization', auth(token))
+        .send({ bank: 'BBVA', accountNumber: 'ES1234', alias: 'Nómina' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/bank-accounts')
+        .set('Authorization', auth(token))
+        .send({ bank: 'BBVA', accountNumber: 'ES1234', alias: 'Otro alias' })
+        .expect(409);
+    });
+  });
 });

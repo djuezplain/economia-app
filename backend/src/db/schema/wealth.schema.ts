@@ -20,6 +20,9 @@ export const bankAccounts = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     bank: varchar('bank', { length: 100 }).notNull(),
     accountNumber: varchar('account_number', { length: 50 }).notNull(),
+    // H1 (spec 021): apodo opcional para identificar la cuenta sin leer banco +
+    // número de cuenta — no participa en la unicidad de `assertNotDuplicate()`.
+    alias: varchar('alias', { length: 100 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -35,7 +35,7 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-const EMPTY_ACCOUNT_FORM: BankAccountInput = { bank: '', accountNumber: '' };
+const EMPTY_ACCOUNT_FORM: BankAccountInput = { bank: '', accountNumber: '', alias: '' };
 const EMPTY_BALANCE_FORM: UpdateBankAccountBalanceInput = { euros: '', date: todayIso() };
 const EMPTY_STOCK_FORM: StockInput = { custodyBank: '', stock: '' };
 const EMPTY_PURCHASE_FORM: UpdateStockPurchaseInput = { shareCount: '', purchasePrice: '', date: todayIso() };
@@ -51,7 +51,13 @@ function emptyNewStockForm(): NewStockForm {
 }
 
 function accountFormFromEntity(account: BankAccount): BankAccountInput {
-  return { bank: account.bank, accountNumber: account.accountNumber };
+  return { bank: account.bank, accountNumber: account.accountNumber, alias: account.alias ?? '' };
+}
+
+/** Espejo accesible del alias (spec 021): usado en textos y `aria-label` para
+ *  no perder el contexto banco + número de cuenta cuando la cuenta ya tiene alias. */
+function accountLabel(account: BankAccount): string {
+  return account.alias ? `${account.alias} (${account.bank} · ${account.accountNumber})` : `${account.bank} · ${account.accountNumber}`;
 }
 
 function balanceFormFromEntity(balance: BankAccountBalance): UpdateBankAccountBalanceInput {
@@ -673,7 +679,7 @@ export function WealthPage() {
               if (isEditingAccount) {
                 return (
                   <li className="card elev-sm" key={account.id}>
-                    <form onSubmit={handleEditAccount} aria-label={`Editar cuenta: ${account.bank}`} noValidate>
+                    <form onSubmit={handleEditAccount} aria-label={`Editar cuenta: ${accountLabel(account)}`} noValidate>
                       <div className="field">
                         <label htmlFor={`account-${account.id}-bank`}>Banco</label>
                         <input
@@ -692,6 +698,16 @@ export function WealthPage() {
                           value={editingAccountForm.accountNumber}
                           onChange={(e) => setEditingAccountForm({ ...editingAccountForm, accountNumber: e.target.value })}
                           required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`account-${account.id}-alias`}>Alias</label>
+                        <input
+                          id={`account-${account.id}-alias`}
+                          className="input"
+                          placeholder="p. ej. Nómina"
+                          value={editingAccountForm.alias ?? ''}
+                          onChange={(e) => setEditingAccountForm({ ...editingAccountForm, alias: e.target.value })}
                         />
                       </div>
                       {editAccountError && <p role="alert">{editAccountError}</p>}
@@ -714,11 +730,14 @@ export function WealthPage() {
               return (
                 <li className="card elev-sm" key={account.id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span className="card-title">
-                      {account.bank} · {account.accountNumber}
-                    </span>
+                    <span className="card-title">{account.alias || `${account.bank} · ${account.accountNumber}`}</span>
                     <span className="card-amount">{lastBalance ? formatCurrency(lastBalance.euros) : 'Sin saldo'}</span>
                   </div>
+                  {account.alias && (
+                    <p className="card-meta">
+                      {account.bank} · {account.accountNumber}
+                    </p>
+                  )}
                   {lastBalance && <p className="card-meta">Última fecha: {lastBalance.date}</p>}
                   <div>
                     {/* Nombre accesible propio (spec 019): con el historial de saldos anidado, "Editar"/"Eliminar"
@@ -727,7 +746,7 @@ export function WealthPage() {
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      aria-label={`Editar cuenta: ${account.bank} · ${account.accountNumber}`}
+                      aria-label={`Editar cuenta: ${accountLabel(account)}`}
                       onClick={() => startEditAccount(account)}
                     >
                       Editar
@@ -735,7 +754,7 @@ export function WealthPage() {
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      aria-label={`Eliminar cuenta: ${account.bank} · ${account.accountNumber}`}
+                      aria-label={`Eliminar cuenta: ${accountLabel(account)}`}
                       disabled={pendingDeleteAccountId === account.id}
                       onClick={() => void handleDeleteAccount(account.id)}
                     >
@@ -749,7 +768,7 @@ export function WealthPage() {
                     {accountBalances.length === 0 && <p>Todavía no hay ningún saldo registrado en esta cuenta.</p>}
 
                     {accountBalances.length > 0 && (
-                      <ul aria-label={`Historial de ${account.bank} · ${account.accountNumber}`}>
+                      <ul aria-label={`Historial de ${accountLabel(account)}`}>
                         {accountBalances.map((balance) => {
                           const isEditingBalance = editingBalanceId === balance.id;
 
@@ -824,7 +843,7 @@ export function WealthPage() {
 
                     <form
                       onSubmit={(e) => void handleCreateBalance(account.id, e)}
-                      aria-label={`Añadir saldo: ${account.bank}`}
+                      aria-label={`Añadir saldo: ${accountLabel(account)}`}
                       noValidate
                     >
                       <div className="field">
@@ -882,6 +901,16 @@ export function WealthPage() {
               value={newAccountForm.accountNumber}
               onChange={(e) => setNewAccountForm({ ...newAccountForm, accountNumber: e.target.value })}
               required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-account-alias">Alias</label>
+            <input
+              id="new-account-alias"
+              className="input"
+              placeholder="p. ej. Nómina"
+              value={newAccountForm.alias ?? ''}
+              onChange={(e) => setNewAccountForm({ ...newAccountForm, alias: e.target.value })}
             />
           </div>
           {createAccountError && <p role="alert">{createAccountError}</p>}
