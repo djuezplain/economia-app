@@ -97,8 +97,34 @@ describe('Historial de valoraciones de fondos (e2e) — spec 021 H3', () => {
         .expect(201);
 
       expect(res.body.fundId).toBe(fund.id);
-      expect(res.body.pricePerShare).toBe('35.00');
+      expect(res.body.pricePerShare).toBe('35.00000000');
       expect(res.body.date).toBe('2026-09-04');
+    });
+
+    it('admite hasta 8 decimales (a diferencia de las valoraciones de acciones, que se quedan en 2)', async () => {
+      const user = await createUser('ocho-decimales@example.com');
+      const fund = await createFund(user.id, 'MyInvestor', 'Fondo indexado fraccionario');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .post('/fund-valuations')
+        .set('Authorization', auth(token))
+        .send({ fundId: fund.id, pricePerShare: '28123.87654321', date: '2026-09-04' })
+        .expect(201);
+
+      expect(res.body.pricePerShare).toBe('28123.87654321');
+    });
+
+    it('más de 8 decimales → 400', async () => {
+      const user = await createUser('nueve-decimales@example.com');
+      const fund = await createFund(user.id, 'MyInvestor', 'Vanguard Global Stock Index');
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/fund-valuations')
+        .set('Authorization', auth(token))
+        .send({ fundId: fund.id, pricePerShare: '35.123456789', date: '2026-09-04' })
+        .expect(400);
     });
 
     it('admite varias valoraciones en fechas distintas', async () => {
@@ -162,7 +188,7 @@ describe('Historial de valoraciones de fondos (e2e) — spec 021 H3', () => {
         .send({ pricePerShare: '35.00', date: '2026-09-01' })
         .expect(200);
 
-      expect(res.body.pricePerShare).toBe('35.00');
+      expect(res.body.pricePerShare).toBe('35.00000000');
       expect(res.body.date).toBe('2026-09-01');
     });
 
