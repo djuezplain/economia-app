@@ -1071,12 +1071,8 @@ export function WealthPage() {
 
               return (
                 <li className="card elev-sm" key={account.id}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span className="card-title">{account.alias || `${account.bank} · ${account.accountNumber}`}</span>
                   <div className="wealth-item-header">
-                    <span className="card-title">
-                      {account.bank} · {account.accountNumber}
-                    </span>
+                    <span className="card-title">{account.alias || `${account.bank} · ${account.accountNumber}`}</span>
                     <span className="card-amount">{lastBalance ? formatCurrency(lastBalance.euros) : 'Sin saldo'}</span>
                   </div>
                   {account.alias && (
