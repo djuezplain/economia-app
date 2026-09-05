@@ -60,6 +60,15 @@ import {
   updateCryptoValuation,
 } from '../api/crypto-valuations';
 import type { CryptoValuation, UpdateCryptoValuationInput } from '../api/crypto-valuations';
+import { createVehicle, deleteVehicle, listVehicles, updateVehicle } from '../api/vehicles';
+import type { Vehicle, VehicleInput } from '../api/vehicles';
+import {
+  createVehicleValuation,
+  deleteVehicleValuation,
+  listVehicleValuations,
+  updateVehicleValuation,
+} from '../api/vehicle-valuations';
+import type { UpdateVehicleValuationInput, VehicleValuation } from '../api/vehicle-valuations';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 
@@ -78,6 +87,8 @@ const EMPTY_FUND_VALUATION_FORM: UpdateFundValuationInput = { pricePerShare: '',
 const EMPTY_CRYPTO_FORM: CryptoInput = { exchange: '', crypto: '' };
 const EMPTY_CRYPTO_PURCHASE_FORM: UpdateCryptoPurchaseInput = { quantity: '', purchasePrice: '', date: todayIso() };
 const EMPTY_CRYPTO_VALUATION_FORM: UpdateCryptoValuationInput = { pricePerUnit: '', date: todayIso() };
+const EMPTY_VEHICLE_FORM: VehicleInput = { brandModel: '', plate: '', purchasePrice: '', purchaseDate: todayIso() };
+const EMPTY_VEHICLE_VALUATION_FORM: UpdateVehicleValuationInput = { value: '', date: todayIso() };
 
 /** Formulario "Añadir acción" (nivel superior): crea la acción y su primera
  *  compra en un solo paso (spec 020, revisión §3.bis) — dos llamadas
@@ -153,6 +164,19 @@ function cryptoPurchaseFormFromEntity(purchase: CryptoPurchase): UpdateCryptoPur
 
 function cryptoValuationFormFromEntity(valuation: CryptoValuation): UpdateCryptoValuationInput {
   return { pricePerUnit: valuation.pricePerUnit, date: valuation.date };
+}
+
+function vehicleFormFromEntity(vehicle: Vehicle): VehicleInput {
+  return { brandModel: vehicle.brandModel, plate: vehicle.plate, purchasePrice: vehicle.purchasePrice, purchaseDate: vehicle.purchaseDate };
+}
+
+/** Espejo accesible del vehículo (spec 023): mismo criterio que `accountLabel` (spec 021). */
+function vehicleLabel(vehicle: Vehicle): string {
+  return `${vehicle.brandModel} · ${vehicle.plate}`;
+}
+
+function vehicleValuationFormFromEntity(valuation: VehicleValuation): UpdateVehicleValuationInput {
+  return { value: valuation.value, date: valuation.date };
 }
 
 /** H2 criterio 3 (spec 020): calculado, nunca guardado — ver `wealth.calculations.ts` en el backend. */
@@ -258,10 +282,23 @@ function cryptosTotal(cryptos: Crypto[], purchases: CryptoPurchase[], valuations
     .toFixed(2);
 }
 
-/** Las 3 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3, spec 018) —
- *  "Fondos Inversión" (spec 021) y "Cripto" (spec 022) pasan a tener funcionalidad propia. */
+/** H3 (spec 023): quinto sumando de la tarjeta "Total" — mismo criterio que `bankAccountsTotal`
+ *  (último valor conocido de cada posición, o 0 si no tiene ninguna valoración todavía), sin
+ *  multiplicar por ninguna cantidad (a diferencia de `stocksTotal`/`fundsTotal`/`cryptosTotal`):
+ *  un vehículo no tiene "cantidad". */
+function vehiclesTotal(vehicles: Vehicle[], valuations: VehicleValuation[]): string {
+  return vehicles
+    .reduce((sum, vehicle) => {
+      const lastValuation = valuations.find((v) => v.vehicleId === vehicle.id); // ya ordenado por fecha descendente
+      return sum + (lastValuation ? parseFloat(lastValuation.value) : 0);
+    }, 0)
+    .toFixed(2);
+}
+
+/** Las 2 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3, spec 018) —
+ *  "Fondos Inversión" (spec 021), "Cripto" (spec 022) y "Vehículos" (spec 023) pasan a
+ *  tener funcionalidad propia. */
 const PLACEHOLDER_SECTIONS = [
-  { icon: '🚗', label: 'Vehículos' },
   { icon: '👴', label: 'Fondo Pensiones' },
   { icon: '💵', label: 'Efectivo' },
 ];
@@ -412,6 +449,31 @@ export function WealthPage() {
   const [pendingDeleteCryptoValuationId, setPendingDeleteCryptoValuationId] = useState<string | null>(null);
   const [cryptoValuationActionError, setCryptoValuationActionError] = useState<string | null>(null);
 
+  const [vehicleList, setVehicleList] = useState<Vehicle[] | null>(null);
+  const [vehiclesLoadError, setVehiclesLoadError] = useState<string | null>(null);
+  const [newVehicleForm, setNewVehicleForm] = useState<VehicleInput>(EMPTY_VEHICLE_FORM);
+  const [createVehicleError, setCreateVehicleError] = useState<string | null>(null);
+  const [isCreatingVehicle, setIsCreatingVehicle] = useState(false);
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
+  const [editingVehicleForm, setEditingVehicleForm] = useState<VehicleInput>(EMPTY_VEHICLE_FORM);
+  const [editVehicleError, setEditVehicleError] = useState<string | null>(null);
+  const [isSavingVehicle, setIsSavingVehicle] = useState(false);
+  const [pendingDeleteVehicleId, setPendingDeleteVehicleId] = useState<string | null>(null);
+  const [vehicleActionError, setVehicleActionError] = useState<string | null>(null);
+
+  const [vehicleValuationList, setVehicleValuationList] = useState<VehicleValuation[] | null>(null);
+  const [vehicleValuationsLoadError, setVehicleValuationsLoadError] = useState<string | null>(null);
+  const [newVehicleValuationForms, setNewVehicleValuationForms] = useState<Record<string, UpdateVehicleValuationInput>>({});
+  const [createVehicleValuationError, setCreateVehicleValuationError] = useState<string | null>(null);
+  const [creatingVehicleValuationForVehicleId, setCreatingVehicleValuationForVehicleId] = useState<string | null>(null);
+  const [editingVehicleValuationId, setEditingVehicleValuationId] = useState<string | null>(null);
+  const [editingVehicleValuationForm, setEditingVehicleValuationForm] =
+    useState<UpdateVehicleValuationInput>(EMPTY_VEHICLE_VALUATION_FORM);
+  const [editVehicleValuationError, setEditVehicleValuationError] = useState<string | null>(null);
+  const [isSavingVehicleValuation, setIsSavingVehicleValuation] = useState(false);
+  const [pendingDeleteVehicleValuationId, setPendingDeleteVehicleValuationId] = useState<string | null>(null);
+  const [vehicleValuationActionError, setVehicleValuationActionError] = useState<string | null>(null);
+
   async function reloadAccounts() {
     setAccounts(await listBankAccounts());
   }
@@ -454,6 +516,14 @@ export function WealthPage() {
 
   async function reloadCryptoValuations() {
     setCryptoValuationList(await listCryptoValuations());
+  }
+
+  async function reloadVehicles() {
+    setVehicleList(await listVehicles());
+  }
+
+  async function reloadVehicleValuations() {
+    setVehicleValuationList(await listVehicleValuations());
   }
 
   useEffect(() => {
@@ -616,6 +686,37 @@ export function WealthPage() {
       } catch (err) {
         if (!cancelled)
           setCryptoValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadVehicles();
+      } catch (err) {
+        if (!cancelled) setVehiclesLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar los vehículos.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadVehicleValuations();
+      } catch (err) {
+        if (!cancelled)
+          setVehicleValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
       }
     })();
     return () => {
@@ -1269,6 +1370,115 @@ export function WealthPage() {
     }
   }
 
+  async function handleCreateVehicle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateVehicleError(null);
+    setIsCreatingVehicle(true);
+    try {
+      await createVehicle(newVehicleForm);
+      setNewVehicleForm(EMPTY_VEHICLE_FORM);
+      await reloadVehicles();
+    } catch (err) {
+      setCreateVehicleError(err instanceof ApiError ? err.message : 'No se ha podido crear el vehículo.');
+    } finally {
+      setIsCreatingVehicle(false);
+    }
+  }
+
+  function startEditVehicle(vehicle: Vehicle) {
+    setEditVehicleError(null);
+    setEditingVehicleId(vehicle.id);
+    setEditingVehicleForm(vehicleFormFromEntity(vehicle));
+  }
+
+  async function handleEditVehicle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingVehicleId) return;
+    setEditVehicleError(null);
+    setIsSavingVehicle(true);
+    try {
+      await updateVehicle(editingVehicleId, editingVehicleForm);
+      setEditingVehicleId(null);
+      await reloadVehicles();
+    } catch (err) {
+      setEditVehicleError(err instanceof ApiError ? err.message : 'No se ha podido guardar el vehículo.');
+    } finally {
+      setIsSavingVehicle(false);
+    }
+  }
+
+  async function handleDeleteVehicle(id: string) {
+    setVehicleActionError(null);
+    setPendingDeleteVehicleId(id);
+    try {
+      await deleteVehicle(id);
+      await Promise.all([reloadVehicles(), reloadVehicleValuations()]);
+    } catch (err) {
+      setVehicleActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar el vehículo.');
+    } finally {
+      setPendingDeleteVehicleId(null);
+    }
+  }
+
+  function getNewVehicleValuationForm(vehicleId: string): UpdateVehicleValuationInput {
+    return newVehicleValuationForms[vehicleId] ?? { value: '', date: todayIso() };
+  }
+
+  function setNewVehicleValuationForm(vehicleId: string, form: UpdateVehicleValuationInput) {
+    setNewVehicleValuationForms((prev) => ({ ...prev, [vehicleId]: form }));
+  }
+
+  async function handleCreateVehicleValuation(vehicleId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateVehicleValuationError(null);
+    setCreatingVehicleValuationForVehicleId(vehicleId);
+    try {
+      const form = getNewVehicleValuationForm(vehicleId);
+      await createVehicleValuation({ vehicleId, value: form.value ?? '', date: form.date ?? todayIso() });
+      setNewVehicleValuationForm(vehicleId, { value: '', date: todayIso() });
+      await reloadVehicleValuations();
+    } catch (err) {
+      setCreateVehicleValuationError(err instanceof ApiError ? err.message : 'No se ha podido añadir la valoración.');
+    } finally {
+      setCreatingVehicleValuationForVehicleId(null);
+    }
+  }
+
+  function startEditVehicleValuation(valuation: VehicleValuation) {
+    setEditVehicleValuationError(null);
+    setEditingVehicleValuationId(valuation.id);
+    setEditingVehicleValuationForm(vehicleValuationFormFromEntity(valuation));
+  }
+
+  async function handleEditVehicleValuation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingVehicleValuationId) return;
+    setEditVehicleValuationError(null);
+    setIsSavingVehicleValuation(true);
+    try {
+      await updateVehicleValuation(editingVehicleValuationId, editingVehicleValuationForm);
+      setEditingVehicleValuationId(null);
+      await reloadVehicleValuations();
+    } catch (err) {
+      setEditVehicleValuationError(err instanceof ApiError ? err.message : 'No se ha podido guardar la valoración.');
+    } finally {
+      setIsSavingVehicleValuation(false);
+    }
+  }
+
+  async function handleDeleteVehicleValuation(id: string) {
+    setVehicleValuationActionError(null);
+    setPendingDeleteVehicleValuationId(id);
+    try {
+      await deleteVehicleValuation(id);
+      await reloadVehicleValuations();
+    } catch (err) {
+      setVehicleValuationActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la valoración.');
+    } finally {
+      setPendingDeleteVehicleValuationId(null);
+    }
+  }
+
   if (isAuthLoading) {
     return (
       <main>
@@ -1310,7 +1520,9 @@ export function WealthPage() {
     fundValuations !== null &&
     cryptoList !== null &&
     cryptoPurchaseList !== null &&
-    cryptoValuationList !== null;
+    cryptoValuationList !== null &&
+    vehicleList !== null &&
+    vehicleValuationList !== null;
 
   return (
     <main>
@@ -1325,7 +1537,8 @@ export function WealthPage() {
                 parseFloat(bankAccountsTotal(accounts, balances)) +
                 parseFloat(stocksTotal(stockList, purchases, valuations)) +
                 parseFloat(fundsTotal(fundList, fundPurchases, fundValuations)) +
-                parseFloat(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList))
+                parseFloat(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList)) +
+                parseFloat(vehiclesTotal(vehicleList, vehicleValuationList))
               ).toFixed(2),
             )}
           </span>
@@ -1333,7 +1546,8 @@ export function WealthPage() {
             Cuentas Bancarias: {formatCurrency(bankAccountsTotal(accounts, balances))} · Acciones:{' '}
             {formatCurrency(stocksTotal(stockList, purchases, valuations))} · Fondos Inversión:{' '}
             {formatCurrency(fundsTotal(fundList, fundPurchases, fundValuations))} · Cripto:{' '}
-            {formatCurrency(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList))}
+            {formatCurrency(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList))} · Vehículos:{' '}
+            {formatCurrency(vehiclesTotal(vehicleList, vehicleValuationList))}
           </p>
         </div>
       )}
@@ -3020,6 +3234,312 @@ export function WealthPage() {
           {createCryptoError && <p role="alert">{createCryptoError}</p>}
           <button type="submit" className="btn btn-primary" disabled={isCreatingCrypto}>
             {isCreatingCrypto ? 'Creando…' : 'Añadir posición'}
+          </button>
+        </form>
+      </details>
+
+      <details className="dashboard-section">
+        <summary>
+          <h2>🚗 Vehículos</h2>
+        </summary>
+
+        {vehiclesLoadError && <p role="alert">{vehiclesLoadError}</p>}
+        {vehicleValuationsLoadError && <p role="alert">{vehicleValuationsLoadError}</p>}
+        {vehicleActionError && <p role="alert">{vehicleActionError}</p>}
+        {vehicleValuationActionError && <p role="alert">{vehicleValuationActionError}</p>}
+
+        {vehicleList && vehicleList.length === 0 && <p>Todavía no tienes ningún vehículo.</p>}
+
+        {vehicleList && vehicleList.length > 0 && (
+          <ul id="wealth-vehicle-list" aria-label="Tus vehículos">
+            {vehicleList.map((vehicle) => {
+              const isEditingVehicle = editingVehicleId === vehicle.id;
+              const vehicleValuations = (vehicleValuationList ?? []).filter((v) => v.vehicleId === vehicle.id);
+              const lastValuation = vehicleValuations[0] ?? null; // ya viene ordenado por fecha descendente
+              const newValuationForm = getNewVehicleValuationForm(vehicle.id);
+              const gainLoss = lastValuation ? gainLossPercent(lastValuation.value, vehicle.purchasePrice) : null;
+
+              if (isEditingVehicle) {
+                return (
+                  <li className="card elev-sm" key={vehicle.id}>
+                    <form onSubmit={handleEditVehicle} aria-label={`Editar vehículo: ${vehicleLabel(vehicle)}`} noValidate>
+                      <div className="field">
+                        <label htmlFor={`vehicle-${vehicle.id}-brandModel`}>Marca/Modelo</label>
+                        <input
+                          id={`vehicle-${vehicle.id}-brandModel`}
+                          className="input"
+                          value={editingVehicleForm.brandModel}
+                          onChange={(e) => setEditingVehicleForm({ ...editingVehicleForm, brandModel: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`vehicle-${vehicle.id}-plate`}>Matrícula</label>
+                        <input
+                          id={`vehicle-${vehicle.id}-plate`}
+                          className="input"
+                          value={editingVehicleForm.plate}
+                          onChange={(e) => setEditingVehicleForm({ ...editingVehicleForm, plate: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`vehicle-${vehicle.id}-purchasePrice`}>Precio de compra</label>
+                        <input
+                          id={`vehicle-${vehicle.id}-purchasePrice`}
+                          className="input"
+                          inputMode="decimal"
+                          value={editingVehicleForm.purchasePrice}
+                          onChange={(e) => setEditingVehicleForm({ ...editingVehicleForm, purchasePrice: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`vehicle-${vehicle.id}-purchaseDate`}>Fecha de compra</label>
+                        <input
+                          id={`vehicle-${vehicle.id}-purchaseDate`}
+                          type="date"
+                          className="input"
+                          value={editingVehicleForm.purchaseDate}
+                          onChange={(e) => setEditingVehicleForm({ ...editingVehicleForm, purchaseDate: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {editVehicleError && <p role="alert">{editVehicleError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={isSavingVehicle}>
+                        {isSavingVehicle ? 'Guardando…' : 'Guardar'}
+                      </button>{' '}
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={isSavingVehicle}
+                        onClick={() => setEditingVehicleId(null)}
+                      >
+                        Cancelar
+                      </button>
+                    </form>
+                  </li>
+                );
+              }
+
+              return (
+                <li className="card elev-sm" key={vehicle.id}>
+                  <div className="wealth-item-header">
+                    <span className="card-title">
+                      {vehicleLabel(vehicle)}
+                      {gainLoss !== null && (
+                        <span style={{ color: gainLoss >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                          {' '}
+                          {gainLoss >= 0 ? '+' : ''}
+                          {gainLoss.toFixed(2)}%
+                        </span>
+                      )}
+                    </span>
+                    <span className="card-amount">{lastValuation ? formatCurrency(lastValuation.value) : 'Sin valoración'}</span>
+                  </div>
+                  <p className="card-meta">
+                    Precio de compra: {formatCurrency(vehicle.purchasePrice)} ({vehicle.purchaseDate})
+                    {lastValuation && (
+                      <>
+                        {' '}
+                        · Última fecha: {lastValuation.date}
+                      </>
+                    )}
+                  </p>
+                  <div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      aria-label={`Editar vehículo: ${vehicleLabel(vehicle)}`}
+                      onClick={() => startEditVehicle(vehicle)}
+                    >
+                      Editar
+                    </button>{' '}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      aria-label={`Eliminar vehículo: ${vehicleLabel(vehicle)}`}
+                      disabled={pendingDeleteVehicleId === vehicle.id}
+                      onClick={() => void handleDeleteVehicle(vehicle.id)}
+                    >
+                      {pendingDeleteVehicleId === vehicle.id ? 'Eliminando…' : 'Eliminar'}
+                    </button>
+                  </div>
+
+                  <details>
+                    <summary>Historial ({vehicleValuations.length})</summary>
+
+                    {vehicleValuations.length === 0 && <p>Todavía no hay ninguna valoración registrada de este vehículo.</p>}
+
+                    {vehicleValuations.length > 0 && (
+                      <ul aria-label={`Historial de ${vehicleLabel(vehicle)}`}>
+                        {vehicleValuations.map((valuation) => {
+                          const isEditingValuation = editingVehicleValuationId === valuation.id;
+
+                          if (isEditingValuation) {
+                            return (
+                              <li key={valuation.id}>
+                                <form
+                                  onSubmit={handleEditVehicleValuation}
+                                  aria-label={`Editar valoración del ${valuation.date}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`vehicle-valuation-${valuation.id}-value`}>Valor actual</label>
+                                    <input
+                                      id={`vehicle-valuation-${valuation.id}-value`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingVehicleValuationForm.value}
+                                      onChange={(e) =>
+                                        setEditingVehicleValuationForm({ ...editingVehicleValuationForm, value: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`vehicle-valuation-${valuation.id}-date`}>Fecha</label>
+                                    <input
+                                      id={`vehicle-valuation-${valuation.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingVehicleValuationForm.date}
+                                      onChange={(e) =>
+                                        setEditingVehicleValuationForm({ ...editingVehicleValuationForm, date: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  {editVehicleValuationError && <p role="alert">{editVehicleValuationError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingVehicleValuation}>
+                                    {isSavingVehicleValuation ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingVehicleValuation}
+                                    onClick={() => setEditingVehicleValuationId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={valuation.id}>
+                              <span>{valuation.date}</span> <span>{formatCurrency(valuation.value)}</span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar valoración del ${valuation.date}`}
+                                onClick={() => startEditVehicleValuation(valuation)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar valoración del ${valuation.date}`}
+                                disabled={pendingDeleteVehicleValuationId === valuation.id}
+                                onClick={() => void handleDeleteVehicleValuation(valuation.id)}
+                              >
+                                {pendingDeleteVehicleValuationId === valuation.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreateVehicleValuation(vehicle.id, e)}
+                      aria-label={`Añadir valoración: ${vehicleLabel(vehicle)}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-vehicle-valuation-${vehicle.id}-value`}>Valor actual</label>
+                        <input
+                          id={`new-vehicle-valuation-${vehicle.id}-value`}
+                          className="input"
+                          inputMode="decimal"
+                          placeholder="p. ej. 12000.00"
+                          value={newValuationForm.value}
+                          onChange={(e) => setNewVehicleValuationForm(vehicle.id, { ...newValuationForm, value: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-vehicle-valuation-${vehicle.id}-date`}>Fecha</label>
+                        <input
+                          id={`new-vehicle-valuation-${vehicle.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newValuationForm.date}
+                          onChange={(e) => setNewVehicleValuationForm(vehicle.id, { ...newValuationForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {createVehicleValuationError && <p role="alert">{createVehicleValuationError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingVehicleValuationForVehicleId === vehicle.id}>
+                        {creatingVehicleValuationForVehicleId === vehicle.id ? 'Añadiendo…' : 'Añadir valoración'}
+                      </button>
+                    </form>
+                  </details>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <h3>Añadir vehículo</h3>
+        <form onSubmit={handleCreateVehicle} aria-label="Añadir vehículo" noValidate>
+          <div className="field">
+            <label htmlFor="new-vehicle-brandModel">Marca/Modelo</label>
+            <input
+              id="new-vehicle-brandModel"
+              className="input"
+              value={newVehicleForm.brandModel}
+              onChange={(e) => setNewVehicleForm({ ...newVehicleForm, brandModel: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-vehicle-plate">Matrícula</label>
+            <input
+              id="new-vehicle-plate"
+              className="input"
+              value={newVehicleForm.plate}
+              onChange={(e) => setNewVehicleForm({ ...newVehicleForm, plate: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-vehicle-purchasePrice">Precio de compra</label>
+            <input
+              id="new-vehicle-purchasePrice"
+              className="input"
+              inputMode="decimal"
+              value={newVehicleForm.purchasePrice}
+              onChange={(e) => setNewVehicleForm({ ...newVehicleForm, purchasePrice: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-vehicle-purchaseDate">Fecha de compra</label>
+            <input
+              id="new-vehicle-purchaseDate"
+              type="date"
+              className="input"
+              value={newVehicleForm.purchaseDate}
+              onChange={(e) => setNewVehicleForm({ ...newVehicleForm, purchaseDate: e.target.value })}
+              required
+            />
+          </div>
+          {createVehicleError && <p role="alert">{createVehicleError}</p>}
+          <button type="submit" className="btn btn-primary" disabled={isCreatingVehicle}>
+            {isCreatingVehicle ? 'Creando…' : 'Añadir vehículo'}
           </button>
         </form>
       </details>

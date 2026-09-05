@@ -281,6 +281,58 @@ export const cryptoValuations = pgTable(
   (table) => [index('crypto_valuations_crypto_date_idx').on(table.cryptoId, table.date)],
 );
 
+/**
+ * H1 (spec 023): un vehículo (marca/modelo + matrícula) es una entidad única
+ * por usuario — mismo patrón en dos niveles que `bankAccounts` (spec 019),
+ * no el patrón en tres niveles de `stocks`/`cryptos`: un vehículo no tiene
+ * "cantidad", así que no lleva historial de compras, solo precio y fecha de
+ * compra fijados una vez (editables, no aditivos). "Mismo vehículo dos
+ * veces" se valida en `VehiclesService.create()`/`update()` (409), no con
+ * una constraint SQL.
+ */
+export const vehicles = pgTable(
+  'vehicles',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    brandModel: varchar('brand_model', { length: 150 }).notNull(),
+    plate: varchar('plate', { length: 20 }).notNull(),
+    purchasePrice: numeric('purchase_price', { precision: 12, scale: 2 }).notNull(),
+    purchaseDate: date('purchase_date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('vehicles_user_idx').on(table.userId)],
+);
+
+/**
+ * H2 (spec 023): historial de valoraciones de un vehículo — muchas por
+ * vehículo, ninguna es el vehículo en sí. Sin `userId` propio: el
+ * aislamiento por usuario pasa siempre por `vehicles.userId` (normalizado,
+ * mismo criterio que `bankAccountBalances`).
+ */
+export const vehicleValuations = pgTable(
+  'vehicle_valuations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    // `onDelete: 'cascade'`: H1 criterio 4 pide que borrar el vehículo se
+    // lleve su historial de valoraciones por delante.
+    vehicleId: uuid('vehicle_id')
+      .notNull()
+      .references(() => vehicles.id, { onDelete: 'cascade' }),
+    // H2 criterio 2: siempre positivo (`IsMoneyAmount`, no
+    // `IsSignedMoneyAmount` como `bankAccountBalances.euros`) — un vehículo
+    // no puede valer menos que 0.
+    value: numeric('value', { precision: 12, scale: 2 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('vehicle_valuations_vehicle_date_idx').on(table.vehicleId, table.date)],
+);
+
 // --- Relations ------------------------------------------------------------
 
 export const bankAccountsRelations = relations(bankAccounts, ({ one, many }) => ({
@@ -332,4 +384,13 @@ export const cryptoPurchasesRelations = relations(cryptoPurchases, ({ one }) => 
 
 export const cryptoValuationsRelations = relations(cryptoValuations, ({ one }) => ({
   crypto: one(cryptos, { fields: [cryptoValuations.cryptoId], references: [cryptos.id] }),
+}));
+
+export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
+  user: one(users, { fields: [vehicles.userId], references: [users.id] }),
+  valuations: many(vehicleValuations),
+}));
+
+export const vehicleValuationsRelations = relations(vehicleValuations, ({ one }) => ({
+  vehicle: one(vehicles, { fields: [vehicleValuations.vehicleId], references: [vehicles.id] }),
 }));
