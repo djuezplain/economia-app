@@ -135,6 +135,76 @@ export const stockValuations = pgTable(
   (table) => [index('stock_valuations_stock_date_idx').on(table.stockId, table.date)],
 );
 
+/**
+ * H1 (spec 021): un fondo de inversión (banco custodia + fondo) es una
+ * entidad única por usuario — mismo criterio que `stocks` (spec 020), del
+ * que esta spec replica el modelo entero. "Mismo fondo dos veces" se valida
+ * en `FundsService.create()`/`update()` (409), no con una constraint SQL.
+ */
+export const funds = pgTable(
+  'funds',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    custodyBank: varchar('custody_bank', { length: 100 }).notNull(),
+    fund: varchar('fund', { length: 150 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('funds_user_idx').on(table.userId)],
+);
+
+/**
+ * H2 (spec 021): historial de compras de un fondo — muchas por fondo,
+ * ninguna es el fondo en sí. Sin `userId` propio: el aislamiento por usuario
+ * pasa siempre por `funds.userId` (normalizado, igual que `stockPurchases`).
+ */
+export const fundPurchases = pgTable(
+  'fund_purchases',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    // `onDelete: 'cascade'`: H1 criterio 4 pide que borrar el fondo se lleve
+    // su historial de compras por delante.
+    fundId: uuid('fund_id')
+      .notNull()
+      .references(() => funds.id, { onDelete: 'cascade' }),
+    // Número de participaciones, con hasta 8 decimales — mismo criterio de
+    // precisión que `stockPurchases.shareCount` (fondos indexados
+    // fraccionarios). `IsShareCount`/`IsSharePrice` validan lo mismo.
+    shareCount: numeric('share_count', { precision: 18, scale: 8 }).notNull(),
+    purchasePrice: numeric('purchase_price', { precision: 18, scale: 8 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('fund_purchases_fund_idx').on(table.fundId), index('fund_purchases_fund_date_idx').on(table.fundId, table.date)],
+);
+
+/**
+ * H3 (spec 021): historial de valoraciones de un fondo — segundo historial
+ * independiente del de compras, mismo criterio que `stockValuations`.
+ */
+export const fundValuations = pgTable(
+  'fund_valuations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    fundId: uuid('fund_id')
+      .notNull()
+      .references(() => funds.id, { onDelete: 'cascade' }),
+    // Valor liquidativo por participación, no el valor total de la posición
+    // — el valor total se calcula (precio × `totalShares`,
+    // `wealth.calculations.ts`), nunca se guarda. Siempre positivo —
+    // `IsMoneyAmount`, no `IsSignedMoneyAmount`.
+    pricePerShare: numeric('price_per_share', { precision: 12, scale: 2 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('fund_valuations_fund_date_idx').on(table.fundId, table.date)],
+);
+
 // --- Relations ------------------------------------------------------------
 
 export const bankAccountsRelations = relations(bankAccounts, ({ one, many }) => ({
@@ -158,4 +228,18 @@ export const stockPurchasesRelations = relations(stockPurchases, ({ one }) => ({
 
 export const stockValuationsRelations = relations(stockValuations, ({ one }) => ({
   stock: one(stocks, { fields: [stockValuations.stockId], references: [stocks.id] }),
+}));
+
+export const fundsRelations = relations(funds, ({ one, many }) => ({
+  user: one(users, { fields: [funds.userId], references: [users.id] }),
+  purchases: many(fundPurchases),
+  valuations: many(fundValuations),
+}));
+
+export const fundPurchasesRelations = relations(fundPurchases, ({ one }) => ({
+  fund: one(funds, { fields: [fundPurchases.fundId], references: [funds.id] }),
+}));
+
+export const fundValuationsRelations = relations(fundValuations, ({ one }) => ({
+  fund: one(funds, { fields: [fundValuations.fundId], references: [funds.id] }),
 }));
