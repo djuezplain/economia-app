@@ -1013,7 +1013,8 @@ main ul li:last-child {
 .dashboard-section > summary::-webkit-details-marker {
   display: none;
 }
-.dashboard-section > summary > h2 {
+.dashboard-section > summary > h2,
+.dashboard-section > summary > h3 {
   margin: 0;
 }
 /* Spec 017: icono de maximizar/minimizar — dos glifos distintos (no el

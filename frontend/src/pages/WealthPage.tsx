@@ -2313,43 +2313,47 @@ export function WealthPage() {
           </ul>
         )}
 
-        <h3>Añadir cuenta</h3>
-        <form onSubmit={handleCreateAccount} aria-label="Añadir cuenta bancaria" noValidate>
-          <div className="field">
-            <label htmlFor="new-account-bank">Banco</label>
-            <input
-              id="new-account-bank"
-              className="input"
-              value={newAccountForm.bank}
-              onChange={(e) => setNewAccountForm({ ...newAccountForm, bank: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-account-accountNumber">Número de Cuenta</label>
-            <input
-              id="new-account-accountNumber"
-              className="input"
-              value={newAccountForm.accountNumber}
-              onChange={(e) => setNewAccountForm({ ...newAccountForm, accountNumber: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-account-alias">Alias</label>
-            <input
-              id="new-account-alias"
-              className="input"
-              placeholder="p. ej. Nómina"
-              value={newAccountForm.alias ?? ''}
-              onChange={(e) => setNewAccountForm({ ...newAccountForm, alias: e.target.value })}
-            />
-          </div>
-          {createAccountError && <p role="alert">{createAccountError}</p>}
-          <button type="submit" className="btn btn-primary" disabled={isCreatingAccount}>
-            {isCreatingAccount ? 'Creando…' : 'Añadir cuenta'}
-          </button>
-        </form>
+        <details className="dashboard-section">
+          <summary>
+            <h3>Añadir cuenta</h3>
+          </summary>
+          <form onSubmit={handleCreateAccount} aria-label="Añadir cuenta bancaria" noValidate>
+            <div className="field">
+              <label htmlFor="new-account-bank">Banco</label>
+              <input
+                id="new-account-bank"
+                className="input"
+                value={newAccountForm.bank}
+                onChange={(e) => setNewAccountForm({ ...newAccountForm, bank: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-account-accountNumber">Número de Cuenta</label>
+              <input
+                id="new-account-accountNumber"
+                className="input"
+                value={newAccountForm.accountNumber}
+                onChange={(e) => setNewAccountForm({ ...newAccountForm, accountNumber: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-account-alias">Alias</label>
+              <input
+                id="new-account-alias"
+                className="input"
+                placeholder="p. ej. Nómina"
+                value={newAccountForm.alias ?? ''}
+                onChange={(e) => setNewAccountForm({ ...newAccountForm, alias: e.target.value })}
+              />
+            </div>
+            {createAccountError && <p role="alert">{createAccountError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={isCreatingAccount}>
+              {isCreatingAccount ? 'Creando…' : 'Añadir cuenta'}
+            </button>
+          </form>
+        </details>
       </details>
 
       <details className="dashboard-section">
@@ -2750,69 +2754,73 @@ export function WealthPage() {
           </ul>
         )}
 
-        <h3>Añadir acción</h3>
-        <form onSubmit={handleCreateStock} aria-label="Añadir acción" noValidate>
-          <div className="field">
-            <label htmlFor="new-stock-custodyBank">Banco Custodia</label>
-            <input
-              id="new-stock-custodyBank"
-              className="input"
-              value={newStockForm.custodyBank}
-              onChange={(e) => setNewStockForm({ ...newStockForm, custodyBank: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-stock-stock">Acción</label>
-            <input
-              id="new-stock-stock"
-              className="input"
-              value={newStockForm.stock}
-              onChange={(e) => setNewStockForm({ ...newStockForm, stock: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-stock-shareCount">Número acciones</label>
-            <input
-              id="new-stock-shareCount"
-              className="input"
-              inputMode="decimal"
-              value={newStockForm.shareCount}
-              onChange={(e) => setNewStockForm({ ...newStockForm, shareCount: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-stock-purchasePrice">Precio compra</label>
-            <input
-              id="new-stock-purchasePrice"
-              className="input"
-              inputMode="decimal"
-              value={newStockForm.purchasePrice}
-              onChange={(e) => setNewStockForm({ ...newStockForm, purchasePrice: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-stock-date">Fecha de compra</label>
-            <input
-              id="new-stock-date"
-              type="date"
-              className="input"
-              value={newStockForm.date}
-              onChange={(e) => setNewStockForm({ ...newStockForm, date: e.target.value })}
-              required
-            />
-          </div>
-          <p className="card-meta">
-            Valor compra: {formatCurrency(purchaseValue(newStockForm.purchasePrice, newStockForm.shareCount) || '0.00')}
-          </p>
-          {createStockError && <p role="alert">{createStockError}</p>}
-          <button type="submit" className="btn btn-primary" disabled={isCreatingStock}>
-            {isCreatingStock ? 'Creando…' : 'Añadir acción'}
-          </button>
-        </form>
+        <details className="dashboard-section">
+          <summary>
+            <h3>Añadir acción</h3>
+          </summary>
+          <form onSubmit={handleCreateStock} aria-label="Añadir acción" noValidate>
+            <div className="field">
+              <label htmlFor="new-stock-custodyBank">Banco Custodia</label>
+              <input
+                id="new-stock-custodyBank"
+                className="input"
+                value={newStockForm.custodyBank}
+                onChange={(e) => setNewStockForm({ ...newStockForm, custodyBank: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-stock-stock">Acción</label>
+              <input
+                id="new-stock-stock"
+                className="input"
+                value={newStockForm.stock}
+                onChange={(e) => setNewStockForm({ ...newStockForm, stock: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-stock-shareCount">Número acciones</label>
+              <input
+                id="new-stock-shareCount"
+                className="input"
+                inputMode="decimal"
+                value={newStockForm.shareCount}
+                onChange={(e) => setNewStockForm({ ...newStockForm, shareCount: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-stock-purchasePrice">Precio compra</label>
+              <input
+                id="new-stock-purchasePrice"
+                className="input"
+                inputMode="decimal"
+                value={newStockForm.purchasePrice}
+                onChange={(e) => setNewStockForm({ ...newStockForm, purchasePrice: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-stock-date">Fecha de compra</label>
+              <input
+                id="new-stock-date"
+                type="date"
+                className="input"
+                value={newStockForm.date}
+                onChange={(e) => setNewStockForm({ ...newStockForm, date: e.target.value })}
+                required
+              />
+            </div>
+            <p className="card-meta">
+              Valor compra: {formatCurrency(purchaseValue(newStockForm.purchasePrice, newStockForm.shareCount) || '0.00')}
+            </p>
+            {createStockError && <p role="alert">{createStockError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={isCreatingStock}>
+              {isCreatingStock ? 'Creando…' : 'Añadir acción'}
+            </button>
+          </form>
+        </details>
       </details>
 
       <details className="dashboard-section">
@@ -3227,67 +3235,71 @@ export function WealthPage() {
           </ul>
         )}
 
-        <h3>Añadir fondo</h3>
-        <form onSubmit={handleCreateFund} aria-label="Añadir fondo" noValidate>
-          <div className="field">
-            <label htmlFor="new-fund-custodyBank">Banco Custodia</label>
-            <input
-              id="new-fund-custodyBank"
-              className="input"
-              value={newFundForm.custodyBank}
-              onChange={(e) => setNewFundForm({ ...newFundForm, custodyBank: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-fund-fund">Fondo</label>
-            <input
-              id="new-fund-fund"
-              className="input"
-              value={newFundForm.fund}
-              onChange={(e) => setNewFundForm({ ...newFundForm, fund: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-fund-shareCount">Número de participaciones</label>
-            <input
-              id="new-fund-shareCount"
-              className="input"
-              inputMode="decimal"
-              value={newFundForm.shareCount}
-              onChange={(e) => setNewFundForm({ ...newFundForm, shareCount: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-fund-purchasePrice">Precio compra</label>
-            <input
-              id="new-fund-purchasePrice"
-              className="input"
-              inputMode="decimal"
-              value={newFundForm.purchasePrice}
-              onChange={(e) => setNewFundForm({ ...newFundForm, purchasePrice: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-fund-date">Fecha de compra</label>
-            <input
-              id="new-fund-date"
-              type="date"
-              className="input"
-              value={newFundForm.date}
-              onChange={(e) => setNewFundForm({ ...newFundForm, date: e.target.value })}
-              required
-            />
-          </div>
-          <p className="card-meta">Valor compra: {formatCurrency(purchaseValue(newFundForm.purchasePrice, newFundForm.shareCount) || '0.00')}</p>
-          {createFundError && <p role="alert">{createFundError}</p>}
-          <button type="submit" className="btn btn-primary" disabled={isCreatingFund}>
-            {isCreatingFund ? 'Creando…' : 'Añadir fondo'}
-          </button>
-        </form>
+        <details className="dashboard-section">
+          <summary>
+            <h3>Añadir fondo</h3>
+          </summary>
+          <form onSubmit={handleCreateFund} aria-label="Añadir fondo" noValidate>
+            <div className="field">
+              <label htmlFor="new-fund-custodyBank">Banco Custodia</label>
+              <input
+                id="new-fund-custodyBank"
+                className="input"
+                value={newFundForm.custodyBank}
+                onChange={(e) => setNewFundForm({ ...newFundForm, custodyBank: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-fund-fund">Fondo</label>
+              <input
+                id="new-fund-fund"
+                className="input"
+                value={newFundForm.fund}
+                onChange={(e) => setNewFundForm({ ...newFundForm, fund: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-fund-shareCount">Número de participaciones</label>
+              <input
+                id="new-fund-shareCount"
+                className="input"
+                inputMode="decimal"
+                value={newFundForm.shareCount}
+                onChange={(e) => setNewFundForm({ ...newFundForm, shareCount: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-fund-purchasePrice">Precio compra</label>
+              <input
+                id="new-fund-purchasePrice"
+                className="input"
+                inputMode="decimal"
+                value={newFundForm.purchasePrice}
+                onChange={(e) => setNewFundForm({ ...newFundForm, purchasePrice: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-fund-date">Fecha de compra</label>
+              <input
+                id="new-fund-date"
+                type="date"
+                className="input"
+                value={newFundForm.date}
+                onChange={(e) => setNewFundForm({ ...newFundForm, date: e.target.value })}
+                required
+              />
+            </div>
+            <p className="card-meta">Valor compra: {formatCurrency(purchaseValue(newFundForm.purchasePrice, newFundForm.shareCount) || '0.00')}</p>
+            {createFundError && <p role="alert">{createFundError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={isCreatingFund}>
+              {isCreatingFund ? 'Creando…' : 'Añadir fondo'}
+            </button>
+          </form>
+        </details>
       </details>
 
       <details className="dashboard-section">
@@ -3709,69 +3721,73 @@ export function WealthPage() {
           </ul>
         )}
 
-        <h3>Añadir posición</h3>
-        <form onSubmit={handleCreateCrypto} aria-label="Añadir posición de cripto" noValidate>
-          <div className="field">
-            <label htmlFor="new-crypto-exchange">Exchange/Wallet</label>
-            <input
-              id="new-crypto-exchange"
-              className="input"
-              value={newCryptoForm.exchange}
-              onChange={(e) => setNewCryptoForm({ ...newCryptoForm, exchange: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-crypto-crypto">Criptomoneda</label>
-            <input
-              id="new-crypto-crypto"
-              className="input"
-              value={newCryptoForm.crypto}
-              onChange={(e) => setNewCryptoForm({ ...newCryptoForm, crypto: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-crypto-quantity">Cantidad</label>
-            <input
-              id="new-crypto-quantity"
-              className="input"
-              inputMode="decimal"
-              value={newCryptoForm.quantity}
-              onChange={(e) => setNewCryptoForm({ ...newCryptoForm, quantity: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-crypto-purchasePrice">Precio compra</label>
-            <input
-              id="new-crypto-purchasePrice"
-              className="input"
-              inputMode="decimal"
-              value={newCryptoForm.purchasePrice}
-              onChange={(e) => setNewCryptoForm({ ...newCryptoForm, purchasePrice: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-crypto-date">Fecha de compra</label>
-            <input
-              id="new-crypto-date"
-              type="date"
-              className="input"
-              value={newCryptoForm.date}
-              onChange={(e) => setNewCryptoForm({ ...newCryptoForm, date: e.target.value })}
-              required
-            />
-          </div>
-          <p className="card-meta">
-            Valor compra: {formatCurrency(purchaseValue(newCryptoForm.purchasePrice, newCryptoForm.quantity) || '0.00')}
-          </p>
-          {createCryptoError && <p role="alert">{createCryptoError}</p>}
-          <button type="submit" className="btn btn-primary" disabled={isCreatingCrypto}>
-            {isCreatingCrypto ? 'Creando…' : 'Añadir posición'}
-          </button>
-        </form>
+        <details className="dashboard-section">
+          <summary>
+            <h3>Añadir posición</h3>
+          </summary>
+          <form onSubmit={handleCreateCrypto} aria-label="Añadir posición de cripto" noValidate>
+            <div className="field">
+              <label htmlFor="new-crypto-exchange">Exchange/Wallet</label>
+              <input
+                id="new-crypto-exchange"
+                className="input"
+                value={newCryptoForm.exchange}
+                onChange={(e) => setNewCryptoForm({ ...newCryptoForm, exchange: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-crypto-crypto">Criptomoneda</label>
+              <input
+                id="new-crypto-crypto"
+                className="input"
+                value={newCryptoForm.crypto}
+                onChange={(e) => setNewCryptoForm({ ...newCryptoForm, crypto: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-crypto-quantity">Cantidad</label>
+              <input
+                id="new-crypto-quantity"
+                className="input"
+                inputMode="decimal"
+                value={newCryptoForm.quantity}
+                onChange={(e) => setNewCryptoForm({ ...newCryptoForm, quantity: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-crypto-purchasePrice">Precio compra</label>
+              <input
+                id="new-crypto-purchasePrice"
+                className="input"
+                inputMode="decimal"
+                value={newCryptoForm.purchasePrice}
+                onChange={(e) => setNewCryptoForm({ ...newCryptoForm, purchasePrice: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-crypto-date">Fecha de compra</label>
+              <input
+                id="new-crypto-date"
+                type="date"
+                className="input"
+                value={newCryptoForm.date}
+                onChange={(e) => setNewCryptoForm({ ...newCryptoForm, date: e.target.value })}
+                required
+              />
+            </div>
+            <p className="card-meta">
+              Valor compra: {formatCurrency(purchaseValue(newCryptoForm.purchasePrice, newCryptoForm.quantity) || '0.00')}
+            </p>
+            {createCryptoError && <p role="alert">{createCryptoError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={isCreatingCrypto}>
+              {isCreatingCrypto ? 'Creando…' : 'Añadir posición'}
+            </button>
+          </form>
+        </details>
       </details>
 
       <details className="dashboard-section">
@@ -4029,55 +4045,59 @@ export function WealthPage() {
           </ul>
         )}
 
-        <h3>Añadir vehículo</h3>
-        <form onSubmit={handleCreateVehicle} aria-label="Añadir vehículo" noValidate>
-          <div className="field">
-            <label htmlFor="new-vehicle-brandModel">Marca/Modelo</label>
-            <input
-              id="new-vehicle-brandModel"
-              className="input"
-              value={newVehicleForm.brandModel}
-              onChange={(e) => setNewVehicleForm({ ...newVehicleForm, brandModel: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-vehicle-plate">Matrícula</label>
-            <input
-              id="new-vehicle-plate"
-              className="input"
-              value={newVehicleForm.plate}
-              onChange={(e) => setNewVehicleForm({ ...newVehicleForm, plate: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-vehicle-purchasePrice">Precio de compra</label>
-            <input
-              id="new-vehicle-purchasePrice"
-              className="input"
-              inputMode="decimal"
-              value={newVehicleForm.purchasePrice}
-              onChange={(e) => setNewVehicleForm({ ...newVehicleForm, purchasePrice: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-vehicle-purchaseDate">Fecha de compra</label>
-            <input
-              id="new-vehicle-purchaseDate"
-              type="date"
-              className="input"
-              value={newVehicleForm.purchaseDate}
-              onChange={(e) => setNewVehicleForm({ ...newVehicleForm, purchaseDate: e.target.value })}
-              required
-            />
-          </div>
-          {createVehicleError && <p role="alert">{createVehicleError}</p>}
-          <button type="submit" className="btn btn-primary" disabled={isCreatingVehicle}>
-            {isCreatingVehicle ? 'Creando…' : 'Añadir vehículo'}
-          </button>
-        </form>
+        <details className="dashboard-section">
+          <summary>
+            <h3>Añadir vehículo</h3>
+          </summary>
+          <form onSubmit={handleCreateVehicle} aria-label="Añadir vehículo" noValidate>
+            <div className="field">
+              <label htmlFor="new-vehicle-brandModel">Marca/Modelo</label>
+              <input
+                id="new-vehicle-brandModel"
+                className="input"
+                value={newVehicleForm.brandModel}
+                onChange={(e) => setNewVehicleForm({ ...newVehicleForm, brandModel: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-vehicle-plate">Matrícula</label>
+              <input
+                id="new-vehicle-plate"
+                className="input"
+                value={newVehicleForm.plate}
+                onChange={(e) => setNewVehicleForm({ ...newVehicleForm, plate: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-vehicle-purchasePrice">Precio de compra</label>
+              <input
+                id="new-vehicle-purchasePrice"
+                className="input"
+                inputMode="decimal"
+                value={newVehicleForm.purchasePrice}
+                onChange={(e) => setNewVehicleForm({ ...newVehicleForm, purchasePrice: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-vehicle-purchaseDate">Fecha de compra</label>
+              <input
+                id="new-vehicle-purchaseDate"
+                type="date"
+                className="input"
+                value={newVehicleForm.purchaseDate}
+                onChange={(e) => setNewVehicleForm({ ...newVehicleForm, purchaseDate: e.target.value })}
+                required
+              />
+            </div>
+            {createVehicleError && <p role="alert">{createVehicleError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={isCreatingVehicle}>
+              {isCreatingVehicle ? 'Creando…' : 'Añadir vehículo'}
+            </button>
+          </form>
+        </details>
       </details>
 
       <details className="dashboard-section">
@@ -4455,55 +4475,59 @@ export function WealthPage() {
           </ul>
         )}
 
-        <h3>Añadir plan</h3>
-        <form onSubmit={handleCreatePensionPlan} aria-label="Añadir plan de pensiones" noValidate>
-          <div className="field">
-            <label htmlFor="new-pension-plan-managingEntity">Entidad Gestora</label>
-            <input
-              id="new-pension-plan-managingEntity"
-              className="input"
-              value={newPensionPlanForm.managingEntity}
-              onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, managingEntity: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-pension-plan-plan">Plan</label>
-            <input
-              id="new-pension-plan-plan"
-              className="input"
-              value={newPensionPlanForm.plan}
-              onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, plan: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-pension-plan-amount">Importe</label>
-            <input
-              id="new-pension-plan-amount"
-              className="input"
-              inputMode="decimal"
-              value={newPensionPlanForm.amount}
-              onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, amount: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="new-pension-plan-date">Fecha de aportación</label>
-            <input
-              id="new-pension-plan-date"
-              type="date"
-              className="input"
-              value={newPensionPlanForm.date}
-              onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, date: e.target.value })}
-              required
-            />
-          </div>
-          {createPensionPlanError && <p role="alert">{createPensionPlanError}</p>}
-          <button type="submit" className="btn btn-primary" disabled={isCreatingPensionPlan}>
-            {isCreatingPensionPlan ? 'Creando…' : 'Añadir plan'}
-          </button>
-        </form>
+        <details className="dashboard-section">
+          <summary>
+            <h3>Añadir plan</h3>
+          </summary>
+          <form onSubmit={handleCreatePensionPlan} aria-label="Añadir plan de pensiones" noValidate>
+            <div className="field">
+              <label htmlFor="new-pension-plan-managingEntity">Entidad Gestora</label>
+              <input
+                id="new-pension-plan-managingEntity"
+                className="input"
+                value={newPensionPlanForm.managingEntity}
+                onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, managingEntity: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-pension-plan-plan">Plan</label>
+              <input
+                id="new-pension-plan-plan"
+                className="input"
+                value={newPensionPlanForm.plan}
+                onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, plan: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-pension-plan-amount">Importe</label>
+              <input
+                id="new-pension-plan-amount"
+                className="input"
+                inputMode="decimal"
+                value={newPensionPlanForm.amount}
+                onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, amount: e.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="new-pension-plan-date">Fecha de aportación</label>
+              <input
+                id="new-pension-plan-date"
+                type="date"
+                className="input"
+                value={newPensionPlanForm.date}
+                onChange={(e) => setNewPensionPlanForm({ ...newPensionPlanForm, date: e.target.value })}
+                required
+              />
+            </div>
+            {createPensionPlanError && <p role="alert">{createPensionPlanError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={isCreatingPensionPlan}>
+              {isCreatingPensionPlan ? 'Creando…' : 'Añadir plan'}
+            </button>
+          </form>
+        </details>
       </details>
 
       <details className="dashboard-section">
@@ -4703,24 +4727,28 @@ export function WealthPage() {
           </ul>
         )}
 
-        <h3>Añadir ubicación</h3>
-        <form onSubmit={handleCreateCashHolding} aria-label="Añadir ubicación de efectivo" noValidate>
-          <div className="field">
-            <label htmlFor="new-cash-holding-location">Ubicación</label>
-            <input
-              id="new-cash-holding-location"
-              className="input"
-              placeholder="p. ej. Cartera"
-              value={newCashHoldingForm.location}
-              onChange={(e) => setNewCashHoldingForm({ ...newCashHoldingForm, location: e.target.value })}
-              required
-            />
-          </div>
-          {createCashHoldingError && <p role="alert">{createCashHoldingError}</p>}
-          <button type="submit" className="btn btn-primary" disabled={isCreatingCashHolding}>
-            {isCreatingCashHolding ? 'Creando…' : 'Añadir ubicación'}
-          </button>
-        </form>
+        <details className="dashboard-section">
+          <summary>
+            <h3>Añadir ubicación</h3>
+          </summary>
+          <form onSubmit={handleCreateCashHolding} aria-label="Añadir ubicación de efectivo" noValidate>
+            <div className="field">
+              <label htmlFor="new-cash-holding-location">Ubicación</label>
+              <input
+                id="new-cash-holding-location"
+                className="input"
+                placeholder="p. ej. Cartera"
+                value={newCashHoldingForm.location}
+                onChange={(e) => setNewCashHoldingForm({ ...newCashHoldingForm, location: e.target.value })}
+                required
+              />
+            </div>
+            {createCashHoldingError && <p role="alert">{createCashHoldingError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={isCreatingCashHolding}>
+              {isCreatingCashHolding ? 'Creando…' : 'Añadir ubicación'}
+            </button>
+          </form>
+        </details>
       </details>
 
       {PLACEHOLDER_SECTIONS.map((section) => (
