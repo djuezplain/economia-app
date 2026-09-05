@@ -1060,6 +1060,24 @@ describe('WealthPage', () => {
       await waitFor(() => expect(listValuationsSpy).toHaveBeenCalledTimes(2));
     });
 
+    it('admite hasta 8 decimales en el precio por participación (a diferencia de las valoraciones de acciones)', async () => {
+      mockOtherApis();
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      const createSpy = vi.spyOn(fundValuationsApi, 'createFundValuation').mockResolvedValue(FUND_VALUATION);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir valoración: Vanguard Global Stock Index' });
+
+      await userEvent.type(within(form).getByLabelText('Precio por participación actual'), '28123.87654321');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir valoración' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({ fundId: FUND.id, pricePerShare: '28123.87654321', date: todayIso() }),
+      );
+    });
+
     it('el formulario de valoración calcula el valor total (precio por participación × nº de participaciones ya compradas)', async () => {
       mockOtherApis();
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);

@@ -192,9 +192,12 @@ export const fundValuations = pgTable(
       .references(() => funds.id, { onDelete: 'cascade' }),
     // Valor liquidativo por participación, no el valor total de la posición
     // — el valor total se calcula (precio × `totalShares`,
-    // `wealth.calculations.ts`), nunca se guarda. Siempre positivo —
-    // `IsMoneyAmount`, no `IsSignedMoneyAmount`.
-    pricePerShare: numeric('price_per_share', { precision: 12, scale: 2 }).notNull(),
+    // `wealth.calculations.ts`), nunca se guarda. Siempre positivo — 8
+    // decimales, no 2 (a diferencia de `stockValuations.pricePerShare`):
+    // Diego pidió la misma precisión que el historial de compras
+    // (`fundPurchases.purchasePrice`) para valores liquidativos muy
+    // fraccionados. `IsSharePrice`, no `IsMoneyAmount`.
+    pricePerShare: numeric('price_per_share', { precision: 18, scale: 8 }).notNull(),
     date: date('date').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
