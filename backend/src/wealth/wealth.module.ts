@@ -32,6 +32,10 @@ import { PensionPlanContributionsController } from './pension-plan-contributions
 import { PensionPlanContributionsService } from './pension-plan-contributions.service.js';
 import { PensionPlanValuationsController } from './pension-plan-valuations.controller.js';
 import { PensionPlanValuationsService } from './pension-plan-valuations.service.js';
+import { CashHoldingsController } from './cash-holdings.controller.js';
+import { CashHoldingsService } from './cash-holdings.service.js';
+import { CashBalancesController } from './cash-balances.controller.js';
+import { CashBalancesService } from './cash-balances.service.js';
 
 /**
  * Spec 018 (Resumen Patrimonio) / spec 019 (cuentas bancarias únicas) /
@@ -40,16 +44,19 @@ import { PensionPlanValuationsService } from './pension-plan-valuations.service.
  * (vehículos, mismo modelo en dos niveles que spec 019 — sin "cantidad") /
  * spec 024 (fondo pensiones, patrón en tres niveles como Cripto pero sin
  * cantidad ni precio por unidad — aportaciones y valoraciones son importes
- * directos). `AuthGuardModule` por `AuthGuard` — mismo criterio que
- * `GoalsModule`/`CategoriesModule`. A diferencia de `GoalsModule`, no
- * importa `DashboardModule`: ningún servicio de aquí reutiliza cálculos de
- * otro módulo. `BankAccountBalancesService`/`StockPurchasesService`/
- * `StockValuationsService`/`FundPurchasesService`/`FundValuationsService`/
- * `CryptoPurchasesService`/`CryptoValuationsService`/`VehicleValuationsService`/
- * `PensionPlanContributionsService`/`PensionPlanValuationsService` inyectan
+ * directos) / spec 025 (efectivo, mismo modelo en dos niveles que spec 019
+ * pero con un único campo identificativo — cierra spec 018, las 7
+ * categorías quedan implementadas). `AuthGuardModule` por `AuthGuard` —
+ * mismo criterio que `GoalsModule`/`CategoriesModule`. A diferencia de
+ * `GoalsModule`, no importa `DashboardModule`: ningún servicio de aquí
+ * reutiliza cálculos de otro módulo. `BankAccountBalancesService`/
+ * `StockPurchasesService`/`StockValuationsService`/`FundPurchasesService`/
+ * `FundValuationsService`/`CryptoPurchasesService`/`CryptoValuationsService`/
+ * `VehicleValuationsService`/`PensionPlanContributionsService`/
+ * `PensionPlanValuationsService`/`CashBalancesService` inyectan
  * `BankAccountsService`/`StocksService`/`FundsService`/`CryptosService`/
- * `VehiclesService`/`PensionPlansService` (mismo módulo) para reutilizar su
- * `findOwnOrThrow()`.
+ * `VehiclesService`/`PensionPlansService`/`CashHoldingsService` (mismo
+ * módulo) para reutilizar su `findOwnOrThrow()`.
  */
 @Module({
   imports: [AuthGuardModule],
@@ -70,6 +77,8 @@ import { PensionPlanValuationsService } from './pension-plan-valuations.service.
     PensionPlansController,
     PensionPlanContributionsController,
     PensionPlanValuationsController,
+    CashHoldingsController,
+    CashBalancesController,
   ],
   providers: [
     BankAccountsService,
@@ -88,6 +97,8 @@ import { PensionPlanValuationsService } from './pension-plan-valuations.service.
     PensionPlansService,
     PensionPlanContributionsService,
     PensionPlanValuationsService,
+    CashHoldingsService,
+    CashBalancesService,
   ],
 })
 export class WealthModule {}

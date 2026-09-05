@@ -408,6 +408,54 @@ export const pensionPlanValuations = pgTable(
   (table) => [index('pension_plan_valuations_plan_date_idx').on(table.pensionPlanId, table.date)],
 );
 
+/**
+ * H1 (spec 025): una ubicación de efectivo (p. ej. "Cartera", "Caja
+ * fuerte") es una entidad única por usuario — mismo patrón en dos niveles
+ * que `bankAccounts` (spec 019), con un único campo identificativo en vez
+ * de dos: el efectivo no tiene un identificador natural como banco +
+ * número de cuenta. "Misma ubicación dos veces" se valida en
+ * `CashHoldingsService.create()`/`update()` (409), no con una constraint SQL.
+ */
+export const cashHoldings = pgTable(
+  'cash_holdings',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    location: varchar('location', { length: 150 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('cash_holdings_user_idx').on(table.userId)],
+);
+
+/**
+ * H2 (spec 025): historial de importes de una ubicación de efectivo —
+ * muchas por ubicación, ninguna es la ubicación en sí. Sin `userId`
+ * propio: el aislamiento por usuario pasa siempre por
+ * `cashHoldings.userId` (normalizado, mismo criterio que `bankAccountBalances`).
+ */
+export const cashBalances = pgTable(
+  'cash_balances',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    // `onDelete: 'cascade'`: H1 criterio 4 pide que borrar la ubicación se
+    // lleve su historial de importes por delante.
+    cashHoldingId: uuid('cash_holding_id')
+      .notNull()
+      .references(() => cashHoldings.id, { onDelete: 'cascade' }),
+    // H2 criterio 2: siempre positivo (`IsMoneyAmount`, no
+    // `IsSignedMoneyAmount` como `bankAccountBalances.euros`) — el efectivo
+    // físico no puede ser negativo.
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('cash_balances_holding_date_idx').on(table.cashHoldingId, table.date)],
+);
+
 // --- Relations ------------------------------------------------------------
 
 export const bankAccountsRelations = relations(bankAccounts, ({ one, many }) => ({
@@ -482,4 +530,13 @@ export const pensionPlanContributionsRelations = relations(pensionPlanContributi
 
 export const pensionPlanValuationsRelations = relations(pensionPlanValuations, ({ one }) => ({
   pensionPlan: one(pensionPlans, { fields: [pensionPlanValuations.pensionPlanId], references: [pensionPlans.id] }),
+}));
+
+export const cashHoldingsRelations = relations(cashHoldings, ({ one, many }) => ({
+  user: one(users, { fields: [cashHoldings.userId], references: [users.id] }),
+  balances: many(cashBalances),
+}));
+
+export const cashBalancesRelations = relations(cashBalances, ({ one }) => ({
+  cashHolding: one(cashHoldings, { fields: [cashBalances.cashHoldingId], references: [cashHoldings.id] }),
 }));

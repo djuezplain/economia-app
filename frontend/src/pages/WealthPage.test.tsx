@@ -22,6 +22,8 @@ import * as vehicleValuationsApi from '../api/vehicle-valuations';
 import * as pensionPlansApi from '../api/pension-plans';
 import * as pensionPlanContributionsApi from '../api/pension-plan-contributions';
 import * as pensionPlanValuationsApi from '../api/pension-plan-valuations';
+import * as cashHoldingsApi from '../api/cash-holdings';
+import * as cashBalancesApi from '../api/cash-balances';
 import type { BankAccount } from '../api/bank-accounts';
 import type { BankAccountBalance } from '../api/bank-account-balances';
 import type { Stock } from '../api/stocks';
@@ -38,6 +40,8 @@ import type { VehicleValuation } from '../api/vehicle-valuations';
 import type { PensionPlan } from '../api/pension-plans';
 import type { PensionPlanContribution } from '../api/pension-plan-contributions';
 import type { PensionPlanValuation } from '../api/pension-plan-valuations';
+import type { CashHolding } from '../api/cash-holdings';
+import type { CashBalance } from '../api/cash-balances';
 import { ApiError } from '../api/client';
 import { resetForTests } from '../offline/connectivity';
 
@@ -191,6 +195,23 @@ const PENSION_PLAN_VALUATION: PensionPlanValuation = {
   updatedAt: '2026-09-04T00:00:00.000Z',
 };
 
+const CASH_HOLDING: CashHolding = {
+  id: 'cash-holding-1',
+  userId: 'user-1',
+  location: 'Cartera',
+  createdAt: '2026-09-04T00:00:00.000Z',
+  updatedAt: '2026-09-04T00:00:00.000Z',
+};
+
+const CASH_BALANCE: CashBalance = {
+  id: 'cash-balance-1',
+  cashHoldingId: 'cash-holding-1',
+  amount: '200.00',
+  date: '2026-09-04',
+  createdAt: '2026-09-04T00:00:00.000Z',
+  updatedAt: '2026-09-04T00:00:00.000Z',
+};
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -246,7 +267,7 @@ describe('WealthPage', () => {
     expect(listAccountsSpy).not.toHaveBeenCalled();
   });
 
-  it('muestra las 7 categorías, con "Próximamente." en la 1 sin implementar', async () => {
+  it('muestra las 7 categorías, todas implementadas (sin "Próximamente.")', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
     vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
@@ -264,6 +285,8 @@ describe('WealthPage', () => {
     vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
     vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
     vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+    vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+    vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
     renderPage();
 
@@ -274,11 +297,11 @@ describe('WealthPage', () => {
     expect(screen.getByRole('heading', { name: /Vehículos/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Fondo Pensiones/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Efectivo/ })).toBeInTheDocument();
-    expect(screen.getAllByText('Próximamente.')).toHaveLength(1);
+    expect(screen.queryAllByText('Próximamente.')).toHaveLength(0);
   });
 
-  describe('Total (sumatorio de Cuentas Bancarias, Acciones, Fondos Inversión, Cripto, Vehículos y Fondo Pensiones)', () => {
-    it('suma el último saldo de cada cuenta bancaria, el valor actual de cada acción, fondo, posición de cripto, vehículo y plan de pensiones', async () => {
+  describe('Total (sumatorio de las 7 categorías)', () => {
+    it('suma el último saldo de cada cuenta bancaria, el valor actual de cada acción, fondo, posición de cripto, vehículo, plan de pensiones y ubicación de efectivo', async () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
@@ -296,21 +319,24 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([PENSION_PLAN_CONTRIBUTION]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([PENSION_PLAN_VALUATION]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([CASH_BALANCE]);
 
       renderPage();
 
       // Cuentas Bancarias: 1500,00 € (BANK_BALANCE). Acciones: 350,00 € (10 × 35,00 €, STOCK_VALUATION).
       // Fondos Inversión: 200,00 € (10 × 20,00 €, FUND_VALUATION). Cripto: 3500,00 € (0.1 × 35000,00 €, CRYPTO_VALUATION).
-      // Vehículos: 15000,00 € (VEHICLE_VALUATION). Fondo Pensiones: 1950,00 € (PENSION_PLAN_VALUATION). Total: 22500,00 €.
-      expect(await screen.findByText('22.500,00 €')).toBeInTheDocument();
+      // Vehículos: 15000,00 € (VEHICLE_VALUATION). Fondo Pensiones: 1950,00 € (PENSION_PLAN_VALUATION).
+      // Efectivo: 200,00 € (CASH_BALANCE). Total: 22700,00 €.
+      expect(await screen.findByText('22.700,00 €')).toBeInTheDocument();
       expect(
         screen.getByText(
-          'Cuentas Bancarias: 1500,00 € · Acciones: 350,00 € · Fondos Inversión: 200,00 € · Cripto: 3500,00 € · Vehículos: 15.000,00 € · Fondo Pensiones: 1950,00 €',
+          'Cuentas Bancarias: 1500,00 € · Acciones: 350,00 € · Fondos Inversión: 200,00 € · Cripto: 3500,00 € · Vehículos: 15.000,00 € · Fondo Pensiones: 1950,00 € · Efectivo: 200,00 €',
         ),
       ).toBeInTheDocument();
     });
 
-    it('sin ninguna cuenta, acción, fondo, posición de cripto, vehículo ni plan de pensiones, el total es 0,00 €', async () => {
+    it('sin ninguna cuenta, acción, fondo, posición de cripto, vehículo, plan de pensiones ni efectivo, el total es 0,00 €', async () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
@@ -328,13 +354,15 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
       expect(await screen.findByText('0,00 €')).toBeInTheDocument();
     });
 
-    it('una cuenta sin saldo, una acción/fondo/posición de cripto/vehículo/plan de pensiones sin valoración cuentan como 0 en el total', async () => {
+    it('una cuenta sin saldo, una acción/fondo/posición de cripto/vehículo/plan de pensiones/ubicación de efectivo sin valoración cuentan como 0 en el total', async () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
@@ -352,12 +380,14 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([PENSION_PLAN_CONTRIBUTION]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
       expect(
         await screen.findByText(
-          'Cuentas Bancarias: 0,00 € · Acciones: 0,00 € · Fondos Inversión: 0,00 € · Cripto: 0,00 € · Vehículos: 0,00 € · Fondo Pensiones: 0,00 €',
+          'Cuentas Bancarias: 0,00 € · Acciones: 0,00 € · Fondos Inversión: 0,00 € · Cripto: 0,00 € · Vehículos: 0,00 € · Fondo Pensiones: 0,00 € · Efectivo: 0,00 €',
         ),
       ).toBeInTheDocument();
     });
@@ -380,6 +410,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
     }
 
     it('sin ninguna cuenta, muestra el aviso de "todavía no tienes nada"', async () => {
@@ -585,6 +617,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
     }
 
     it('sin ninguna acción, muestra el aviso de "todavía no tienes nada"', async () => {
@@ -947,6 +981,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
     }
 
     it('sin ningún fondo, muestra el aviso de "todavía no tienes nada"', async () => {
@@ -1320,6 +1356,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -1336,6 +1374,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -1368,6 +1408,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -1387,6 +1429,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -1405,6 +1449,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -1424,6 +1470,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir posición de cripto' });
@@ -1446,6 +1494,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const createCryptoSpy = vi.spyOn(cryptosApi, 'createCrypto').mockResolvedValue(CRYPTO);
       const createPurchaseSpy = vi.spyOn(cryptoPurchasesApi, 'createCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
 
@@ -1481,6 +1531,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const updateSpy = vi.spyOn(cryptosApi, 'updateCrypto').mockResolvedValue(CRYPTO);
 
       renderPage();
@@ -1506,6 +1558,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const deleteSpy = vi.spyOn(cryptosApi, 'deleteCrypto').mockResolvedValue(undefined);
 
       renderPage();
@@ -1526,6 +1580,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const createSpy = vi.spyOn(cryptoPurchasesApi, 'createCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
 
       renderPage();
@@ -1551,6 +1607,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const createSpy = vi.spyOn(cryptoPurchasesApi, 'createCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
 
       renderPage();
@@ -1580,6 +1638,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const updateSpy = vi.spyOn(cryptoPurchasesApi, 'updateCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
 
       renderPage();
@@ -1608,6 +1668,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const deletePurchaseSpy = vi.spyOn(cryptoPurchasesApi, 'deleteCryptoPurchase').mockResolvedValue(undefined);
       const deleteCryptoSpy = vi.spyOn(cryptosApi, 'deleteCrypto');
 
@@ -1632,6 +1694,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const createSpy = vi.spyOn(cryptoValuationsApi, 'createCryptoValuation').mockResolvedValue(CRYPTO_VALUATION);
 
       renderPage();
@@ -1656,6 +1720,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const createSpy = vi.spyOn(cryptoValuationsApi, 'createCryptoValuation').mockResolvedValue(CRYPTO_VALUATION);
 
       renderPage();
@@ -1679,6 +1745,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const updateSpy = vi.spyOn(cryptoValuationsApi, 'updateCryptoValuation').mockResolvedValue(CRYPTO_VALUATION);
 
       renderPage();
@@ -1706,6 +1774,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const deleteValuationSpy = vi.spyOn(cryptoValuationsApi, 'deleteCryptoValuation').mockResolvedValue(undefined);
       const deleteCryptoSpy = vi.spyOn(cryptosApi, 'deleteCrypto');
 
@@ -1742,6 +1812,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -1755,6 +1827,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -1776,6 +1850,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -1792,6 +1868,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const createSpy = vi.spyOn(vehiclesApi, 'createVehicle').mockResolvedValue(VEHICLE);
 
       renderPage();
@@ -1820,6 +1898,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       vi.spyOn(vehiclesApi, 'createVehicle').mockRejectedValue(
         new ApiError(409, 'Ya tienes registrado ese vehículo (misma marca/modelo y matrícula). Añade la valoración dentro de él.'),
       );
@@ -1842,6 +1922,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const updateSpy = vi.spyOn(vehiclesApi, 'updateVehicle').mockResolvedValue(VEHICLE);
 
       renderPage();
@@ -1871,6 +1953,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const deleteSpy = vi.spyOn(vehiclesApi, 'deleteVehicle').mockResolvedValue(undefined);
 
       renderPage();
@@ -1888,6 +1972,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir valoración: Toyota Corolla · 1234ABC' });
@@ -1902,6 +1988,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const createSpy = vi.spyOn(vehicleValuationsApi, 'createVehicleValuation').mockResolvedValue(VEHICLE_VALUATION);
 
       renderPage();
@@ -1923,6 +2011,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const updateSpy = vi.spyOn(vehicleValuationsApi, 'updateVehicleValuation').mockResolvedValue(VEHICLE_VALUATION);
 
       renderPage();
@@ -1947,6 +2037,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const deleteValuationSpy = vi.spyOn(vehicleValuationsApi, 'deleteVehicleValuation').mockResolvedValue(undefined);
       const deleteVehicleSpy = vi.spyOn(vehiclesApi, 'deleteVehicle');
 
@@ -1983,6 +2075,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -1994,6 +2088,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([PENSION_PLAN_CONTRIBUTION]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([PENSION_PLAN_VALUATION]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -2018,6 +2114,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([PENSION_PLAN_CONTRIBUTION]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([{ ...PENSION_PLAN_VALUATION, value: '1400.00' }]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -2032,6 +2130,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([PENSION_PLAN_VALUATION]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -2045,6 +2145,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
 
@@ -2059,6 +2161,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
 
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir plan de pensiones' });
@@ -2071,6 +2175,8 @@ describe('WealthPage', () => {
       const listPlansSpy = vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       const listContributionsSpy = vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const createPlanSpy = vi.spyOn(pensionPlansApi, 'createPensionPlan').mockResolvedValue(PENSION_PLAN);
       const createContributionSpy = vi
         .spyOn(pensionPlanContributionsApi, 'createPensionPlanContribution')
@@ -2103,6 +2209,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       vi.spyOn(pensionPlansApi, 'createPensionPlan').mockRejectedValue(
         new ApiError(409, 'Ya tienes registrado ese plan de pensiones (misma entidad gestora y plan). Añade la aportación o valoración dentro de él.'),
       );
@@ -2123,6 +2231,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const updateSpy = vi.spyOn(pensionPlansApi, 'updatePensionPlan').mockResolvedValue(PENSION_PLAN);
 
       renderPage();
@@ -2143,6 +2253,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([PENSION_PLAN_CONTRIBUTION]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([PENSION_PLAN_VALUATION]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const deleteSpy = vi.spyOn(pensionPlansApi, 'deletePensionPlan').mockResolvedValue(undefined);
 
       renderPage();
@@ -2158,6 +2270,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       const listContributionsSpy = vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const createSpy = vi
         .spyOn(pensionPlanContributionsApi, 'createPensionPlanContribution')
         .mockResolvedValue(PENSION_PLAN_CONTRIBUTION);
@@ -2179,6 +2293,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([PENSION_PLAN_CONTRIBUTION]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const updateSpy = vi
         .spyOn(pensionPlanContributionsApi, 'updatePensionPlanContribution')
         .mockResolvedValue(PENSION_PLAN_CONTRIBUTION);
@@ -2204,6 +2320,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([PENSION_PLAN_CONTRIBUTION]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const deleteContributionSpy = vi
         .spyOn(pensionPlanContributionsApi, 'deletePensionPlanContribution')
         .mockResolvedValue(undefined);
@@ -2225,6 +2343,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       const listValuationsSpy = vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const createSpy = vi
         .spyOn(pensionPlanValuationsApi, 'createPensionPlanValuation')
         .mockResolvedValue(PENSION_PLAN_VALUATION);
@@ -2246,6 +2366,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([PENSION_PLAN_VALUATION]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const updateSpy = vi.spyOn(pensionPlanValuationsApi, 'updatePensionPlanValuation').mockResolvedValue(PENSION_PLAN_VALUATION);
 
       renderPage();
@@ -2269,6 +2391,8 @@ describe('WealthPage', () => {
       vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
       vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
       vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([PENSION_PLAN_VALUATION]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
       const deleteValuationSpy = vi.spyOn(pensionPlanValuationsApi, 'deletePensionPlanValuation').mockResolvedValue(undefined);
       const deletePlanSpy = vi.spyOn(pensionPlansApi, 'deletePensionPlan');
 
@@ -2281,6 +2405,195 @@ describe('WealthPage', () => {
 
       await waitFor(() => expect(deleteValuationSpy).toHaveBeenCalledWith(PENSION_PLAN_VALUATION.id));
       expect(deletePlanSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Efectivo (spec 025)', () => {
+    function mockOtherApis() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
+      vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
+      vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+    }
+
+    it('sin ninguna ubicación, muestra el aviso de "todavía no tienes nada"', async () => {
+      mockOtherApis();
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+
+      renderPage();
+
+      expect(await screen.findByText('Todavía no tienes ninguna ubicación de efectivo.')).toBeInTheDocument();
+    });
+
+    it('lista una ubicación existente, con su importe más reciente', async () => {
+      mockOtherApis();
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([CASH_BALANCE]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus ubicaciones de efectivo' });
+      expect(within(list).getByText('Cartera')).toBeInTheDocument();
+      // Aparece dos veces: en la tarjeta (importe actual) y en el historial (la propia entrada).
+      expect(within(list).getAllByText('200,00 €')).toHaveLength(2);
+      expect(within(list).getByText('Última fecha: 2026-09-04')).toBeInTheDocument();
+
+      const history = within(list).getByRole('list', { name: 'Historial de Cartera' });
+      expect(within(history).getByText('2026-09-04')).toBeInTheDocument();
+    });
+
+    it('una ubicación sin ningún importe muestra "Sin importe"', async () => {
+      mockOtherApis();
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus ubicaciones de efectivo' });
+      expect(within(list).getByText('Sin importe')).toBeInTheDocument();
+      expect(within(list).getByText('Todavía no hay ningún importe registrado en esta ubicación.')).toBeInTheDocument();
+    });
+
+    it('crea una ubicación desde el formulario de alta', async () => {
+      mockOtherApis();
+      const listSpy = vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+      const createSpy = vi.spyOn(cashHoldingsApi, 'createCashHolding').mockResolvedValue(CASH_HOLDING);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir ubicación de efectivo' });
+
+      await userEvent.type(within(form).getByLabelText('Ubicación'), 'Cartera');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir ubicación' }));
+
+      await waitFor(() => expect(createSpy).toHaveBeenCalledWith({ location: 'Cartera' }));
+      await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('no puede crear dos veces la misma ubicación (409)', async () => {
+      mockOtherApis();
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'createCashHolding').mockRejectedValue(
+        new ApiError(409, 'Ya tienes registrada esa ubicación de efectivo. Añade el importe dentro de ella.'),
+      );
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir ubicación de efectivo' });
+
+      await userEvent.type(within(form).getByLabelText('Ubicación'), 'Cartera');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir ubicación' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Ya tienes registrada esa ubicación de efectivo');
+    });
+
+    it('edita una ubicación existente', async () => {
+      mockOtherApis();
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+      const updateSpy = vi.spyOn(cashHoldingsApi, 'updateCashHolding').mockResolvedValue(CASH_HOLDING);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus ubicaciones de efectivo' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Editar ubicación: Cartera' }));
+      const editForm = screen.getByRole('form', { name: 'Editar ubicación: Cartera' });
+      const locationInput = within(editForm).getByLabelText('Ubicación');
+      await userEvent.clear(locationInput);
+      await userEvent.type(locationInput, 'Caja fuerte');
+      await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() => expect(updateSpy).toHaveBeenCalledWith(CASH_HOLDING.id, { location: 'Caja fuerte' }));
+    });
+
+    it('elimina una ubicación', async () => {
+      mockOtherApis();
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+      const deleteSpy = vi.spyOn(cashHoldingsApi, 'deleteCashHolding').mockResolvedValue(undefined);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus ubicaciones de efectivo' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar ubicación: Cartera' }));
+
+      await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith(CASH_HOLDING.id));
+    });
+
+    it('el formulario de importe de una ubicación trae la fecha de hoy por defecto', async () => {
+      mockOtherApis();
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir importe: Cartera' });
+
+      expect(within(form).getByLabelText('Fecha')).toHaveValue(todayIso());
+    });
+
+    it('añade un importe a una ubicación existente', async () => {
+      mockOtherApis();
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      const listBalancesSpy = vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+      const createSpy = vi.spyOn(cashBalancesApi, 'createCashBalance').mockResolvedValue(CASH_BALANCE);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir importe: Cartera' });
+
+      await userEvent.type(within(form).getByLabelText('Importe'), '200.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir importe' }));
+
+      await waitFor(() => expect(createSpy).toHaveBeenCalledWith({ cashHoldingId: CASH_HOLDING.id, amount: '200.00', date: todayIso() }));
+      await waitFor(() => expect(listBalancesSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('edita una entrada de importe del historial', async () => {
+      mockOtherApis();
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([CASH_BALANCE]);
+      const updateSpy = vi.spyOn(cashBalancesApi, 'updateCashBalance').mockResolvedValue(CASH_BALANCE);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus ubicaciones de efectivo' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Editar importe del 2026-09-04' }));
+      const editForm = screen.getByRole('form', { name: 'Editar importe del 2026-09-04' });
+      const amountInput = within(editForm).getByLabelText('Importe');
+      await userEvent.clear(amountInput);
+      await userEvent.type(amountInput, '250.00');
+      await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() => expect(updateSpy).toHaveBeenCalledWith(CASH_BALANCE.id, { amount: '250.00', date: '2026-09-04' }));
+    });
+
+    it('elimina una entrada de importe del historial, sin borrar la ubicación', async () => {
+      mockOtherApis();
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([CASH_BALANCE]);
+      const deleteBalanceSpy = vi.spyOn(cashBalancesApi, 'deleteCashBalance').mockResolvedValue(undefined);
+      const deleteHoldingSpy = vi.spyOn(cashHoldingsApi, 'deleteCashHolding');
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus ubicaciones de efectivo' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar importe del 2026-09-04' }));
+
+      await waitFor(() => expect(deleteBalanceSpy).toHaveBeenCalledWith(CASH_BALANCE.id));
+      expect(deleteHoldingSpy).not.toHaveBeenCalled();
     });
   });
 });
