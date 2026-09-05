@@ -113,6 +113,13 @@
       "when": 1788554313928,
       "tag": "0015_widen_stock_purchases_precision",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788594194355,
+      "tag": "0016_add_funds_purchases_valuations",
+      "breakpoints": true
     }
   ]
 }

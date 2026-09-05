@@ -10,16 +10,23 @@ import { StockPurchasesController } from './stock-purchases.controller.js';
 import { StockPurchasesService } from './stock-purchases.service.js';
 import { StockValuationsController } from './stock-valuations.controller.js';
 import { StockValuationsService } from './stock-valuations.service.js';
+import { FundsController } from './funds.controller.js';
+import { FundsService } from './funds.service.js';
+import { FundPurchasesController } from './fund-purchases.controller.js';
+import { FundPurchasesService } from './fund-purchases.service.js';
+import { FundValuationsController } from './fund-valuations.controller.js';
+import { FundValuationsService } from './fund-valuations.service.js';
 
 /**
  * Spec 018 (Resumen Patrimonio) / spec 019 (cuentas bancarias únicas) /
- * spec 020 (acciones únicas). `AuthGuardModule` por `AuthGuard` — mismo
- * criterio que `GoalsModule`/`CategoriesModule`. A diferencia de
- * `GoalsModule`, no importa `DashboardModule`: ningún servicio de aquí
- * reutiliza cálculos de otro módulo. `BankAccountBalancesService`/
- * `StockPurchasesService`/`StockValuationsService` inyectan
- * `BankAccountsService`/`StocksService` (mismo módulo) para reutilizar su
- * `findOwnOrThrow()`.
+ * spec 020 (acciones únicas) / spec 021 (fondos de inversión únicos, mismo
+ * modelo que spec 020). `AuthGuardModule` por `AuthGuard` — mismo criterio
+ * que `GoalsModule`/`CategoriesModule`. A diferencia de `GoalsModule`, no
+ * importa `DashboardModule`: ningún servicio de aquí reutiliza cálculos de
+ * otro módulo. `BankAccountBalancesService`/`StockPurchasesService`/
+ * `StockValuationsService`/`FundPurchasesService`/`FundValuationsService`
+ * inyectan `BankAccountsService`/`StocksService`/`FundsService` (mismo
+ * módulo) para reutilizar su `findOwnOrThrow()`.
  */
 @Module({
   imports: [AuthGuardModule],
@@ -29,7 +36,19 @@ import { StockValuationsService } from './stock-valuations.service.js';
     StocksController,
     StockPurchasesController,
     StockValuationsController,
+    FundsController,
+    FundPurchasesController,
+    FundValuationsController,
   ],
-  providers: [BankAccountsService, BankAccountBalancesService, StocksService, StockPurchasesService, StockValuationsService],
+  providers: [
+    BankAccountsService,
+    BankAccountBalancesService,
+    StocksService,
+    StockPurchasesService,
+    StockValuationsService,
+    FundsService,
+    FundPurchasesService,
+    FundValuationsService,
+  ],
 })
 export class WealthModule {}
