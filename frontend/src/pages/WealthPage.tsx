@@ -28,6 +28,22 @@ import {
   updateStockValuation,
 } from '../api/stock-valuations';
 import type { StockValuation, UpdateStockValuationInput } from '../api/stock-valuations';
+import { createFund, deleteFund, listFunds, updateFund } from '../api/funds';
+import type { Fund, FundInput } from '../api/funds';
+import {
+  createFundPurchase,
+  deleteFundPurchase,
+  listFundPurchases,
+  updateFundPurchase,
+} from '../api/fund-purchases';
+import type { FundPurchase, UpdateFundPurchaseInput } from '../api/fund-purchases';
+import {
+  createFundValuation,
+  deleteFundValuation,
+  listFundValuations,
+  updateFundValuation,
+} from '../api/fund-valuations';
+import type { FundValuation, UpdateFundValuationInput } from '../api/fund-valuations';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 
@@ -40,6 +56,9 @@ const EMPTY_BALANCE_FORM: UpdateBankAccountBalanceInput = { euros: '', date: tod
 const EMPTY_STOCK_FORM: StockInput = { custodyBank: '', stock: '' };
 const EMPTY_PURCHASE_FORM: UpdateStockPurchaseInput = { shareCount: '', purchasePrice: '', date: todayIso() };
 const EMPTY_VALUATION_FORM: UpdateStockValuationInput = { pricePerShare: '', date: todayIso() };
+const EMPTY_FUND_FORM: FundInput = { custodyBank: '', fund: '' };
+const EMPTY_FUND_PURCHASE_FORM: UpdateFundPurchaseInput = { shareCount: '', purchasePrice: '', date: todayIso() };
+const EMPTY_FUND_VALUATION_FORM: UpdateFundValuationInput = { pricePerShare: '', date: todayIso() };
 
 /** Formulario "Añadir acción" (nivel superior): crea la acción y su primera
  *  compra en un solo paso (spec 020, revisión §3.bis) — dos llamadas
@@ -48,6 +67,15 @@ type NewStockForm = StockInput & { shareCount: string; purchasePrice: string; da
 
 function emptyNewStockForm(): NewStockForm {
   return { custodyBank: '', stock: '', shareCount: '', purchasePrice: '', date: todayIso() };
+}
+
+/** Formulario "Añadir fondo" (nivel superior): mismo criterio que
+ *  `NewStockForm` (spec 021, mismo modelo que spec 020) — crea el fondo y su
+ *  primera compra en un solo paso. */
+type NewFundForm = FundInput & { shareCount: string; purchasePrice: string; date: string };
+
+function emptyNewFundForm(): NewFundForm {
+  return { custodyBank: '', fund: '', shareCount: '', purchasePrice: '', date: todayIso() };
 }
 
 function accountFormFromEntity(account: BankAccount): BankAccountInput {
@@ -70,6 +98,18 @@ function valuationFormFromEntity(valuation: StockValuation): UpdateStockValuatio
   return { pricePerShare: valuation.pricePerShare, date: valuation.date };
 }
 
+function fundFormFromEntity(fund: Fund): FundInput {
+  return { custodyBank: fund.custodyBank, fund: fund.fund };
+}
+
+function fundPurchaseFormFromEntity(purchase: FundPurchase): UpdateFundPurchaseInput {
+  return { shareCount: purchase.shareCount, purchasePrice: purchase.purchasePrice, date: purchase.date };
+}
+
+function fundValuationFormFromEntity(valuation: FundValuation): UpdateFundValuationInput {
+  return { pricePerShare: valuation.pricePerShare, date: valuation.date };
+}
+
 /** H2 criterio 3 (spec 020): calculado, nunca guardado — ver `wealth.calculations.ts` en el backend. */
 function purchaseValue(purchasePrice: string, shareCount: string): string {
   const price = parseFloat(purchasePrice);
@@ -78,14 +118,16 @@ function purchaseValue(purchasePrice: string, shareCount: string): string {
   return (price * shares).toFixed(2);
 }
 
-/** H2 criterio 4 (spec 020): nº total de acciones de una posición, sumando todas sus compras — calculado, nunca guardado.
- *  8 decimales, no 4 — mismo criterio de precisión que `shareCount` (revisión). */
-function totalShares(purchases: StockPurchase[]): string {
+/** H2 criterio 4 (spec 020): nº total de acciones/participaciones de una posición, sumando todas sus
+ *  compras — calculado, nunca guardado. 8 decimales, no 4 — mismo criterio de precisión que `shareCount`
+ *  (revisión). Tipo estructural (no `StockPurchase[]`/`FundPurchase[]`): mismo cálculo para acciones y
+ *  fondos de inversión (spec 021, mismo modelo que spec 020). */
+function totalShares(purchases: Array<{ shareCount: string }>): string {
   return purchases.reduce((sum, p) => sum + parseFloat(p.shareCount), 0).toFixed(8);
 }
 
 /** H2 criterio 4 (spec 020): coste total de una posición, sumando el valor de compra de todas sus compras. */
-function totalCost(purchases: StockPurchase[]): string {
+function totalCost(purchases: Array<{ shareCount: string; purchasePrice: string }>): string {
   return purchases.reduce((sum, p) => sum + parseFloat(purchaseValue(p.purchasePrice, p.shareCount) || '0'), 0).toFixed(2);
 }
 
@@ -133,9 +175,23 @@ function stocksTotal(stocks: Stock[], purchases: StockPurchase[], valuations: St
     .toFixed(2);
 }
 
-/** Las 5 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3). */
+/** Resumen (parte superior de la página): sumatorio del valor actual de cada fondo — mismo criterio
+ *  que `stocksTotal` (spec 021, mismo modelo que spec 020). Un fondo sin ninguna valoración aún
+ *  contribuye 0, mismo criterio que "Sin valoración" en su propia tarjeta. */
+function fundsTotal(funds: Fund[], purchases: FundPurchase[], valuations: FundValuation[]): string {
+  return funds
+    .reduce((sum, fund) => {
+      const fundPurchases = purchases.filter((p) => p.fundId === fund.id);
+      const lastValuation = valuations.find((v) => v.fundId === fund.id); // ya ordenado por fecha descendente
+      if (!lastValuation) return sum;
+      return sum + parseFloat(currentValue(lastValuation.pricePerShare, totalShares(fundPurchases)));
+    }, 0)
+    .toFixed(2);
+}
+
+/** Las 4 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3, spec 018) —
+ *  "Fondos Inversión" pasa a tener funcionalidad propia (spec 021). */
 const PLACEHOLDER_SECTIONS = [
-  { icon: '💹', label: 'Fondos Inversión' },
   { icon: '₿', label: 'Cripto' },
   { icon: '🚗', label: 'Vehículos' },
   { icon: '👴', label: 'Fondo Pensiones' },
@@ -216,6 +272,42 @@ export function WealthPage() {
   const [pendingDeleteValuationId, setPendingDeleteValuationId] = useState<string | null>(null);
   const [valuationActionError, setValuationActionError] = useState<string | null>(null);
 
+  const [fundList, setFundList] = useState<Fund[] | null>(null);
+  const [fundsLoadError, setFundsLoadError] = useState<string | null>(null);
+  const [newFundForm, setNewFundForm] = useState<NewFundForm>(emptyNewFundForm);
+  const [createFundError, setCreateFundError] = useState<string | null>(null);
+  const [isCreatingFund, setIsCreatingFund] = useState(false);
+  const [editingFundId, setEditingFundId] = useState<string | null>(null);
+  const [editingFundForm, setEditingFundForm] = useState<FundInput>(EMPTY_FUND_FORM);
+  const [editFundError, setEditFundError] = useState<string | null>(null);
+  const [isSavingFund, setIsSavingFund] = useState(false);
+  const [pendingDeleteFundId, setPendingDeleteFundId] = useState<string | null>(null);
+  const [fundActionError, setFundActionError] = useState<string | null>(null);
+
+  const [fundPurchases, setFundPurchases] = useState<FundPurchase[] | null>(null);
+  const [fundPurchasesLoadError, setFundPurchasesLoadError] = useState<string | null>(null);
+  const [newFundPurchaseForms, setNewFundPurchaseForms] = useState<Record<string, UpdateFundPurchaseInput>>({});
+  const [createFundPurchaseError, setCreateFundPurchaseError] = useState<string | null>(null);
+  const [creatingFundPurchaseForFundId, setCreatingFundPurchaseForFundId] = useState<string | null>(null);
+  const [editingFundPurchaseId, setEditingFundPurchaseId] = useState<string | null>(null);
+  const [editingFundPurchaseForm, setEditingFundPurchaseForm] = useState<UpdateFundPurchaseInput>(EMPTY_FUND_PURCHASE_FORM);
+  const [editFundPurchaseError, setEditFundPurchaseError] = useState<string | null>(null);
+  const [isSavingFundPurchase, setIsSavingFundPurchase] = useState(false);
+  const [pendingDeleteFundPurchaseId, setPendingDeleteFundPurchaseId] = useState<string | null>(null);
+  const [fundPurchaseActionError, setFundPurchaseActionError] = useState<string | null>(null);
+
+  const [fundValuations, setFundValuations] = useState<FundValuation[] | null>(null);
+  const [fundValuationsLoadError, setFundValuationsLoadError] = useState<string | null>(null);
+  const [newFundValuationForms, setNewFundValuationForms] = useState<Record<string, UpdateFundValuationInput>>({});
+  const [createFundValuationError, setCreateFundValuationError] = useState<string | null>(null);
+  const [creatingFundValuationForFundId, setCreatingFundValuationForFundId] = useState<string | null>(null);
+  const [editingFundValuationId, setEditingFundValuationId] = useState<string | null>(null);
+  const [editingFundValuationForm, setEditingFundValuationForm] = useState<UpdateFundValuationInput>(EMPTY_FUND_VALUATION_FORM);
+  const [editFundValuationError, setEditFundValuationError] = useState<string | null>(null);
+  const [isSavingFundValuation, setIsSavingFundValuation] = useState(false);
+  const [pendingDeleteFundValuationId, setPendingDeleteFundValuationId] = useState<string | null>(null);
+  const [fundValuationActionError, setFundValuationActionError] = useState<string | null>(null);
+
   async function reloadAccounts() {
     setAccounts(await listBankAccounts());
   }
@@ -234,6 +326,18 @@ export function WealthPage() {
 
   async function reloadValuations() {
     setValuations(await listStockValuations());
+  }
+
+  async function reloadFunds() {
+    setFundList(await listFunds());
+  }
+
+  async function reloadFundPurchases() {
+    setFundPurchases(await listFundPurchases());
+  }
+
+  async function reloadFundValuations() {
+    setFundValuations(await listFundValuations());
   }
 
   useEffect(() => {
@@ -304,6 +408,52 @@ export function WealthPage() {
         await reloadValuations();
       } catch (err) {
         if (!cancelled) setValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadFunds();
+      } catch (err) {
+        if (!cancelled) setFundsLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar los fondos de inversión.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadFundPurchases();
+      } catch (err) {
+        if (!cancelled) setFundPurchasesLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de compras.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadFundValuations();
+      } catch (err) {
+        if (!cancelled)
+          setFundValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
       }
     })();
     return () => {
@@ -599,6 +749,185 @@ export function WealthPage() {
     }
   }
 
+  async function handleCreateFund(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateFundError(null);
+    setIsCreatingFund(true);
+    try {
+      const fund = await createFund({ custodyBank: newFundForm.custodyBank, fund: newFundForm.fund });
+      await createFundPurchase({
+        fundId: fund.id,
+        shareCount: newFundForm.shareCount,
+        purchasePrice: newFundForm.purchasePrice,
+        date: newFundForm.date,
+      });
+      setNewFundForm(emptyNewFundForm());
+      await Promise.all([reloadFunds(), reloadFundPurchases()]);
+    } catch (err) {
+      setCreateFundError(err instanceof ApiError ? err.message : 'No se ha podido crear el fondo.');
+    } finally {
+      setIsCreatingFund(false);
+    }
+  }
+
+  function startEditFund(fund: Fund) {
+    setEditFundError(null);
+    setEditingFundId(fund.id);
+    setEditingFundForm(fundFormFromEntity(fund));
+  }
+
+  async function handleEditFund(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingFundId) return;
+    setEditFundError(null);
+    setIsSavingFund(true);
+    try {
+      await updateFund(editingFundId, editingFundForm);
+      setEditingFundId(null);
+      await reloadFunds();
+    } catch (err) {
+      setEditFundError(err instanceof ApiError ? err.message : 'No se ha podido guardar el fondo.');
+    } finally {
+      setIsSavingFund(false);
+    }
+  }
+
+  async function handleDeleteFund(id: string) {
+    setFundActionError(null);
+    setPendingDeleteFundId(id);
+    try {
+      await deleteFund(id);
+      await Promise.all([reloadFunds(), reloadFundPurchases(), reloadFundValuations()]);
+    } catch (err) {
+      setFundActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar el fondo.');
+    } finally {
+      setPendingDeleteFundId(null);
+    }
+  }
+
+  function getNewFundPurchaseForm(fundId: string): UpdateFundPurchaseInput {
+    return newFundPurchaseForms[fundId] ?? { shareCount: '', purchasePrice: '', date: todayIso() };
+  }
+
+  function setNewFundPurchaseForm(fundId: string, form: UpdateFundPurchaseInput) {
+    setNewFundPurchaseForms((prev) => ({ ...prev, [fundId]: form }));
+  }
+
+  async function handleCreateFundPurchase(fundId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateFundPurchaseError(null);
+    setCreatingFundPurchaseForFundId(fundId);
+    try {
+      const form = getNewFundPurchaseForm(fundId);
+      await createFundPurchase({
+        fundId,
+        shareCount: form.shareCount ?? '',
+        purchasePrice: form.purchasePrice ?? '',
+        date: form.date ?? todayIso(),
+      });
+      setNewFundPurchaseForm(fundId, { shareCount: '', purchasePrice: '', date: todayIso() });
+      await reloadFundPurchases();
+    } catch (err) {
+      setCreateFundPurchaseError(err instanceof ApiError ? err.message : 'No se ha podido añadir la compra.');
+    } finally {
+      setCreatingFundPurchaseForFundId(null);
+    }
+  }
+
+  function startEditFundPurchase(purchase: FundPurchase) {
+    setEditFundPurchaseError(null);
+    setEditingFundPurchaseId(purchase.id);
+    setEditingFundPurchaseForm(fundPurchaseFormFromEntity(purchase));
+  }
+
+  async function handleEditFundPurchase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingFundPurchaseId) return;
+    setEditFundPurchaseError(null);
+    setIsSavingFundPurchase(true);
+    try {
+      await updateFundPurchase(editingFundPurchaseId, editingFundPurchaseForm);
+      setEditingFundPurchaseId(null);
+      await reloadFundPurchases();
+    } catch (err) {
+      setEditFundPurchaseError(err instanceof ApiError ? err.message : 'No se ha podido guardar la compra.');
+    } finally {
+      setIsSavingFundPurchase(false);
+    }
+  }
+
+  async function handleDeleteFundPurchase(id: string) {
+    setFundPurchaseActionError(null);
+    setPendingDeleteFundPurchaseId(id);
+    try {
+      await deleteFundPurchase(id);
+      await reloadFundPurchases();
+    } catch (err) {
+      setFundPurchaseActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la compra.');
+    } finally {
+      setPendingDeleteFundPurchaseId(null);
+    }
+  }
+
+  function getNewFundValuationForm(fundId: string): UpdateFundValuationInput {
+    return newFundValuationForms[fundId] ?? { pricePerShare: '', date: todayIso() };
+  }
+
+  function setNewFundValuationForm(fundId: string, form: UpdateFundValuationInput) {
+    setNewFundValuationForms((prev) => ({ ...prev, [fundId]: form }));
+  }
+
+  async function handleCreateFundValuation(fundId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateFundValuationError(null);
+    setCreatingFundValuationForFundId(fundId);
+    try {
+      const form = getNewFundValuationForm(fundId);
+      await createFundValuation({ fundId, pricePerShare: form.pricePerShare ?? '', date: form.date ?? todayIso() });
+      setNewFundValuationForm(fundId, { pricePerShare: '', date: todayIso() });
+      await reloadFundValuations();
+    } catch (err) {
+      setCreateFundValuationError(err instanceof ApiError ? err.message : 'No se ha podido añadir la valoración.');
+    } finally {
+      setCreatingFundValuationForFundId(null);
+    }
+  }
+
+  function startEditFundValuation(valuation: FundValuation) {
+    setEditFundValuationError(null);
+    setEditingFundValuationId(valuation.id);
+    setEditingFundValuationForm(fundValuationFormFromEntity(valuation));
+  }
+
+  async function handleEditFundValuation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingFundValuationId) return;
+    setEditFundValuationError(null);
+    setIsSavingFundValuation(true);
+    try {
+      await updateFundValuation(editingFundValuationId, editingFundValuationForm);
+      setEditingFundValuationId(null);
+      await reloadFundValuations();
+    } catch (err) {
+      setEditFundValuationError(err instanceof ApiError ? err.message : 'No se ha podido guardar la valoración.');
+    } finally {
+      setIsSavingFundValuation(false);
+    }
+  }
+
+  async function handleDeleteFundValuation(id: string) {
+    setFundValuationActionError(null);
+    setPendingDeleteFundValuationId(id);
+    try {
+      await deleteFundValuation(id);
+      await reloadFundValuations();
+    } catch (err) {
+      setFundValuationActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la valoración.');
+    } finally {
+      setPendingDeleteFundValuationId(null);
+    }
+  }
+
   if (isAuthLoading) {
     return (
       <main>
@@ -629,7 +958,15 @@ export function WealthPage() {
     );
   }
 
-  const canShowTotal = accounts !== null && balances !== null && stockList !== null && purchases !== null && valuations !== null;
+  const canShowTotal =
+    accounts !== null &&
+    balances !== null &&
+    stockList !== null &&
+    purchases !== null &&
+    valuations !== null &&
+    fundList !== null &&
+    fundPurchases !== null &&
+    fundValuations !== null;
 
   return (
     <main>
@@ -640,12 +977,17 @@ export function WealthPage() {
           <span className="card-title">Total</span>
           <span className="card-amount">
             {formatCurrency(
-              (parseFloat(bankAccountsTotal(accounts, balances)) + parseFloat(stocksTotal(stockList, purchases, valuations))).toFixed(2),
+              (
+                parseFloat(bankAccountsTotal(accounts, balances)) +
+                parseFloat(stocksTotal(stockList, purchases, valuations)) +
+                parseFloat(fundsTotal(fundList, fundPurchases, fundValuations))
+              ).toFixed(2),
             )}
           </span>
           <p className="card-meta">
             Cuentas Bancarias: {formatCurrency(bankAccountsTotal(accounts, balances))} · Acciones:{' '}
-            {formatCurrency(stocksTotal(stockList, purchases, valuations))}
+            {formatCurrency(stocksTotal(stockList, purchases, valuations))} · Fondos Inversión:{' '}
+            {formatCurrency(fundsTotal(fundList, fundPurchases, fundValuations))}
           </p>
         </div>
       )}
@@ -1350,6 +1692,481 @@ export function WealthPage() {
           {createStockError && <p role="alert">{createStockError}</p>}
           <button type="submit" className="btn btn-primary" disabled={isCreatingStock}>
             {isCreatingStock ? 'Creando…' : 'Añadir acción'}
+          </button>
+        </form>
+      </details>
+
+      <details className="dashboard-section">
+        <summary>
+          <h2>💹 Fondos Inversión</h2>
+        </summary>
+
+        {fundsLoadError && <p role="alert">{fundsLoadError}</p>}
+        {fundPurchasesLoadError && <p role="alert">{fundPurchasesLoadError}</p>}
+        {fundValuationsLoadError && <p role="alert">{fundValuationsLoadError}</p>}
+        {fundActionError && <p role="alert">{fundActionError}</p>}
+        {fundPurchaseActionError && <p role="alert">{fundPurchaseActionError}</p>}
+        {fundValuationActionError && <p role="alert">{fundValuationActionError}</p>}
+
+        {fundList && fundList.length === 0 && <p>Todavía no tienes ningún fondo de inversión.</p>}
+
+        {fundList && fundList.length > 0 && (
+          <ul id="wealth-fund-list" aria-label="Tus fondos de inversión">
+            {fundList.map((fund) => {
+              const isEditingFund = editingFundId === fund.id;
+              const fundPurchaseHistory = (fundPurchases ?? []).filter((p) => p.fundId === fund.id);
+              const fundValuationHistory = (fundValuations ?? []).filter((v) => v.fundId === fund.id);
+              const lastValuation = fundValuationHistory[0] ?? null; // `fundValuations` ya viene ordenado por fecha descendente
+              const newFundPurchaseForm = getNewFundPurchaseForm(fund.id);
+              const newFundValuationForm = getNewFundValuationForm(fund.id);
+              const gainLoss = lastValuation
+                ? gainLossPercent(
+                    currentValue(lastValuation.pricePerShare, totalShares(fundPurchaseHistory)),
+                    totalCost(fundPurchaseHistory),
+                  )
+                : null;
+
+              if (isEditingFund) {
+                return (
+                  <li className="card elev-sm" key={fund.id}>
+                    <form onSubmit={handleEditFund} aria-label={`Editar fondo: ${fund.fund}`} noValidate>
+                      <div className="field">
+                        <label htmlFor={`fund-${fund.id}-custodyBank`}>Banco Custodia</label>
+                        <input
+                          id={`fund-${fund.id}-custodyBank`}
+                          className="input"
+                          value={editingFundForm.custodyBank}
+                          onChange={(e) => setEditingFundForm({ ...editingFundForm, custodyBank: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`fund-${fund.id}-fund`}>Fondo</label>
+                        <input
+                          id={`fund-${fund.id}-fund`}
+                          className="input"
+                          value={editingFundForm.fund}
+                          onChange={(e) => setEditingFundForm({ ...editingFundForm, fund: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {editFundError && <p role="alert">{editFundError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={isSavingFund}>
+                        {isSavingFund ? 'Guardando…' : 'Guardar'}
+                      </button>{' '}
+                      <button type="button" className="btn btn-secondary" disabled={isSavingFund} onClick={() => setEditingFundId(null)}>
+                        Cancelar
+                      </button>
+                    </form>
+                  </li>
+                );
+              }
+
+              return (
+                <li className="card elev-sm" key={fund.id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="card-title">
+                      {fund.fund} · {fund.custodyBank}
+                      {gainLoss !== null && (
+                        <span style={{ color: gainLoss >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                          {' '}
+                          {gainLoss >= 0 ? '+' : ''}
+                          {gainLoss.toFixed(2)}%
+                        </span>
+                      )}
+                    </span>
+                    <span className="card-amount">
+                      {lastValuation
+                        ? formatCurrency(currentValue(lastValuation.pricePerShare, totalShares(fundPurchaseHistory)))
+                        : 'Sin valoración'}
+                    </span>
+                  </div>
+                  <p className="card-meta">
+                    {totalShares(fundPurchaseHistory)} participaciones · Coste total: {formatCurrency(totalCost(fundPurchaseHistory))}
+                    {lastValuation && (
+                      <>
+                        {' '}
+                        · Precio actual: {formatCurrency(lastValuation.pricePerShare)}/participación · Última fecha: {lastValuation.date}
+                      </>
+                    )}
+                  </p>
+                  <div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      aria-label={`Editar fondo: ${fund.fund} · ${fund.custodyBank}`}
+                      onClick={() => startEditFund(fund)}
+                    >
+                      Editar
+                    </button>{' '}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      aria-label={`Eliminar fondo: ${fund.fund} · ${fund.custodyBank}`}
+                      disabled={pendingDeleteFundId === fund.id}
+                      onClick={() => void handleDeleteFund(fund.id)}
+                    >
+                      {pendingDeleteFundId === fund.id ? 'Eliminando…' : 'Eliminar'}
+                    </button>
+                  </div>
+
+                  <details>
+                    <summary>Historial de compras ({fundPurchaseHistory.length})</summary>
+
+                    {fundPurchaseHistory.length === 0 && <p>Todavía no hay ninguna compra registrada en este fondo.</p>}
+
+                    {fundPurchaseHistory.length > 0 && (
+                      <ul aria-label={`Historial de compras de ${fund.fund} · ${fund.custodyBank}`}>
+                        {fundPurchaseHistory.map((purchase) => {
+                          const isEditingFundPurchase = editingFundPurchaseId === purchase.id;
+                          const purchaseLabel = `${purchase.date} · ${purchase.shareCount} participaciones a ${purchase.purchasePrice}€`;
+
+                          if (isEditingFundPurchase) {
+                            return (
+                              <li key={purchase.id}>
+                                <form
+                                  onSubmit={handleEditFundPurchase}
+                                  aria-label={`Editar compra de ${fund.fund}: ${purchaseLabel}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`fund-purchase-${purchase.id}-shareCount`}>Número de participaciones</label>
+                                    <input
+                                      id={`fund-purchase-${purchase.id}-shareCount`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingFundPurchaseForm.shareCount}
+                                      onChange={(e) =>
+                                        setEditingFundPurchaseForm({ ...editingFundPurchaseForm, shareCount: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`fund-purchase-${purchase.id}-purchasePrice`}>Precio compra</label>
+                                    <input
+                                      id={`fund-purchase-${purchase.id}-purchasePrice`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingFundPurchaseForm.purchasePrice}
+                                      onChange={(e) =>
+                                        setEditingFundPurchaseForm({ ...editingFundPurchaseForm, purchasePrice: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`fund-purchase-${purchase.id}-date`}>Fecha de compra</label>
+                                    <input
+                                      id={`fund-purchase-${purchase.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingFundPurchaseForm.date}
+                                      onChange={(e) => setEditingFundPurchaseForm({ ...editingFundPurchaseForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <p className="card-meta">
+                                    Valor compra:{' '}
+                                    {formatCurrency(
+                                      purchaseValue(
+                                        editingFundPurchaseForm.purchasePrice ?? '',
+                                        editingFundPurchaseForm.shareCount ?? '',
+                                      ) || '0.00',
+                                    )}
+                                  </p>
+                                  {editFundPurchaseError && <p role="alert">{editFundPurchaseError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingFundPurchase}>
+                                    {isSavingFundPurchase ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingFundPurchase}
+                                    onClick={() => setEditingFundPurchaseId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={purchase.id}>
+                              <span>{purchase.date}</span>{' '}
+                              <span>
+                                {purchase.shareCount} participaciones @ {formatCurrency(purchase.purchasePrice)} ={' '}
+                                {formatCurrency(purchaseValue(purchase.purchasePrice, purchase.shareCount))}
+                              </span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar compra de ${fund.fund}: ${purchaseLabel}`}
+                                onClick={() => startEditFundPurchase(purchase)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar compra de ${fund.fund}: ${purchaseLabel}`}
+                                disabled={pendingDeleteFundPurchaseId === purchase.id}
+                                onClick={() => void handleDeleteFundPurchase(purchase.id)}
+                              >
+                                {pendingDeleteFundPurchaseId === purchase.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreateFundPurchase(fund.id, e)}
+                      aria-label={`Añadir compra: ${fund.fund}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-fund-purchase-${fund.id}-shareCount`}>Número de participaciones</label>
+                        <input
+                          id={`new-fund-purchase-${fund.id}-shareCount`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newFundPurchaseForm.shareCount}
+                          onChange={(e) => setNewFundPurchaseForm(fund.id, { ...newFundPurchaseForm, shareCount: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-fund-purchase-${fund.id}-purchasePrice`}>Precio compra</label>
+                        <input
+                          id={`new-fund-purchase-${fund.id}-purchasePrice`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newFundPurchaseForm.purchasePrice}
+                          onChange={(e) => setNewFundPurchaseForm(fund.id, { ...newFundPurchaseForm, purchasePrice: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-fund-purchase-${fund.id}-date`}>Fecha de compra</label>
+                        <input
+                          id={`new-fund-purchase-${fund.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newFundPurchaseForm.date}
+                          onChange={(e) => setNewFundPurchaseForm(fund.id, { ...newFundPurchaseForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <p className="card-meta">
+                        Valor compra:{' '}
+                        {formatCurrency(
+                          purchaseValue(newFundPurchaseForm.purchasePrice ?? '', newFundPurchaseForm.shareCount ?? '') || '0.00',
+                        )}
+                      </p>
+                      {createFundPurchaseError && <p role="alert">{createFundPurchaseError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingFundPurchaseForFundId === fund.id}>
+                        {creatingFundPurchaseForFundId === fund.id ? 'Añadiendo…' : 'Añadir compra'}
+                      </button>
+                    </form>
+                  </details>
+
+                  <details>
+                    <summary>Historial de valoraciones ({fundValuationHistory.length})</summary>
+
+                    {fundValuationHistory.length === 0 && <p>Todavía no hay ninguna valoración registrada en este fondo.</p>}
+
+                    {fundValuationHistory.length > 0 && (
+                      <ul aria-label={`Historial de valoraciones de ${fund.fund} · ${fund.custodyBank}`}>
+                        {fundValuationHistory.map((valuation) => {
+                          const isEditingFundValuation = editingFundValuationId === valuation.id;
+
+                          if (isEditingFundValuation) {
+                            return (
+                              <li key={valuation.id}>
+                                <form
+                                  onSubmit={handleEditFundValuation}
+                                  aria-label={`Editar valoración de ${fund.fund} del ${valuation.date}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`fund-valuation-${valuation.id}-pricePerShare`}>Precio por participación actual</label>
+                                    <input
+                                      id={`fund-valuation-${valuation.id}-pricePerShare`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingFundValuationForm.pricePerShare}
+                                      onChange={(e) =>
+                                        setEditingFundValuationForm({ ...editingFundValuationForm, pricePerShare: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`fund-valuation-${valuation.id}-date`}>Fecha</label>
+                                    <input
+                                      id={`fund-valuation-${valuation.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingFundValuationForm.date}
+                                      onChange={(e) => setEditingFundValuationForm({ ...editingFundValuationForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <p className="card-meta">
+                                    Valor total:{' '}
+                                    {formatCurrency(
+                                      currentValue(editingFundValuationForm.pricePerShare ?? '', totalShares(fundPurchaseHistory)) ||
+                                        '0.00',
+                                    )}
+                                  </p>
+                                  {editFundValuationError && <p role="alert">{editFundValuationError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingFundValuation}>
+                                    {isSavingFundValuation ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingFundValuation}
+                                    onClick={() => setEditingFundValuationId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={valuation.id}>
+                              <span>{valuation.date}</span> <span>{formatCurrency(valuation.pricePerShare)}/participación</span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar valoración de ${fund.fund} del ${valuation.date}`}
+                                onClick={() => startEditFundValuation(valuation)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar valoración de ${fund.fund} del ${valuation.date}`}
+                                disabled={pendingDeleteFundValuationId === valuation.id}
+                                onClick={() => void handleDeleteFundValuation(valuation.id)}
+                              >
+                                {pendingDeleteFundValuationId === valuation.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreateFundValuation(fund.id, e)}
+                      aria-label={`Añadir valoración: ${fund.fund}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-fund-valuation-${fund.id}-pricePerShare`}>Precio por participación actual</label>
+                        <input
+                          id={`new-fund-valuation-${fund.id}-pricePerShare`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newFundValuationForm.pricePerShare}
+                          onChange={(e) => setNewFundValuationForm(fund.id, { ...newFundValuationForm, pricePerShare: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-fund-valuation-${fund.id}-date`}>Fecha</label>
+                        <input
+                          id={`new-fund-valuation-${fund.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newFundValuationForm.date}
+                          onChange={(e) => setNewFundValuationForm(fund.id, { ...newFundValuationForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <p className="card-meta">
+                        Valor total:{' '}
+                        {formatCurrency(currentValue(newFundValuationForm.pricePerShare ?? '', totalShares(fundPurchaseHistory)) || '0.00')}
+                      </p>
+                      {createFundValuationError && <p role="alert">{createFundValuationError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingFundValuationForFundId === fund.id}>
+                        {creatingFundValuationForFundId === fund.id ? 'Añadiendo…' : 'Añadir valoración'}
+                      </button>
+                    </form>
+                  </details>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <h3>Añadir fondo</h3>
+        <form onSubmit={handleCreateFund} aria-label="Añadir fondo" noValidate>
+          <div className="field">
+            <label htmlFor="new-fund-custodyBank">Banco Custodia</label>
+            <input
+              id="new-fund-custodyBank"
+              className="input"
+              value={newFundForm.custodyBank}
+              onChange={(e) => setNewFundForm({ ...newFundForm, custodyBank: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-fund-fund">Fondo</label>
+            <input
+              id="new-fund-fund"
+              className="input"
+              value={newFundForm.fund}
+              onChange={(e) => setNewFundForm({ ...newFundForm, fund: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-fund-shareCount">Número de participaciones</label>
+            <input
+              id="new-fund-shareCount"
+              className="input"
+              inputMode="decimal"
+              value={newFundForm.shareCount}
+              onChange={(e) => setNewFundForm({ ...newFundForm, shareCount: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-fund-purchasePrice">Precio compra</label>
+            <input
+              id="new-fund-purchasePrice"
+              className="input"
+              inputMode="decimal"
+              value={newFundForm.purchasePrice}
+              onChange={(e) => setNewFundForm({ ...newFundForm, purchasePrice: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-fund-date">Fecha de compra</label>
+            <input
+              id="new-fund-date"
+              type="date"
+              className="input"
+              value={newFundForm.date}
+              onChange={(e) => setNewFundForm({ ...newFundForm, date: e.target.value })}
+              required
+            />
+          </div>
+          <p className="card-meta">Valor compra: {formatCurrency(purchaseValue(newFundForm.purchasePrice, newFundForm.shareCount) || '0.00')}</p>
+          {createFundError && <p role="alert">{createFundError}</p>}
+          <button type="submit" className="btn btn-primary" disabled={isCreatingFund}>
+            {isCreatingFund ? 'Creando…' : 'Añadir fondo'}
           </button>
         </form>
       </details>
