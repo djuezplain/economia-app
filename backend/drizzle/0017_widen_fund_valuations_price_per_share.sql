@@ -1,0 +1,1 @@
+ALTER TABLE "fund_valuations" ALTER COLUMN "price_per_share" SET DATA TYPE numeric(18, 8);
