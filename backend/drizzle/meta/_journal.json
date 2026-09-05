@@ -141,6 +141,13 @@
       "when": 1788615721113,
       "tag": "0019_add_vehicles_valuations",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788622044625,
+      "tag": "0020_add_pension_plans_contributions_valuations",
+      "breakpoints": true
     }
   ]
 }

@@ -333,6 +333,81 @@ export const vehicleValuations = pgTable(
   (table) => [index('vehicle_valuations_vehicle_date_idx').on(table.vehicleId, table.date)],
 );
 
+/**
+ * H1 (spec 024): un plan de pensiones (entidad gestora + plan) es una
+ * entidad única por usuario — mismo patrón en tres niveles que `cryptos`
+ * (spec 022), pero sin cantidad ni precio por unidad (decisión explícita
+ * con Diego, spec.md §3): el ahorrador medio no ve "número de
+ * participaciones" de su plan, solo cuánto ha aportado y cuánto vale ahora.
+ * "Misma posición dos veces" se valida en `PensionPlansService.create()`/
+ * `update()` (409), no con una constraint SQL.
+ */
+export const pensionPlans = pgTable(
+  'pension_plans',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    managingEntity: varchar('managing_entity', { length: 100 }).notNull(),
+    plan: varchar('plan', { length: 150 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('pension_plans_user_idx').on(table.userId)],
+);
+
+/**
+ * H2 (spec 024): historial de aportaciones a un plan de pensiones — muchas
+ * por posición, ninguna es la posición en sí. Sin `userId` propio: el
+ * aislamiento por usuario pasa siempre por `pensionPlans.userId`
+ * (normalizado, mismo criterio que `cryptoPurchases`).
+ */
+export const pensionPlanContributions = pgTable(
+  'pension_plan_contributions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    // `onDelete: 'cascade'`: H1 criterio 4 pide que borrar la posición se
+    // lleve su historial de aportaciones por delante.
+    pensionPlanId: uuid('pension_plan_id')
+      .notNull()
+      .references(() => pensionPlans.id, { onDelete: 'cascade' }),
+    // H2 criterio 2: importe directo (`IsMoneyAmount`) — a diferencia de
+    // `cryptoPurchases`, no hay `quantity`/`purchasePrice` por separado.
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('pension_plan_contributions_plan_idx').on(table.pensionPlanId),
+    index('pension_plan_contributions_plan_date_idx').on(table.pensionPlanId, table.date),
+  ],
+);
+
+/**
+ * H3 (spec 024): historial de valoraciones de un plan de pensiones —
+ * segundo historial independiente del de aportaciones, mismo patrón que
+ * `cryptoValuations`.
+ */
+export const pensionPlanValuations = pgTable(
+  'pension_plan_valuations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    pensionPlanId: uuid('pension_plan_id')
+      .notNull()
+      .references(() => pensionPlans.id, { onDelete: 'cascade' }),
+    // H3 criterio 2: valor total directo, no precio por participación — no
+    // se multiplica por ninguna cantidad (a diferencia de
+    // `cryptoValuations.pricePerUnit`).
+    value: numeric('value', { precision: 12, scale: 2 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('pension_plan_valuations_plan_date_idx').on(table.pensionPlanId, table.date)],
+);
+
 // --- Relations ------------------------------------------------------------
 
 export const bankAccountsRelations = relations(bankAccounts, ({ one, many }) => ({
@@ -393,4 +468,18 @@ export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
 
 export const vehicleValuationsRelations = relations(vehicleValuations, ({ one }) => ({
   vehicle: one(vehicles, { fields: [vehicleValuations.vehicleId], references: [vehicles.id] }),
+}));
+
+export const pensionPlansRelations = relations(pensionPlans, ({ one, many }) => ({
+  user: one(users, { fields: [pensionPlans.userId], references: [users.id] }),
+  contributions: many(pensionPlanContributions),
+  valuations: many(pensionPlanValuations),
+}));
+
+export const pensionPlanContributionsRelations = relations(pensionPlanContributions, ({ one }) => ({
+  pensionPlan: one(pensionPlans, { fields: [pensionPlanContributions.pensionPlanId], references: [pensionPlans.id] }),
+}));
+
+export const pensionPlanValuationsRelations = relations(pensionPlanValuations, ({ one }) => ({
+  pensionPlan: one(pensionPlans, { fields: [pensionPlanValuations.pensionPlanId], references: [pensionPlans.id] }),
 }));

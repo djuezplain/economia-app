@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { currentValue, purchaseValue, totalCost, totalCryptoCost, totalCryptoQuantity, totalShares } from './wealth.calculations.js';
+import {
+  currentValue,
+  purchaseValue,
+  totalContributions,
+  totalCost,
+  totalCryptoCost,
+  totalCryptoQuantity,
+  totalShares,
+} from './wealth.calculations.js';
 
 describe('wealth.calculations', () => {
   describe('purchaseValue', () => {
@@ -93,6 +101,16 @@ describe('wealth.calculations', () => {
 
     it('sin ninguna compra, 0', () => {
       expect(totalCryptoCost([])).toBe('0.00');
+    });
+  });
+
+  describe('totalContributions (spec 024)', () => {
+    it('suma el importe de todas las aportaciones', () => {
+      expect(totalContributions([{ amount: '100.00' }, { amount: '50.50' }])).toBe('150.50');
+    });
+
+    it('sin ninguna aportación, 0', () => {
+      expect(totalContributions([])).toBe('0.00');
     });
   });
 });

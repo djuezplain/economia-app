@@ -41,3 +41,10 @@ export function totalCryptoQuantity(purchases: Array<{ quantity: string }>): str
 export function totalCryptoCost(purchases: Array<{ quantity: string; purchasePrice: string }>): string {
   return purchases.reduce((sum, p) => sum.plus(purchaseValue(p.purchasePrice, p.quantity)), new Decimal(0)).toFixed(2);
 }
+
+/** H2 criterio 4 (spec 024): total aportado a un plan de pensiones, sumando todas sus aportaciones.
+ *  A diferencia de `totalCost`/`totalCryptoCost`, es una suma directa de importes — no hay cantidad
+ *  ni precio por separado que multiplicar (decisión explícita con Diego, spec.md §3). */
+export function totalContributions(contributions: Array<{ amount: string }>): string {
+  return contributions.reduce((sum, c) => sum.plus(c.amount), new Decimal(0)).toFixed(2);
+}
