@@ -205,6 +205,82 @@ export const fundValuations = pgTable(
   (table) => [index('fund_valuations_fund_date_idx').on(table.fundId, table.date)],
 );
 
+/**
+ * H1 (spec 022): una posición de cripto (exchange/wallet + criptomoneda) es
+ * una entidad única por usuario — mismo patrón que `stocks` (spec 020), sin
+ * ninguna tabla previa que sustituir (Cripto no tuvo implementación en spec
+ * 018). "Misma posición dos veces" se valida en `CryptosService.create()`/
+ * `update()` (409), no con una constraint SQL.
+ */
+export const cryptos = pgTable(
+  'cryptos',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    exchange: varchar('exchange', { length: 100 }).notNull(),
+    crypto: varchar('crypto', { length: 150 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('cryptos_user_idx').on(table.userId)],
+);
+
+/**
+ * H2 (spec 022): historial de compras de una posición de cripto — muchas
+ * por posición, ninguna es la posición en sí. Sin `userId` propio: el
+ * aislamiento por usuario pasa siempre por `cryptos.userId` (normalizado,
+ * mismo criterio que `stockPurchases`).
+ */
+export const cryptoPurchases = pgTable(
+  'crypto_purchases',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    // `onDelete: 'cascade'`: H1 criterio 4 pide que borrar la posición se
+    // lleve su historial de compras por delante.
+    cryptoId: uuid('crypto_id')
+      .notNull()
+      .references(() => cryptos.id, { onDelete: 'cascade' }),
+    // H2 criterio 1: precisión mayor que `stockPurchases.shareCount`
+    // (numeric(18,8)) en la parte entera — una posición de cripto puede
+    // tener muchos más dígitos enteros (p. ej. millones de unidades de una
+    // memecoin), además de hasta 8 decimales (precisión del satoshi de BTC).
+    quantity: numeric('quantity', { precision: 28, scale: 8 }).notNull(),
+    purchasePrice: numeric('purchase_price', { precision: 18, scale: 8 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('crypto_purchases_crypto_idx').on(table.cryptoId),
+    index('crypto_purchases_crypto_date_idx').on(table.cryptoId, table.date),
+  ],
+);
+
+/**
+ * H3 (spec 022): historial de valoraciones de una posición de cripto —
+ * segundo historial independiente del de compras, mismo patrón que
+ * `stockValuations`.
+ */
+export const cryptoValuations = pgTable(
+  'crypto_valuations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    cryptoId: uuid('crypto_id')
+      .notNull()
+      .references(() => cryptos.id, { onDelete: 'cascade' }),
+    // H3 criterio 2: 8 decimales, no 2 como `stockValuations.pricePerShare`
+    // — muchas altcoins cotizan por debajo de 1 céntimo (decisión explícita
+    // con Diego, spec.md §3).
+    pricePerUnit: numeric('price_per_unit', { precision: 18, scale: 8 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('crypto_valuations_crypto_date_idx').on(table.cryptoId, table.date)],
+);
+
 // --- Relations ------------------------------------------------------------
 
 export const bankAccountsRelations = relations(bankAccounts, ({ one, many }) => ({
@@ -242,4 +318,18 @@ export const fundPurchasesRelations = relations(fundPurchases, ({ one }) => ({
 
 export const fundValuationsRelations = relations(fundValuations, ({ one }) => ({
   fund: one(funds, { fields: [fundValuations.fundId], references: [funds.id] }),
+}));
+
+export const cryptosRelations = relations(cryptos, ({ one, many }) => ({
+  user: one(users, { fields: [cryptos.userId], references: [users.id] }),
+  purchases: many(cryptoPurchases),
+  valuations: many(cryptoValuations),
+}));
+
+export const cryptoPurchasesRelations = relations(cryptoPurchases, ({ one }) => ({
+  crypto: one(cryptos, { fields: [cryptoPurchases.cryptoId], references: [cryptos.id] }),
+}));
+
+export const cryptoValuationsRelations = relations(cryptoValuations, ({ one }) => ({
+  crypto: one(cryptos, { fields: [cryptoValuations.cryptoId], references: [cryptos.id] }),
 }));

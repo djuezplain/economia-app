@@ -127,6 +127,13 @@
       "when": 1788603600221,
       "tag": "0017_add_bank_accounts_alias",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788607655803,
+      "tag": "0018_add_cryptos_purchases_valuations",
+      "breakpoints": true
     }
   ]
 }

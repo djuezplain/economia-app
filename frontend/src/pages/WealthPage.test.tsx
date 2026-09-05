@@ -14,6 +14,9 @@ import * as stockValuationsApi from '../api/stock-valuations';
 import * as fundsApi from '../api/funds';
 import * as fundPurchasesApi from '../api/fund-purchases';
 import * as fundValuationsApi from '../api/fund-valuations';
+import * as cryptosApi from '../api/cryptos';
+import * as cryptoPurchasesApi from '../api/crypto-purchases';
+import * as cryptoValuationsApi from '../api/crypto-valuations';
 import type { BankAccount } from '../api/bank-accounts';
 import type { BankAccountBalance } from '../api/bank-account-balances';
 import type { Stock } from '../api/stocks';
@@ -22,6 +25,9 @@ import type { StockValuation } from '../api/stock-valuations';
 import type { Fund } from '../api/funds';
 import type { FundPurchase } from '../api/fund-purchases';
 import type { FundValuation } from '../api/fund-valuations';
+import type { Crypto } from '../api/cryptos';
+import type { CryptoPurchase } from '../api/crypto-purchases';
+import type { CryptoValuation } from '../api/crypto-valuations';
 import { ApiError } from '../api/client';
 import { resetForTests } from '../offline/connectivity';
 
@@ -100,6 +106,34 @@ const FUND_VALUATION: FundValuation = {
   updatedAt: '2026-09-04T00:00:00.000Z',
 };
 
+const CRYPTO: Crypto = {
+  id: 'crypto-1',
+  userId: 'user-1',
+  exchange: 'Binance',
+  crypto: 'Bitcoin',
+  createdAt: '2026-09-04T00:00:00.000Z',
+  updatedAt: '2026-09-04T00:00:00.000Z',
+};
+
+const CRYPTO_PURCHASE: CryptoPurchase = {
+  id: 'crypto-purchase-1',
+  cryptoId: 'crypto-1',
+  quantity: '0.10000000',
+  purchasePrice: '30000.00',
+  date: '2026-09-04',
+  createdAt: '2026-09-04T00:00:00.000Z',
+  updatedAt: '2026-09-04T00:00:00.000Z',
+};
+
+const CRYPTO_VALUATION: CryptoValuation = {
+  id: 'crypto-valuation-1',
+  cryptoId: 'crypto-1',
+  pricePerUnit: '35000.00000000',
+  date: '2026-09-04',
+  createdAt: '2026-09-04T00:00:00.000Z',
+  updatedAt: '2026-09-04T00:00:00.000Z',
+};
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -155,7 +189,7 @@ describe('WealthPage', () => {
     expect(listAccountsSpy).not.toHaveBeenCalled();
   });
 
-  it('muestra las 7 categorías, con "Próximamente." en las 4 sin implementar', async () => {
+  it('muestra las 7 categorías, con "Próximamente." en las 3 sin implementar', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
     vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
@@ -165,6 +199,9 @@ describe('WealthPage', () => {
     vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
     vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
     vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+    vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+    vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+    vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
 
     renderPage();
 
@@ -175,11 +212,11 @@ describe('WealthPage', () => {
     expect(screen.getByRole('heading', { name: /Vehículos/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Fondo Pensiones/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Efectivo/ })).toBeInTheDocument();
-    expect(screen.getAllByText('Próximamente.')).toHaveLength(4);
+    expect(screen.getAllByText('Próximamente.')).toHaveLength(3);
   });
 
-  describe('Total (sumatorio de Cuentas Bancarias, Acciones y Fondos Inversión)', () => {
-    it('suma el último saldo de cada cuenta bancaria, el valor actual de cada acción y de cada fondo', async () => {
+  describe('Total (sumatorio de Cuentas Bancarias, Acciones, Fondos Inversión y Cripto)', () => {
+    it('suma el último saldo de cada cuenta bancaria, el valor actual de cada acción, fondo y posición de cripto', async () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
@@ -189,18 +226,22 @@ describe('WealthPage', () => {
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
 
       renderPage();
 
       // Cuentas Bancarias: 1500,00 € (BANK_BALANCE). Acciones: 350,00 € (10 × 35,00 €, STOCK_VALUATION).
-      // Fondos Inversión: 200,00 € (10 × 20,00 €, FUND_VALUATION). Total: 2050,00 €.
-      expect(await screen.findByText('2050,00 €')).toBeInTheDocument();
+      // Fondos Inversión: 200,00 € (10 × 20,00 €, FUND_VALUATION). Cripto: 3500,00 € (0.1 × 35000,00 €, CRYPTO_VALUATION).
+      // Total: 5550,00 €.
+      expect(await screen.findByText('5550,00 €')).toBeInTheDocument();
       expect(
-        screen.getByText('Cuentas Bancarias: 1500,00 € · Acciones: 350,00 € · Fondos Inversión: 200,00 €'),
+        screen.getByText('Cuentas Bancarias: 1500,00 € · Acciones: 350,00 € · Fondos Inversión: 200,00 € · Cripto: 3500,00 €'),
       ).toBeInTheDocument();
     });
 
-    it('sin ninguna cuenta, acción ni fondo, el total es 0,00 €', async () => {
+    it('sin ninguna cuenta, acción, fondo ni posición de cripto, el total es 0,00 €', async () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
@@ -210,13 +251,16 @@ describe('WealthPage', () => {
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
 
       renderPage();
 
       expect(await screen.findByText('0,00 €')).toBeInTheDocument();
     });
 
-    it('una cuenta sin saldo, una acción sin valoración o un fondo sin valoración cuentan como 0 en el total', async () => {
+    it('una cuenta sin saldo, una acción/fondo/posición de cripto sin valoración cuentan como 0 en el total', async () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
@@ -226,11 +270,14 @@ describe('WealthPage', () => {
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
 
       renderPage();
 
       expect(
-        await screen.findByText('Cuentas Bancarias: 0,00 € · Acciones: 0,00 € · Fondos Inversión: 0,00 €'),
+        await screen.findByText('Cuentas Bancarias: 0,00 € · Acciones: 0,00 € · Fondos Inversión: 0,00 € · Cripto: 0,00 €'),
       ).toBeInTheDocument();
     });
   });
@@ -244,6 +291,9 @@ describe('WealthPage', () => {
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
     }
 
     it('sin ninguna cuenta, muestra el aviso de "todavía no tienes nada"', async () => {
@@ -441,6 +491,9 @@ describe('WealthPage', () => {
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
     }
 
     it('sin ninguna acción, muestra el aviso de "todavía no tienes nada"', async () => {
@@ -795,6 +848,9 @@ describe('WealthPage', () => {
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
     }
 
     it('sin ningún fondo, muestra el aviso de "todavía no tienes nada"', async () => {
@@ -1142,6 +1198,343 @@ describe('WealthPage', () => {
 
       await waitFor(() => expect(deleteValuationSpy).toHaveBeenCalledWith(FUND_VALUATION.id));
       expect(deleteFundSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Cripto (spec 022)', () => {
+    function mockOtherApis() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+    }
+
+    it('sin ninguna posición, muestra el aviso de "todavía no tienes nada"', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      expect(await screen.findByText('Todavía no tienes ninguna posición de cripto.')).toBeInTheDocument();
+    });
+
+    it('lista una posición existente, con sus totales y el valor actual calculado (precio por unidad × cantidad)', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus posiciones de cripto' });
+      expect(within(list).getByText(/Bitcoin · Binance/)).toBeInTheDocument();
+      // 0.1 unidades × 35000,00 €/unidad (CRYPTO_VALUATION) = 3500,00 €.
+      expect(within(list).getByText('3500,00 €')).toBeInTheDocument();
+      expect(within(list).getByText(/0.10000000 unidades · Coste total/)).toHaveTextContent(
+        'Precio actual: 35.000,00 €/unidad · Última fecha: 2026-09-04',
+      );
+      // Coste total 3000,00 € (0.1 × 30000,00 €), valor actual 3500,00 € → +16.67% de ganancia, en verde.
+      const gainLossEl = within(list).getByText('+16.67%');
+      expect(gainLossEl).toHaveStyle({ color: 'var(--status-green)' });
+
+      const purchaseHistory = within(list).getByRole('list', { name: 'Historial de compras de Bitcoin · Binance' });
+      expect(within(purchaseHistory).getByText(/0.10000000 unidades @/)).toBeInTheDocument();
+
+      const valuationHistory = within(list).getByRole('list', { name: 'Historial de valoraciones de Bitcoin · Binance' });
+      expect(within(valuationHistory).getByText('2026-09-04')).toBeInTheDocument();
+      expect(within(valuationHistory).getByText('35.000,00 €/unidad')).toBeInTheDocument();
+    });
+
+    it('con pérdidas, el % se muestra en rojo', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([{ ...CRYPTO_VALUATION, pricePerUnit: '24000.00000000' }]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus posiciones de cripto' });
+      // Coste total 3000,00 € (0.1 × 30000,00 €), valor actual 2400,00 € (0.1 × 24000,00 €) → -20.00%, en rojo.
+      const gainLossEl = within(list).getByText('-20.00%');
+      expect(gainLossEl).toHaveStyle({ color: 'var(--status-red)' });
+    });
+
+    it('sin ninguna compra, no muestra % de ganancia/pérdida aunque haya valoración', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus posiciones de cripto' });
+      await within(list).findByText(/Bitcoin · Binance/);
+      expect(within(list).queryByText(/%$/)).not.toBeInTheDocument();
+    });
+
+    it('una posición sin ninguna valoración muestra "Sin valoración"', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus posiciones de cripto' });
+      expect(within(list).getByText('Sin valoración')).toBeInTheDocument();
+      expect(within(list).getByText('Todavía no hay ninguna compra registrada en esta posición.')).toBeInTheDocument();
+      expect(within(list).getByText('Todavía no hay ninguna valoración registrada en esta posición.')).toBeInTheDocument();
+    });
+
+    it('el formulario de alta trae la fecha de hoy por defecto y calcula el valor de compra', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir posición de cripto' });
+
+      expect(within(form).getByLabelText('Fecha de compra')).toHaveValue(todayIso());
+
+      await userEvent.type(within(form).getByLabelText('Cantidad'), '4');
+      await userEvent.type(within(form).getByLabelText('Precio compra'), '10.50');
+
+      expect(within(form).getByText(/Valor compra:/)).toHaveTextContent('42,00');
+    });
+
+    it('crea una posición y su primera compra desde el formulario de alta, en un solo paso', async () => {
+      mockOtherApis();
+      const listCryptosSpy = vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      const listPurchasesSpy = vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      const createCryptoSpy = vi.spyOn(cryptosApi, 'createCrypto').mockResolvedValue(CRYPTO);
+      const createPurchaseSpy = vi.spyOn(cryptoPurchasesApi, 'createCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir posición de cripto' });
+
+      await userEvent.type(within(form).getByLabelText('Exchange/Wallet'), 'Binance');
+      await userEvent.type(within(form).getByLabelText('Criptomoneda'), 'Bitcoin');
+      await userEvent.type(within(form).getByLabelText('Cantidad'), '0.1');
+      await userEvent.type(within(form).getByLabelText('Precio compra'), '30000.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir posición' }));
+
+      await waitFor(() => expect(createCryptoSpy).toHaveBeenCalledWith({ exchange: 'Binance', crypto: 'Bitcoin' }));
+      await waitFor(() =>
+        expect(createPurchaseSpy).toHaveBeenCalledWith({
+          cryptoId: CRYPTO.id,
+          quantity: '0.1',
+          purchasePrice: '30000.00',
+          date: todayIso(),
+        }),
+      );
+      await waitFor(() => expect(listCryptosSpy).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(listPurchasesSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('edita una posición existente', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      const updateSpy = vi.spyOn(cryptosApi, 'updateCrypto').mockResolvedValue(CRYPTO);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus posiciones de cripto' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Editar posición: Bitcoin · Binance' }));
+      const editForm = screen.getByRole('form', { name: 'Editar posición: Bitcoin' });
+      const cryptoInput = within(editForm).getByLabelText('Criptomoneda');
+      await userEvent.clear(cryptoInput);
+      await userEvent.type(cryptoInput, 'Ethereum');
+      await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() => expect(updateSpy).toHaveBeenCalledWith(CRYPTO.id, { exchange: 'Binance', crypto: 'Ethereum' }));
+    });
+
+    it('elimina una posición, junto con su historial', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+      const deleteSpy = vi.spyOn(cryptosApi, 'deleteCrypto').mockResolvedValue(undefined);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus posiciones de cripto' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar posición: Bitcoin · Binance' }));
+
+      await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith(CRYPTO.id));
+    });
+
+    it('añade una compra a una posición existente', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      const listPurchasesSpy = vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      const createSpy = vi.spyOn(cryptoPurchasesApi, 'createCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir compra: Bitcoin' });
+
+      await userEvent.type(within(form).getByLabelText('Cantidad'), '0.1');
+      await userEvent.type(within(form).getByLabelText('Precio compra'), '30000.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir compra' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({ cryptoId: CRYPTO.id, quantity: '0.1', purchasePrice: '30000.00', date: todayIso() }),
+      );
+      await waitFor(() => expect(listPurchasesSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('admite hasta 8 decimales en cantidad y precio de compra', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      const createSpy = vi.spyOn(cryptoPurchasesApi, 'createCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir compra: Bitcoin' });
+
+      await userEvent.type(within(form).getByLabelText('Cantidad'), '0.00000001');
+      await userEvent.type(within(form).getByLabelText('Precio compra'), '0.00003821');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir compra' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({
+          cryptoId: CRYPTO.id,
+          quantity: '0.00000001',
+          purchasePrice: '0.00003821',
+          date: todayIso(),
+        }),
+      );
+    });
+
+    it('edita una compra del historial', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      const updateSpy = vi.spyOn(cryptoPurchasesApi, 'updateCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus posiciones de cripto' });
+
+      const purchaseLabel = 'Editar compra de Bitcoin: 2026-09-04 · 0.10000000 unidades a 30000.00€';
+      await userEvent.click(screen.getByRole('button', { name: purchaseLabel }));
+      const editForm = screen.getByRole('form', { name: purchaseLabel });
+      const quantityInput = within(editForm).getByLabelText('Cantidad');
+      await userEvent.clear(quantityInput);
+      await userEvent.type(quantityInput, '0.15');
+      await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() =>
+        expect(updateSpy).toHaveBeenCalledWith(CRYPTO_PURCHASE.id, { quantity: '0.15', purchasePrice: '30000.00', date: '2026-09-04' }),
+      );
+    });
+
+    it('elimina una compra del historial, sin borrar la posición', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      const deletePurchaseSpy = vi.spyOn(cryptoPurchasesApi, 'deleteCryptoPurchase').mockResolvedValue(undefined);
+      const deleteCryptoSpy = vi.spyOn(cryptosApi, 'deleteCrypto');
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus posiciones de cripto' });
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Eliminar compra de Bitcoin: 2026-09-04 · 0.10000000 unidades a 30000.00€' }),
+      );
+
+      await waitFor(() => expect(deletePurchaseSpy).toHaveBeenCalledWith(CRYPTO_PURCHASE.id));
+      expect(deleteCryptoSpy).not.toHaveBeenCalled();
+    });
+
+    it('añade una valoración a una posición existente', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      const listValuationsSpy = vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      const createSpy = vi.spyOn(cryptoValuationsApi, 'createCryptoValuation').mockResolvedValue(CRYPTO_VALUATION);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir valoración: Bitcoin' });
+
+      await userEvent.type(within(form).getByLabelText('Precio por unidad actual'), '35000.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir valoración' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({ cryptoId: CRYPTO.id, pricePerUnit: '35000.00', date: todayIso() }),
+      );
+      await waitFor(() => expect(listValuationsSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('admite hasta 8 decimales en el precio por unidad (altcoins muy baratas)', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      const createSpy = vi.spyOn(cryptoValuationsApi, 'createCryptoValuation').mockResolvedValue(CRYPTO_VALUATION);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir valoración: Bitcoin' });
+
+      await userEvent.type(within(form).getByLabelText('Precio por unidad actual'), '0.00003821');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir valoración' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({ cryptoId: CRYPTO.id, pricePerUnit: '0.00003821', date: todayIso() }),
+      );
+    });
+
+    it('edita una valoración del historial', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+      const updateSpy = vi.spyOn(cryptoValuationsApi, 'updateCryptoValuation').mockResolvedValue(CRYPTO_VALUATION);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus posiciones de cripto' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Editar valoración de Bitcoin del 2026-09-04' }));
+      const editForm = screen.getByRole('form', { name: 'Editar valoración de Bitcoin del 2026-09-04' });
+      const valuationInput = within(editForm).getByLabelText('Precio por unidad actual');
+      await userEvent.clear(valuationInput);
+      await userEvent.type(valuationInput, '40000.00');
+      await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() =>
+        expect(updateSpy).toHaveBeenCalledWith(CRYPTO_VALUATION.id, { pricePerUnit: '40000.00', date: '2026-09-04' }),
+      );
+    });
+
+    it('elimina una valoración del historial, sin borrar la posición', async () => {
+      mockOtherApis();
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+      const deleteValuationSpy = vi.spyOn(cryptoValuationsApi, 'deleteCryptoValuation').mockResolvedValue(undefined);
+      const deleteCryptoSpy = vi.spyOn(cryptosApi, 'deleteCrypto');
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus posiciones de cripto' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar valoración de Bitcoin del 2026-09-04' }));
+
+      await waitFor(() => expect(deleteValuationSpy).toHaveBeenCalledWith(CRYPTO_VALUATION.id));
+      expect(deleteCryptoSpy).not.toHaveBeenCalled();
     });
   });
 });

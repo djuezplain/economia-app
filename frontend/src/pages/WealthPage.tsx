@@ -44,6 +44,22 @@ import {
   updateFundValuation,
 } from '../api/fund-valuations';
 import type { FundValuation, UpdateFundValuationInput } from '../api/fund-valuations';
+import { createCrypto, deleteCrypto, listCryptos, updateCrypto } from '../api/cryptos';
+import type { Crypto, CryptoInput } from '../api/cryptos';
+import {
+  createCryptoPurchase,
+  deleteCryptoPurchase,
+  listCryptoPurchases,
+  updateCryptoPurchase,
+} from '../api/crypto-purchases';
+import type { CryptoPurchase, UpdateCryptoPurchaseInput } from '../api/crypto-purchases';
+import {
+  createCryptoValuation,
+  deleteCryptoValuation,
+  listCryptoValuations,
+  updateCryptoValuation,
+} from '../api/crypto-valuations';
+import type { CryptoValuation, UpdateCryptoValuationInput } from '../api/crypto-valuations';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 
@@ -59,6 +75,9 @@ const EMPTY_VALUATION_FORM: UpdateStockValuationInput = { pricePerShare: '', dat
 const EMPTY_FUND_FORM: FundInput = { custodyBank: '', fund: '' };
 const EMPTY_FUND_PURCHASE_FORM: UpdateFundPurchaseInput = { shareCount: '', purchasePrice: '', date: todayIso() };
 const EMPTY_FUND_VALUATION_FORM: UpdateFundValuationInput = { pricePerShare: '', date: todayIso() };
+const EMPTY_CRYPTO_FORM: CryptoInput = { exchange: '', crypto: '' };
+const EMPTY_CRYPTO_PURCHASE_FORM: UpdateCryptoPurchaseInput = { quantity: '', purchasePrice: '', date: todayIso() };
+const EMPTY_CRYPTO_VALUATION_FORM: UpdateCryptoValuationInput = { pricePerUnit: '', date: todayIso() };
 
 /** Formulario "Añadir acción" (nivel superior): crea la acción y su primera
  *  compra en un solo paso (spec 020, revisión §3.bis) — dos llamadas
@@ -76,6 +95,14 @@ type NewFundForm = FundInput & { shareCount: string; purchasePrice: string; date
 
 function emptyNewFundForm(): NewFundForm {
   return { custodyBank: '', fund: '', shareCount: '', purchasePrice: '', date: todayIso() };
+}
+
+/** Formulario "Añadir posición" de Cripto (spec 022): mismo patrón en un solo paso que
+ *  "Añadir acción" (spec 020, revisión §3.bis) — crea la posición y su primera compra juntas. */
+type NewCryptoForm = CryptoInput & { quantity: string; purchasePrice: string; date: string };
+
+function emptyNewCryptoForm(): NewCryptoForm {
+  return { exchange: '', crypto: '', quantity: '', purchasePrice: '', date: todayIso() };
 }
 
 function accountFormFromEntity(account: BankAccount): BankAccountInput {
@@ -116,6 +143,18 @@ function fundValuationFormFromEntity(valuation: FundValuation): UpdateFundValuat
   return { pricePerShare: valuation.pricePerShare, date: valuation.date };
 }
 
+function cryptoFormFromEntity(crypto: Crypto): CryptoInput {
+  return { exchange: crypto.exchange, crypto: crypto.crypto };
+}
+
+function cryptoPurchaseFormFromEntity(purchase: CryptoPurchase): UpdateCryptoPurchaseInput {
+  return { quantity: purchase.quantity, purchasePrice: purchase.purchasePrice, date: purchase.date };
+}
+
+function cryptoValuationFormFromEntity(valuation: CryptoValuation): UpdateCryptoValuationInput {
+  return { pricePerUnit: valuation.pricePerUnit, date: valuation.date };
+}
+
 /** H2 criterio 3 (spec 020): calculado, nunca guardado — ver `wealth.calculations.ts` en el backend. */
 function purchaseValue(purchasePrice: string, shareCount: string): string {
   const price = parseFloat(purchasePrice);
@@ -153,6 +192,18 @@ function gainLossPercent(currentVal: string, cost: string): number | null {
   const costNum = parseFloat(cost);
   if (Number.isNaN(value) || Number.isNaN(costNum) || costNum === 0) return null;
   return ((value - costNum) / costNum) * 100;
+}
+
+/** H2 criterio 4 (spec 022): cantidad total de una posición de cripto, sumando todas sus compras
+ *  — calculado, nunca guardado. Mismo patrón que `totalShares`, sobre `quantity` en vez de `shareCount`. */
+function totalCryptoQuantity(purchases: CryptoPurchase[]): string {
+  return purchases.reduce((sum, p) => sum + parseFloat(p.quantity), 0).toFixed(8);
+}
+
+/** H2 criterio 4 (spec 022): coste total de una posición de cripto, sumando el valor de compra
+ *  (`purchaseValue`, reutilizada tal cual) de todas sus compras. */
+function totalCryptoCost(purchases: CryptoPurchase[]): string {
+  return purchases.reduce((sum, p) => sum + parseFloat(purchaseValue(p.purchasePrice, p.quantity) || '0'), 0).toFixed(2);
 }
 
 /** Resumen (parte superior de la página): sumatorio del último saldo de cada cuenta bancaria
@@ -195,10 +246,21 @@ function fundsTotal(funds: Fund[], purchases: FundPurchase[], valuations: FundVa
     .toFixed(2);
 }
 
-/** Las 4 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3, spec 018) —
- *  "Fondos Inversión" pasa a tener funcionalidad propia (spec 021). */
+/** H4 (spec 022): cuarto sumando de la tarjeta "Total" — mismo criterio que `stocksTotal`/`fundsTotal`. */
+function cryptosTotal(cryptos: Crypto[], purchases: CryptoPurchase[], valuations: CryptoValuation[]): string {
+  return cryptos
+    .reduce((sum, crypto) => {
+      const cryptoPurchases = purchases.filter((p) => p.cryptoId === crypto.id);
+      const lastValuation = valuations.find((v) => v.cryptoId === crypto.id); // ya ordenado por fecha descendente
+      if (!lastValuation) return sum;
+      return sum + parseFloat(currentValue(lastValuation.pricePerUnit, totalCryptoQuantity(cryptoPurchases)));
+    }, 0)
+    .toFixed(2);
+}
+
+/** Las 3 categorías de spec 018 §2 sin funcionalidad todavía (H1 criterio 3, spec 018) —
+ *  "Fondos Inversión" (spec 021) y "Cripto" (spec 022) pasan a tener funcionalidad propia. */
 const PLACEHOLDER_SECTIONS = [
-  { icon: '₿', label: 'Cripto' },
   { icon: '🚗', label: 'Vehículos' },
   { icon: '👴', label: 'Fondo Pensiones' },
   { icon: '💵', label: 'Efectivo' },
@@ -314,6 +376,42 @@ export function WealthPage() {
   const [pendingDeleteFundValuationId, setPendingDeleteFundValuationId] = useState<string | null>(null);
   const [fundValuationActionError, setFundValuationActionError] = useState<string | null>(null);
 
+  const [cryptoList, setCryptoList] = useState<Crypto[] | null>(null);
+  const [cryptosLoadError, setCryptosLoadError] = useState<string | null>(null);
+  const [newCryptoForm, setNewCryptoForm] = useState<NewCryptoForm>(emptyNewCryptoForm);
+  const [createCryptoError, setCreateCryptoError] = useState<string | null>(null);
+  const [isCreatingCrypto, setIsCreatingCrypto] = useState(false);
+  const [editingCryptoId, setEditingCryptoId] = useState<string | null>(null);
+  const [editingCryptoForm, setEditingCryptoForm] = useState<CryptoInput>(EMPTY_CRYPTO_FORM);
+  const [editCryptoError, setEditCryptoError] = useState<string | null>(null);
+  const [isSavingCrypto, setIsSavingCrypto] = useState(false);
+  const [pendingDeleteCryptoId, setPendingDeleteCryptoId] = useState<string | null>(null);
+  const [cryptoActionError, setCryptoActionError] = useState<string | null>(null);
+
+  const [cryptoPurchaseList, setCryptoPurchaseList] = useState<CryptoPurchase[] | null>(null);
+  const [cryptoPurchasesLoadError, setCryptoPurchasesLoadError] = useState<string | null>(null);
+  const [newCryptoPurchaseForms, setNewCryptoPurchaseForms] = useState<Record<string, UpdateCryptoPurchaseInput>>({});
+  const [createCryptoPurchaseError, setCreateCryptoPurchaseError] = useState<string | null>(null);
+  const [creatingCryptoPurchaseForCryptoId, setCreatingCryptoPurchaseForCryptoId] = useState<string | null>(null);
+  const [editingCryptoPurchaseId, setEditingCryptoPurchaseId] = useState<string | null>(null);
+  const [editingCryptoPurchaseForm, setEditingCryptoPurchaseForm] = useState<UpdateCryptoPurchaseInput>(EMPTY_CRYPTO_PURCHASE_FORM);
+  const [editCryptoPurchaseError, setEditCryptoPurchaseError] = useState<string | null>(null);
+  const [isSavingCryptoPurchase, setIsSavingCryptoPurchase] = useState(false);
+  const [pendingDeleteCryptoPurchaseId, setPendingDeleteCryptoPurchaseId] = useState<string | null>(null);
+  const [cryptoPurchaseActionError, setCryptoPurchaseActionError] = useState<string | null>(null);
+
+  const [cryptoValuationList, setCryptoValuationList] = useState<CryptoValuation[] | null>(null);
+  const [cryptoValuationsLoadError, setCryptoValuationsLoadError] = useState<string | null>(null);
+  const [newCryptoValuationForms, setNewCryptoValuationForms] = useState<Record<string, UpdateCryptoValuationInput>>({});
+  const [createCryptoValuationError, setCreateCryptoValuationError] = useState<string | null>(null);
+  const [creatingCryptoValuationForCryptoId, setCreatingCryptoValuationForCryptoId] = useState<string | null>(null);
+  const [editingCryptoValuationId, setEditingCryptoValuationId] = useState<string | null>(null);
+  const [editingCryptoValuationForm, setEditingCryptoValuationForm] = useState<UpdateCryptoValuationInput>(EMPTY_CRYPTO_VALUATION_FORM);
+  const [editCryptoValuationError, setEditCryptoValuationError] = useState<string | null>(null);
+  const [isSavingCryptoValuation, setIsSavingCryptoValuation] = useState(false);
+  const [pendingDeleteCryptoValuationId, setPendingDeleteCryptoValuationId] = useState<string | null>(null);
+  const [cryptoValuationActionError, setCryptoValuationActionError] = useState<string | null>(null);
+
   async function reloadAccounts() {
     setAccounts(await listBankAccounts());
   }
@@ -344,6 +442,18 @@ export function WealthPage() {
 
   async function reloadFundValuations() {
     setFundValuations(await listFundValuations());
+  }
+
+  async function reloadCryptos() {
+    setCryptoList(await listCryptos());
+  }
+
+  async function reloadCryptoPurchases() {
+    setCryptoPurchaseList(await listCryptoPurchases());
+  }
+
+  async function reloadCryptoValuations() {
+    setCryptoValuationList(await listCryptoValuations());
   }
 
   useEffect(() => {
@@ -460,6 +570,52 @@ export function WealthPage() {
       } catch (err) {
         if (!cancelled)
           setFundValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadCryptos();
+      } catch (err) {
+        if (!cancelled) setCryptosLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar las posiciones de cripto.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadCryptoPurchases();
+      } catch (err) {
+        if (!cancelled) setCryptoPurchasesLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de compras.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadCryptoValuations();
+      } catch (err) {
+        if (!cancelled)
+          setCryptoValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
       }
     })();
     return () => {
@@ -934,6 +1090,185 @@ export function WealthPage() {
     }
   }
 
+  async function handleCreateCrypto(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateCryptoError(null);
+    setIsCreatingCrypto(true);
+    try {
+      const crypto = await createCrypto({ exchange: newCryptoForm.exchange, crypto: newCryptoForm.crypto });
+      await createCryptoPurchase({
+        cryptoId: crypto.id,
+        quantity: newCryptoForm.quantity,
+        purchasePrice: newCryptoForm.purchasePrice,
+        date: newCryptoForm.date,
+      });
+      setNewCryptoForm(emptyNewCryptoForm());
+      await Promise.all([reloadCryptos(), reloadCryptoPurchases()]);
+    } catch (err) {
+      setCreateCryptoError(err instanceof ApiError ? err.message : 'No se ha podido crear la posición.');
+    } finally {
+      setIsCreatingCrypto(false);
+    }
+  }
+
+  function startEditCrypto(crypto: Crypto) {
+    setEditCryptoError(null);
+    setEditingCryptoId(crypto.id);
+    setEditingCryptoForm(cryptoFormFromEntity(crypto));
+  }
+
+  async function handleEditCrypto(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCryptoId) return;
+    setEditCryptoError(null);
+    setIsSavingCrypto(true);
+    try {
+      await updateCrypto(editingCryptoId, editingCryptoForm);
+      setEditingCryptoId(null);
+      await reloadCryptos();
+    } catch (err) {
+      setEditCryptoError(err instanceof ApiError ? err.message : 'No se ha podido guardar la posición.');
+    } finally {
+      setIsSavingCrypto(false);
+    }
+  }
+
+  async function handleDeleteCrypto(id: string) {
+    setCryptoActionError(null);
+    setPendingDeleteCryptoId(id);
+    try {
+      await deleteCrypto(id);
+      await Promise.all([reloadCryptos(), reloadCryptoPurchases(), reloadCryptoValuations()]);
+    } catch (err) {
+      setCryptoActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la posición.');
+    } finally {
+      setPendingDeleteCryptoId(null);
+    }
+  }
+
+  function getNewCryptoPurchaseForm(cryptoId: string): UpdateCryptoPurchaseInput {
+    return newCryptoPurchaseForms[cryptoId] ?? { quantity: '', purchasePrice: '', date: todayIso() };
+  }
+
+  function setNewCryptoPurchaseForm(cryptoId: string, form: UpdateCryptoPurchaseInput) {
+    setNewCryptoPurchaseForms((prev) => ({ ...prev, [cryptoId]: form }));
+  }
+
+  async function handleCreateCryptoPurchase(cryptoId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateCryptoPurchaseError(null);
+    setCreatingCryptoPurchaseForCryptoId(cryptoId);
+    try {
+      const form = getNewCryptoPurchaseForm(cryptoId);
+      await createCryptoPurchase({
+        cryptoId,
+        quantity: form.quantity ?? '',
+        purchasePrice: form.purchasePrice ?? '',
+        date: form.date ?? todayIso(),
+      });
+      setNewCryptoPurchaseForm(cryptoId, { quantity: '', purchasePrice: '', date: todayIso() });
+      await reloadCryptoPurchases();
+    } catch (err) {
+      setCreateCryptoPurchaseError(err instanceof ApiError ? err.message : 'No se ha podido añadir la compra.');
+    } finally {
+      setCreatingCryptoPurchaseForCryptoId(null);
+    }
+  }
+
+  function startEditCryptoPurchase(purchase: CryptoPurchase) {
+    setEditCryptoPurchaseError(null);
+    setEditingCryptoPurchaseId(purchase.id);
+    setEditingCryptoPurchaseForm(cryptoPurchaseFormFromEntity(purchase));
+  }
+
+  async function handleEditCryptoPurchase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCryptoPurchaseId) return;
+    setEditCryptoPurchaseError(null);
+    setIsSavingCryptoPurchase(true);
+    try {
+      await updateCryptoPurchase(editingCryptoPurchaseId, editingCryptoPurchaseForm);
+      setEditingCryptoPurchaseId(null);
+      await reloadCryptoPurchases();
+    } catch (err) {
+      setEditCryptoPurchaseError(err instanceof ApiError ? err.message : 'No se ha podido guardar la compra.');
+    } finally {
+      setIsSavingCryptoPurchase(false);
+    }
+  }
+
+  async function handleDeleteCryptoPurchase(id: string) {
+    setCryptoPurchaseActionError(null);
+    setPendingDeleteCryptoPurchaseId(id);
+    try {
+      await deleteCryptoPurchase(id);
+      await reloadCryptoPurchases();
+    } catch (err) {
+      setCryptoPurchaseActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la compra.');
+    } finally {
+      setPendingDeleteCryptoPurchaseId(null);
+    }
+  }
+
+  function getNewCryptoValuationForm(cryptoId: string): UpdateCryptoValuationInput {
+    return newCryptoValuationForms[cryptoId] ?? { pricePerUnit: '', date: todayIso() };
+  }
+
+  function setNewCryptoValuationForm(cryptoId: string, form: UpdateCryptoValuationInput) {
+    setNewCryptoValuationForms((prev) => ({ ...prev, [cryptoId]: form }));
+  }
+
+  async function handleCreateCryptoValuation(cryptoId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateCryptoValuationError(null);
+    setCreatingCryptoValuationForCryptoId(cryptoId);
+    try {
+      const form = getNewCryptoValuationForm(cryptoId);
+      await createCryptoValuation({ cryptoId, pricePerUnit: form.pricePerUnit ?? '', date: form.date ?? todayIso() });
+      setNewCryptoValuationForm(cryptoId, { pricePerUnit: '', date: todayIso() });
+      await reloadCryptoValuations();
+    } catch (err) {
+      setCreateCryptoValuationError(err instanceof ApiError ? err.message : 'No se ha podido añadir la valoración.');
+    } finally {
+      setCreatingCryptoValuationForCryptoId(null);
+    }
+  }
+
+  function startEditCryptoValuation(valuation: CryptoValuation) {
+    setEditCryptoValuationError(null);
+    setEditingCryptoValuationId(valuation.id);
+    setEditingCryptoValuationForm(cryptoValuationFormFromEntity(valuation));
+  }
+
+  async function handleEditCryptoValuation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCryptoValuationId) return;
+    setEditCryptoValuationError(null);
+    setIsSavingCryptoValuation(true);
+    try {
+      await updateCryptoValuation(editingCryptoValuationId, editingCryptoValuationForm);
+      setEditingCryptoValuationId(null);
+      await reloadCryptoValuations();
+    } catch (err) {
+      setEditCryptoValuationError(err instanceof ApiError ? err.message : 'No se ha podido guardar la valoración.');
+    } finally {
+      setIsSavingCryptoValuation(false);
+    }
+  }
+
+  async function handleDeleteCryptoValuation(id: string) {
+    setCryptoValuationActionError(null);
+    setPendingDeleteCryptoValuationId(id);
+    try {
+      await deleteCryptoValuation(id);
+      await reloadCryptoValuations();
+    } catch (err) {
+      setCryptoValuationActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la valoración.');
+    } finally {
+      setPendingDeleteCryptoValuationId(null);
+    }
+  }
+
   if (isAuthLoading) {
     return (
       <main>
@@ -972,7 +1307,10 @@ export function WealthPage() {
     valuations !== null &&
     fundList !== null &&
     fundPurchases !== null &&
-    fundValuations !== null;
+    fundValuations !== null &&
+    cryptoList !== null &&
+    cryptoPurchaseList !== null &&
+    cryptoValuationList !== null;
 
   return (
     <main>
@@ -986,14 +1324,16 @@ export function WealthPage() {
               (
                 parseFloat(bankAccountsTotal(accounts, balances)) +
                 parseFloat(stocksTotal(stockList, purchases, valuations)) +
-                parseFloat(fundsTotal(fundList, fundPurchases, fundValuations))
+                parseFloat(fundsTotal(fundList, fundPurchases, fundValuations)) +
+                parseFloat(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList))
               ).toFixed(2),
             )}
           </span>
           <p className="card-meta">
             Cuentas Bancarias: {formatCurrency(bankAccountsTotal(accounts, balances))} · Acciones:{' '}
             {formatCurrency(stocksTotal(stockList, purchases, valuations))} · Fondos Inversión:{' '}
-            {formatCurrency(fundsTotal(fundList, fundPurchases, fundValuations))}
+            {formatCurrency(fundsTotal(fundList, fundPurchases, fundValuations))} · Cripto:{' '}
+            {formatCurrency(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList))}
           </p>
         </div>
       )}
@@ -2196,6 +2536,490 @@ export function WealthPage() {
           {createFundError && <p role="alert">{createFundError}</p>}
           <button type="submit" className="btn btn-primary" disabled={isCreatingFund}>
             {isCreatingFund ? 'Creando…' : 'Añadir fondo'}
+          </button>
+        </form>
+      </details>
+
+      <details className="dashboard-section">
+        <summary>
+          <h2>🪙 Cripto</h2>
+        </summary>
+
+        {cryptosLoadError && <p role="alert">{cryptosLoadError}</p>}
+        {cryptoPurchasesLoadError && <p role="alert">{cryptoPurchasesLoadError}</p>}
+        {cryptoValuationsLoadError && <p role="alert">{cryptoValuationsLoadError}</p>}
+        {cryptoActionError && <p role="alert">{cryptoActionError}</p>}
+        {cryptoPurchaseActionError && <p role="alert">{cryptoPurchaseActionError}</p>}
+        {cryptoValuationActionError && <p role="alert">{cryptoValuationActionError}</p>}
+
+        {cryptoList && cryptoList.length === 0 && <p>Todavía no tienes ninguna posición de cripto.</p>}
+
+        {cryptoList && cryptoList.length > 0 && (
+          <ul id="wealth-crypto-list" aria-label="Tus posiciones de cripto">
+            {cryptoList.map((crypto) => {
+              const isEditingCrypto = editingCryptoId === crypto.id;
+              const cryptoOwnPurchases = (cryptoPurchaseList ?? []).filter((p) => p.cryptoId === crypto.id);
+              const cryptoOwnValuations = (cryptoValuationList ?? []).filter((v) => v.cryptoId === crypto.id);
+              const lastValuation = cryptoOwnValuations[0] ?? null; // ya viene ordenado por fecha descendente
+              const newPurchaseForm = getNewCryptoPurchaseForm(crypto.id);
+              const newValuationForm = getNewCryptoValuationForm(crypto.id);
+              const gainLoss = lastValuation
+                ? gainLossPercent(
+                    currentValue(lastValuation.pricePerUnit, totalCryptoQuantity(cryptoOwnPurchases)),
+                    totalCryptoCost(cryptoOwnPurchases),
+                  )
+                : null;
+
+              if (isEditingCrypto) {
+                return (
+                  <li className="card elev-sm" key={crypto.id}>
+                    <form onSubmit={handleEditCrypto} aria-label={`Editar posición: ${crypto.crypto}`} noValidate>
+                      <div className="field">
+                        <label htmlFor={`crypto-${crypto.id}-exchange`}>Exchange/Wallet</label>
+                        <input
+                          id={`crypto-${crypto.id}-exchange`}
+                          className="input"
+                          value={editingCryptoForm.exchange}
+                          onChange={(e) => setEditingCryptoForm({ ...editingCryptoForm, exchange: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`crypto-${crypto.id}-crypto`}>Criptomoneda</label>
+                        <input
+                          id={`crypto-${crypto.id}-crypto`}
+                          className="input"
+                          value={editingCryptoForm.crypto}
+                          onChange={(e) => setEditingCryptoForm({ ...editingCryptoForm, crypto: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {editCryptoError && <p role="alert">{editCryptoError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={isSavingCrypto}>
+                        {isSavingCrypto ? 'Guardando…' : 'Guardar'}
+                      </button>{' '}
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={isSavingCrypto}
+                        onClick={() => setEditingCryptoId(null)}
+                      >
+                        Cancelar
+                      </button>
+                    </form>
+                  </li>
+                );
+              }
+
+              return (
+                <li className="card elev-sm" key={crypto.id}>
+                  <div className="wealth-item-header">
+                    <span className="card-title">
+                      {crypto.crypto} · {crypto.exchange}
+                      {gainLoss !== null && (
+                        <span style={{ color: gainLoss >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                          {' '}
+                          {gainLoss >= 0 ? '+' : ''}
+                          {gainLoss.toFixed(2)}%
+                        </span>
+                      )}
+                    </span>
+                    <span className="card-amount">
+                      {lastValuation
+                        ? formatCurrency(currentValue(lastValuation.pricePerUnit, totalCryptoQuantity(cryptoOwnPurchases)))
+                        : 'Sin valoración'}
+                    </span>
+                  </div>
+                  <p className="card-meta">
+                    {totalCryptoQuantity(cryptoOwnPurchases)} unidades · Coste total: {formatCurrency(totalCryptoCost(cryptoOwnPurchases))}
+                    {lastValuation && (
+                      <>
+                        {' '}
+                        · Precio actual: {formatCurrency(lastValuation.pricePerUnit)}/unidad · Última fecha: {lastValuation.date}
+                      </>
+                    )}
+                  </p>
+                  <div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      aria-label={`Editar posición: ${crypto.crypto} · ${crypto.exchange}`}
+                      onClick={() => startEditCrypto(crypto)}
+                    >
+                      Editar
+                    </button>{' '}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      aria-label={`Eliminar posición: ${crypto.crypto} · ${crypto.exchange}`}
+                      disabled={pendingDeleteCryptoId === crypto.id}
+                      onClick={() => void handleDeleteCrypto(crypto.id)}
+                    >
+                      {pendingDeleteCryptoId === crypto.id ? 'Eliminando…' : 'Eliminar'}
+                    </button>
+                  </div>
+
+                  <details>
+                    <summary>Historial de compras ({cryptoOwnPurchases.length})</summary>
+
+                    {cryptoOwnPurchases.length === 0 && <p>Todavía no hay ninguna compra registrada en esta posición.</p>}
+
+                    {cryptoOwnPurchases.length > 0 && (
+                      <ul aria-label={`Historial de compras de ${crypto.crypto} · ${crypto.exchange}`}>
+                        {cryptoOwnPurchases.map((purchase) => {
+                          const isEditingPurchase = editingCryptoPurchaseId === purchase.id;
+                          const purchaseLabel = `${purchase.date} · ${purchase.quantity} unidades a ${purchase.purchasePrice}€`;
+
+                          if (isEditingPurchase) {
+                            return (
+                              <li key={purchase.id}>
+                                <form
+                                  onSubmit={handleEditCryptoPurchase}
+                                  aria-label={`Editar compra de ${crypto.crypto}: ${purchaseLabel}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`crypto-purchase-${purchase.id}-quantity`}>Cantidad</label>
+                                    <input
+                                      id={`crypto-purchase-${purchase.id}-quantity`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingCryptoPurchaseForm.quantity}
+                                      onChange={(e) =>
+                                        setEditingCryptoPurchaseForm({ ...editingCryptoPurchaseForm, quantity: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`crypto-purchase-${purchase.id}-purchasePrice`}>Precio compra</label>
+                                    <input
+                                      id={`crypto-purchase-${purchase.id}-purchasePrice`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingCryptoPurchaseForm.purchasePrice}
+                                      onChange={(e) =>
+                                        setEditingCryptoPurchaseForm({ ...editingCryptoPurchaseForm, purchasePrice: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`crypto-purchase-${purchase.id}-date`}>Fecha de compra</label>
+                                    <input
+                                      id={`crypto-purchase-${purchase.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingCryptoPurchaseForm.date}
+                                      onChange={(e) => setEditingCryptoPurchaseForm({ ...editingCryptoPurchaseForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <p className="card-meta">
+                                    Valor compra:{' '}
+                                    {formatCurrency(
+                                      purchaseValue(
+                                        editingCryptoPurchaseForm.purchasePrice ?? '',
+                                        editingCryptoPurchaseForm.quantity ?? '',
+                                      ) || '0.00',
+                                    )}
+                                  </p>
+                                  {editCryptoPurchaseError && <p role="alert">{editCryptoPurchaseError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingCryptoPurchase}>
+                                    {isSavingCryptoPurchase ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingCryptoPurchase}
+                                    onClick={() => setEditingCryptoPurchaseId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={purchase.id}>
+                              <span>{purchase.date}</span>{' '}
+                              <span>
+                                {purchase.quantity} unidades @ {formatCurrency(purchase.purchasePrice)} ={' '}
+                                {formatCurrency(purchaseValue(purchase.purchasePrice, purchase.quantity))}
+                              </span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar compra de ${crypto.crypto}: ${purchaseLabel}`}
+                                onClick={() => startEditCryptoPurchase(purchase)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar compra de ${crypto.crypto}: ${purchaseLabel}`}
+                                disabled={pendingDeleteCryptoPurchaseId === purchase.id}
+                                onClick={() => void handleDeleteCryptoPurchase(purchase.id)}
+                              >
+                                {pendingDeleteCryptoPurchaseId === purchase.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreateCryptoPurchase(crypto.id, e)}
+                      aria-label={`Añadir compra: ${crypto.crypto}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-crypto-purchase-${crypto.id}-quantity`}>Cantidad</label>
+                        <input
+                          id={`new-crypto-purchase-${crypto.id}-quantity`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newPurchaseForm.quantity}
+                          onChange={(e) => setNewCryptoPurchaseForm(crypto.id, { ...newPurchaseForm, quantity: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-crypto-purchase-${crypto.id}-purchasePrice`}>Precio compra</label>
+                        <input
+                          id={`new-crypto-purchase-${crypto.id}-purchasePrice`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newPurchaseForm.purchasePrice}
+                          onChange={(e) => setNewCryptoPurchaseForm(crypto.id, { ...newPurchaseForm, purchasePrice: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-crypto-purchase-${crypto.id}-date`}>Fecha de compra</label>
+                        <input
+                          id={`new-crypto-purchase-${crypto.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newPurchaseForm.date}
+                          onChange={(e) => setNewCryptoPurchaseForm(crypto.id, { ...newPurchaseForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <p className="card-meta">
+                        Valor compra:{' '}
+                        {formatCurrency(purchaseValue(newPurchaseForm.purchasePrice ?? '', newPurchaseForm.quantity ?? '') || '0.00')}
+                      </p>
+                      {createCryptoPurchaseError && <p role="alert">{createCryptoPurchaseError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingCryptoPurchaseForCryptoId === crypto.id}>
+                        {creatingCryptoPurchaseForCryptoId === crypto.id ? 'Añadiendo…' : 'Añadir compra'}
+                      </button>
+                    </form>
+                  </details>
+
+                  <details>
+                    <summary>Historial de valoraciones ({cryptoOwnValuations.length})</summary>
+
+                    {cryptoOwnValuations.length === 0 && <p>Todavía no hay ninguna valoración registrada en esta posición.</p>}
+
+                    {cryptoOwnValuations.length > 0 && (
+                      <ul aria-label={`Historial de valoraciones de ${crypto.crypto} · ${crypto.exchange}`}>
+                        {cryptoOwnValuations.map((valuation) => {
+                          const isEditingValuation = editingCryptoValuationId === valuation.id;
+
+                          if (isEditingValuation) {
+                            return (
+                              <li key={valuation.id}>
+                                <form
+                                  onSubmit={handleEditCryptoValuation}
+                                  aria-label={`Editar valoración de ${crypto.crypto} del ${valuation.date}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`crypto-valuation-${valuation.id}-pricePerUnit`}>Precio por unidad actual</label>
+                                    <input
+                                      id={`crypto-valuation-${valuation.id}-pricePerUnit`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingCryptoValuationForm.pricePerUnit}
+                                      onChange={(e) =>
+                                        setEditingCryptoValuationForm({ ...editingCryptoValuationForm, pricePerUnit: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`crypto-valuation-${valuation.id}-date`}>Fecha</label>
+                                    <input
+                                      id={`crypto-valuation-${valuation.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingCryptoValuationForm.date}
+                                      onChange={(e) =>
+                                        setEditingCryptoValuationForm({ ...editingCryptoValuationForm, date: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <p className="card-meta">
+                                    Valor total:{' '}
+                                    {formatCurrency(
+                                      currentValue(editingCryptoValuationForm.pricePerUnit ?? '', totalCryptoQuantity(cryptoOwnPurchases)) ||
+                                        '0.00',
+                                    )}
+                                  </p>
+                                  {editCryptoValuationError && <p role="alert">{editCryptoValuationError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingCryptoValuation}>
+                                    {isSavingCryptoValuation ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingCryptoValuation}
+                                    onClick={() => setEditingCryptoValuationId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={valuation.id}>
+                              <span>{valuation.date}</span> <span>{formatCurrency(valuation.pricePerUnit)}/unidad</span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar valoración de ${crypto.crypto} del ${valuation.date}`}
+                                onClick={() => startEditCryptoValuation(valuation)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar valoración de ${crypto.crypto} del ${valuation.date}`}
+                                disabled={pendingDeleteCryptoValuationId === valuation.id}
+                                onClick={() => void handleDeleteCryptoValuation(valuation.id)}
+                              >
+                                {pendingDeleteCryptoValuationId === valuation.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreateCryptoValuation(crypto.id, e)}
+                      aria-label={`Añadir valoración: ${crypto.crypto}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-crypto-valuation-${crypto.id}-pricePerUnit`}>Precio por unidad actual</label>
+                        <input
+                          id={`new-crypto-valuation-${crypto.id}-pricePerUnit`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newValuationForm.pricePerUnit}
+                          onChange={(e) => setNewCryptoValuationForm(crypto.id, { ...newValuationForm, pricePerUnit: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-crypto-valuation-${crypto.id}-date`}>Fecha</label>
+                        <input
+                          id={`new-crypto-valuation-${crypto.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newValuationForm.date}
+                          onChange={(e) => setNewCryptoValuationForm(crypto.id, { ...newValuationForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <p className="card-meta">
+                        Valor total:{' '}
+                        {formatCurrency(
+                          currentValue(newValuationForm.pricePerUnit ?? '', totalCryptoQuantity(cryptoOwnPurchases)) || '0.00',
+                        )}
+                      </p>
+                      {createCryptoValuationError && <p role="alert">{createCryptoValuationError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingCryptoValuationForCryptoId === crypto.id}>
+                        {creatingCryptoValuationForCryptoId === crypto.id ? 'Añadiendo…' : 'Añadir valoración'}
+                      </button>
+                    </form>
+                  </details>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <h3>Añadir posición</h3>
+        <form onSubmit={handleCreateCrypto} aria-label="Añadir posición de cripto" noValidate>
+          <div className="field">
+            <label htmlFor="new-crypto-exchange">Exchange/Wallet</label>
+            <input
+              id="new-crypto-exchange"
+              className="input"
+              value={newCryptoForm.exchange}
+              onChange={(e) => setNewCryptoForm({ ...newCryptoForm, exchange: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-crypto-crypto">Criptomoneda</label>
+            <input
+              id="new-crypto-crypto"
+              className="input"
+              value={newCryptoForm.crypto}
+              onChange={(e) => setNewCryptoForm({ ...newCryptoForm, crypto: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-crypto-quantity">Cantidad</label>
+            <input
+              id="new-crypto-quantity"
+              className="input"
+              inputMode="decimal"
+              value={newCryptoForm.quantity}
+              onChange={(e) => setNewCryptoForm({ ...newCryptoForm, quantity: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-crypto-purchasePrice">Precio compra</label>
+            <input
+              id="new-crypto-purchasePrice"
+              className="input"
+              inputMode="decimal"
+              value={newCryptoForm.purchasePrice}
+              onChange={(e) => setNewCryptoForm({ ...newCryptoForm, purchasePrice: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-crypto-date">Fecha de compra</label>
+            <input
+              id="new-crypto-date"
+              type="date"
+              className="input"
+              value={newCryptoForm.date}
+              onChange={(e) => setNewCryptoForm({ ...newCryptoForm, date: e.target.value })}
+              required
+            />
+          </div>
+          <p className="card-meta">
+            Valor compra: {formatCurrency(purchaseValue(newCryptoForm.purchasePrice, newCryptoForm.quantity) || '0.00')}
+          </p>
+          {createCryptoError && <p role="alert">{createCryptoError}</p>}
+          <button type="submit" className="btn btn-primary" disabled={isCreatingCrypto}>
+            {isCreatingCrypto ? 'Creando…' : 'Añadir posición'}
           </button>
         </form>
       </details>
