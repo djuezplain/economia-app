@@ -6,6 +6,7 @@ export interface BankAccount {
   userId: string;
   bank: string;
   accountNumber: string;
+  alias: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -13,6 +14,7 @@ export interface BankAccount {
 export interface BankAccountInput {
   bank: string;
   accountNumber: string;
+  alias?: string;
 }
 
 export function listBankAccounts(): Promise<BankAccount[]> {

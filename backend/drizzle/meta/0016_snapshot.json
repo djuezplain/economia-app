@@ -1,4 +1,5 @@
 {
+  "id": "6ea9eb90-9142-4d74-b3d1-c7f24af5e65c",
   "id": "1c604bb1-ef80-4a8d-8889-999254683a4f",
   "prevId": "117645f7-1e2b-4096-a1b8-28bd5643aea8",
   "version": "7",
@@ -1034,6 +1035,12 @@
           "type": "varchar(50)",
           "primaryKey": false,
           "notNull": true
+        },
+        "alias": {
+          "name": "alias",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",

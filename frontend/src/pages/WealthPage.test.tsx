@@ -30,6 +30,7 @@ const BANK_ACCOUNT: BankAccount = {
   userId: 'user-1',
   bank: 'BBVA',
   accountNumber: 'ES1234',
+  alias: null,
   createdAt: '2026-09-04T00:00:00.000Z',
   updatedAt: '2026-09-04T00:00:00.000Z',
 };
@@ -295,8 +296,39 @@ describe('WealthPage', () => {
       await userEvent.type(within(form).getByLabelText('Número de Cuenta'), 'ES1234');
       await userEvent.click(within(form).getByRole('button', { name: 'Añadir cuenta' }));
 
-      await waitFor(() => expect(createSpy).toHaveBeenCalledWith({ bank: 'BBVA', accountNumber: 'ES1234' }));
+      await waitFor(() => expect(createSpy).toHaveBeenCalledWith({ bank: 'BBVA', accountNumber: 'ES1234', alias: '' }));
       await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('crea una cuenta con alias', async () => {
+      mockOtherApis();
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      const createSpy = vi.spyOn(bankAccountsApi, 'createBankAccount').mockResolvedValue({ ...BANK_ACCOUNT, alias: 'Nómina' });
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir cuenta bancaria' });
+
+      await userEvent.type(within(form).getByLabelText('Banco'), 'BBVA');
+      await userEvent.type(within(form).getByLabelText('Número de Cuenta'), 'ES1234');
+      await userEvent.type(within(form).getByLabelText('Alias'), 'Nómina');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir cuenta' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({ bank: 'BBVA', accountNumber: 'ES1234', alias: 'Nómina' }),
+      );
+    });
+
+    it('muestra el alias en la lista cuando la cuenta lo tiene', async () => {
+      mockOtherApis();
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([{ ...BANK_ACCOUNT, alias: 'Nómina' }]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+
+      renderPage();
+      const list = await screen.findByRole('list', { name: 'Tus cuentas bancarias' });
+
+      expect(within(list).getByText('Nómina')).toBeInTheDocument();
+      expect(within(list).getByText('BBVA · ES1234')).toBeInTheDocument();
     });
 
     it('edita una cuenta existente', async () => {
@@ -309,14 +341,14 @@ describe('WealthPage', () => {
       await screen.findByRole('list', { name: 'Tus cuentas bancarias' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Editar cuenta: BBVA · ES1234' }));
-      const editForm = screen.getByRole('form', { name: 'Editar cuenta: BBVA' });
+      const editForm = screen.getByRole('form', { name: 'Editar cuenta: BBVA · ES1234' });
       const bankInput = within(editForm).getByLabelText('Banco');
       await userEvent.clear(bankInput);
       await userEvent.type(bankInput, 'Santander');
       await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
 
       await waitFor(() =>
-        expect(updateSpy).toHaveBeenCalledWith(BANK_ACCOUNT.id, { bank: 'Santander', accountNumber: 'ES1234' }),
+        expect(updateSpy).toHaveBeenCalledWith(BANK_ACCOUNT.id, { bank: 'Santander', accountNumber: 'ES1234', alias: '' }),
       );
     });
 
@@ -340,7 +372,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
 
       renderPage();
-      const form = await screen.findByRole('form', { name: 'Añadir saldo: BBVA' });
+      const form = await screen.findByRole('form', { name: 'Añadir saldo: BBVA · ES1234' });
 
       expect(within(form).getByLabelText('Fecha')).toHaveValue(todayIso());
     });
@@ -352,7 +384,7 @@ describe('WealthPage', () => {
       const createSpy = vi.spyOn(bankAccountBalancesApi, 'createBankAccountBalance').mockResolvedValue(BANK_BALANCE);
 
       renderPage();
-      const form = await screen.findByRole('form', { name: 'Añadir saldo: BBVA' });
+      const form = await screen.findByRole('form', { name: 'Añadir saldo: BBVA · ES1234' });
 
       await userEvent.type(within(form).getByLabelText('Euros'), '-50.25');
       await userEvent.click(within(form).getByRole('button', { name: 'Añadir saldo' }));

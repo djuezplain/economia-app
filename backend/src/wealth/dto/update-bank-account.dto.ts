@@ -11,4 +11,10 @@ export class UpdateBankAccountDto {
   @IsString()
   @Length(1, 50)
   accountNumber?: string;
+
+  /** H1 criterio 2 (spec 021): añadir, editar o quitar el alias. */
+  @IsOptional()
+  @IsString()
+  @Length(0, 100)
+  alias?: string;
 }

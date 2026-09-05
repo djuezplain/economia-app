@@ -25,7 +25,10 @@ export class BankAccountsService {
   async create(userId: string, dto: CreateBankAccountDto): Promise<BankAccount> {
     await this.assertNotDuplicate(userId, dto.bank, dto.accountNumber);
 
-    const [account] = await this.db.insert(bankAccounts).values({ userId, bank: dto.bank, accountNumber: dto.accountNumber }).returning();
+    const [account] = await this.db
+      .insert(bankAccounts)
+      .values({ userId, bank: dto.bank, accountNumber: dto.accountNumber, alias: normalizeAlias(dto.alias) })
+      .returning();
     return account;
   }
 
@@ -42,6 +45,7 @@ export class BankAccountsService {
       .set({
         ...(dto.bank !== undefined && { bank: dto.bank }),
         ...(dto.accountNumber !== undefined && { accountNumber: dto.accountNumber }),
+        ...(dto.alias !== undefined && { alias: normalizeAlias(dto.alias) }),
         updatedAt: new Date(),
       })
       .where(eq(bankAccounts.id, id))
@@ -78,4 +82,10 @@ export class BankAccountsService {
       throw new ConflictException('Ya tienes registrada esa cuenta (mismo banco y número de cuenta). Añade el saldo dentro de ella.');
     }
   }
+}
+
+/** H1 criterio 2 (spec 021): una cadena vacía o solo espacios es "sin alias", no un alias vacío. */
+function normalizeAlias(alias: string | undefined): string | null {
+  const trimmed = alias?.trim();
+  return trimmed ? trimmed : null;
 }
