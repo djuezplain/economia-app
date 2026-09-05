@@ -1,6 +1,9 @@
-# Despliegue en Raspberry Pi (spec: ver deploy/README.md). Solo pensado para
-# acceso en red local, sin dominio ni HTTPS — el frontend (puerto 80) y el
-# backend (puerto 3000) se exponen directos, sin proxy inverso entre medias.
+# Despliegue en Raspberry Pi (spec: ver deploy/README.md). Por defecto solo
+# para acceso en red local, sin dominio ni HTTPS — el frontend (puerto 80) y
+# el backend (puerto 3000) se exponen directos, sin proxy inverso entre
+# medias. El servicio `cloudflared` de más abajo es opcional y añade acceso
+# desde fuera de casa vía Cloudflare Tunnel (ver deploy/README.md §9) sin
+# abrir puertos en el router.
 #
 # Copia .env.example a .env y rellena los valores antes de `docker compose
 # up -d --build`.
@@ -63,6 +66,22 @@ services:
       - backend
     ports:
       - "80:80"
+
+  # Opcional (deploy/README.md §9): acceso desde fuera de casa sin abrir
+  # puertos en el router. Solo arranca si CLOUDFLARE_TUNNEL_TOKEN tiene
+  # valor — con .env sin rellenar, `docker compose up` sigue funcionando
+  # igual que antes, solo en LAN.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - frontend
+      - backend
+    profiles:
+      - tunnel
 
 volumes:
   postgres_data:

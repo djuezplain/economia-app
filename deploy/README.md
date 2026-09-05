@@ -181,3 +181,34 @@ journalctl -u economia-update --since today                    # historial de ac
 ```bash
 gunzip -c backups/economia_2026-09-01_0330.sql.gz | docker compose exec -T postgres psql -U economia_app -d economia_dev
 ```
+
+## 9. Acceso desde fuera de tu red (Cloudflare Tunnel)
+
+Opcional. Todo lo anterior deja la app accesible solo en tu WiFi. Cloudflare Tunnel añade acceso desde cualquier sitio (datos móviles, otra red) con HTTPS real, sin abrir puertos en el router ni depender de que tu operador te dé una IP pública fija — `cloudflared` hace una conexión saliente desde la Pi hacia Cloudflare, así que no hay nada que exponer hacia dentro.
+
+Bonus: como aquí sí hay HTTPS de verdad (no solo en `localhost`), el modo offline (PWA, §0) empieza a funcionar del todo.
+
+Necesitas un dominio propio (cualquier registrador vale, el más barato sirve) apuntando a Cloudflare como DNS.
+
+1. Crea una cuenta gratuita en [Cloudflare](https://dash.cloudflare.com/sign-up) y añade tu dominio (**Add a site**, plan Free) — te dará dos nameservers que tienes que cambiar en tu registrador. Tarda de minutos a un par de horas en propagarse.
+2. En el dashboard, ve a **Zero Trust → Networks → Tunnels → Create a tunnel**, elige tipo **Cloudflared**, y ponle un nombre (p. ej. `economia-app`).
+3. En la pestaña **Install and run a connector**, copia el valor que va después de `--token` del comando que te muestra (es un token largo, no la URL del comando entero).
+4. En **Public Hostnames**, añade dos:
+   - `app.tudominio.com` → Service tipo `HTTP`, URL `frontend:80`
+   - `api.tudominio.com` → Service tipo `HTTP`, URL `backend:3000`
+   (usa los nombres de los servicios de `docker-compose.yml` tal cual, no `localhost` ni una IP — `cloudflared` corre en la misma red de Docker que el resto).
+5. En tu `.env` de la Pi:
+   - `CLOUDFLARE_TUNNEL_TOKEN` — el token del paso 3.
+   - `FRONTEND_URL=https://app.tudominio.com`
+   - `VITE_API_BASE_URL=https://api.tudominio.com`
+6. Arranca (o reconstruye) incluyendo el perfil `tunnel` — sin este flag, `cloudflared` no se levanta:
+   ```bash
+   docker compose --profile tunnel up -d --build
+   ```
+   (el `--build` es necesario aquí porque `VITE_API_BASE_URL` cambió — se incrusta en el bundle del frontend en tiempo de build, ver comentario en `.env.example`).
+7. Comprueba desde el móvil **con el WiFi apagado** (datos móviles) que `https://app.tudominio.com` carga. Los enlaces de verificación de email (§0) ahora llevan ese dominio en vez de la IP local, pero se siguen sacando igual de los logs:
+   ```bash
+   docker compose logs backend | grep -o 'https://[^ ]*verify-email[^ ]*' | tail -1
+   ```
+
+Para quitarlo más adelante: deja `CLOUDFLARE_TUNNEL_TOKEN` vacío, borra el túnel en el dashboard de Cloudflare, y vuelve a arrancar sin `--profile tunnel` (`docker compose up -d`) — el resto del despliegue sigue funcionando igual, solo en LAN.
