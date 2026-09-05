@@ -16,17 +16,25 @@ import { FundPurchasesController } from './fund-purchases.controller.js';
 import { FundPurchasesService } from './fund-purchases.service.js';
 import { FundValuationsController } from './fund-valuations.controller.js';
 import { FundValuationsService } from './fund-valuations.service.js';
+import { CryptosController } from './cryptos.controller.js';
+import { CryptosService } from './cryptos.service.js';
+import { CryptoPurchasesController } from './crypto-purchases.controller.js';
+import { CryptoPurchasesService } from './crypto-purchases.service.js';
+import { CryptoValuationsController } from './crypto-valuations.controller.js';
+import { CryptoValuationsService } from './crypto-valuations.service.js';
 
 /**
  * Spec 018 (Resumen Patrimonio) / spec 019 (cuentas bancarias únicas) /
  * spec 020 (acciones únicas) / spec 021 (fondos de inversión únicos, mismo
- * modelo que spec 020). `AuthGuardModule` por `AuthGuard` — mismo criterio
- * que `GoalsModule`/`CategoriesModule`. A diferencia de `GoalsModule`, no
+ * modelo que spec 020) / spec 022 (cripto, mismo modelo también).
+ * `AuthGuardModule` por `AuthGuard` — mismo criterio que
+ * `GoalsModule`/`CategoriesModule`. A diferencia de `GoalsModule`, no
  * importa `DashboardModule`: ningún servicio de aquí reutiliza cálculos de
  * otro módulo. `BankAccountBalancesService`/`StockPurchasesService`/
- * `StockValuationsService`/`FundPurchasesService`/`FundValuationsService`
- * inyectan `BankAccountsService`/`StocksService`/`FundsService` (mismo
- * módulo) para reutilizar su `findOwnOrThrow()`.
+ * `StockValuationsService`/`FundPurchasesService`/`FundValuationsService`/
+ * `CryptoPurchasesService`/`CryptoValuationsService` inyectan
+ * `BankAccountsService`/`StocksService`/`FundsService`/`CryptosService`
+ * (mismo módulo) para reutilizar su `findOwnOrThrow()`.
  */
 @Module({
   imports: [AuthGuardModule],
@@ -39,6 +47,9 @@ import { FundValuationsService } from './fund-valuations.service.js';
     FundsController,
     FundPurchasesController,
     FundValuationsController,
+    CryptosController,
+    CryptoPurchasesController,
+    CryptoValuationsController,
   ],
   providers: [
     BankAccountsService,
@@ -49,6 +60,9 @@ import { FundValuationsService } from './fund-valuations.service.js';
     FundsService,
     FundPurchasesService,
     FundValuationsService,
+    CryptosService,
+    CryptoPurchasesService,
+    CryptoValuationsService,
   ],
 })
 export class WealthModule {}

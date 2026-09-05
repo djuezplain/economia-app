@@ -29,3 +29,15 @@ export function totalCost(purchases: Array<{ shareCount: string; purchasePrice: 
 export function currentValue(pricePerShare: string, shareCount: string): string {
   return new Decimal(pricePerShare).times(shareCount).toFixed(2);
 }
+
+/** H2 criterio 4 (spec 022): cantidad total de una posición de cripto, sumando todas sus compras.
+ *  Mismo patrón que `totalShares`, sobre `cryptoPurchases.quantity` en vez de `stockPurchases.shareCount`. */
+export function totalCryptoQuantity(purchases: Array<{ quantity: string }>): string {
+  return purchases.reduce((sum, p) => sum.plus(p.quantity), new Decimal(0)).toFixed(8);
+}
+
+/** H2 criterio 4 (spec 022): coste total de una posición de cripto, sumando el valor de compra
+ *  (`purchaseValue`, reutilizada tal cual: es una multiplicación genérica precio × cantidad) de todas sus compras. */
+export function totalCryptoCost(purchases: Array<{ quantity: string; purchasePrice: string }>): string {
+  return purchases.reduce((sum, p) => sum.plus(purchaseValue(p.purchasePrice, p.quantity)), new Decimal(0)).toFixed(2);
+}

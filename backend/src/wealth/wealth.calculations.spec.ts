@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { currentValue, purchaseValue, totalCost, totalShares } from './wealth.calculations.js';
+import { currentValue, purchaseValue, totalCost, totalCryptoCost, totalCryptoQuantity, totalShares } from './wealth.calculations.js';
 
 describe('wealth.calculations', () => {
   describe('purchaseValue', () => {
@@ -59,6 +59,40 @@ describe('wealth.calculations', () => {
 
     it('redondea a 2 decimales', () => {
       expect(currentValue('3.333', '3')).toBe('10.00');
+    });
+  });
+
+  describe('totalCryptoQuantity (spec 022)', () => {
+    it('suma la cantidad de todas las compras', () => {
+      expect(totalCryptoQuantity([{ quantity: '0.5' }, { quantity: '0.25' }])).toBe('0.75000000');
+    });
+
+    it('admite hasta 8 decimales (p. ej. satoshis de BTC)', () => {
+      expect(totalCryptoQuantity([{ quantity: '0.12345678' }, { quantity: '0.00000001' }])).toBe('0.12345679');
+    });
+
+    it('admite cantidades enteras muy grandes (memecoins)', () => {
+      expect(totalCryptoQuantity([{ quantity: '1000000000' }, { quantity: '500000000' }])).toBe('1500000000.00000000');
+    });
+
+    it('sin ninguna compra, 0', () => {
+      expect(totalCryptoQuantity([])).toBe('0.00000000');
+    });
+  });
+
+  describe('totalCryptoCost (spec 022)', () => {
+    it('suma el valor de compra (precio × cantidad) de todas las compras', () => {
+      expect(totalCryptoCost([{ quantity: '0.5', purchasePrice: '30000.00' }, { quantity: '0.25', purchasePrice: '32000.00' }])).toBe(
+        '23000.00',
+      );
+    });
+
+    it('admite precios de compra con hasta 8 decimales (altcoins muy baratas)', () => {
+      expect(totalCryptoCost([{ quantity: '1000', purchasePrice: '0.00003821' }])).toBe('0.04');
+    });
+
+    it('sin ninguna compra, 0', () => {
+      expect(totalCryptoCost([])).toBe('0.00');
     });
   });
 });
