@@ -85,6 +85,10 @@ import {
   updatePensionPlanValuation,
 } from '../api/pension-plan-valuations';
 import type { PensionPlanValuation, UpdatePensionPlanValuationInput } from '../api/pension-plan-valuations';
+import { createCashHolding, deleteCashHolding, listCashHoldings, updateCashHolding } from '../api/cash-holdings';
+import type { CashHolding, CashHoldingInput } from '../api/cash-holdings';
+import { createCashBalance, deleteCashBalance, listCashBalances, updateCashBalance } from '../api/cash-balances';
+import type { CashBalance, UpdateCashBalanceInput } from '../api/cash-balances';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 
@@ -108,6 +112,8 @@ const EMPTY_VEHICLE_VALUATION_FORM: UpdateVehicleValuationInput = { value: '', d
 const EMPTY_PENSION_PLAN_FORM: PensionPlanInput = { managingEntity: '', plan: '' };
 const EMPTY_PENSION_PLAN_CONTRIBUTION_FORM: UpdatePensionPlanContributionInput = { amount: '', date: todayIso() };
 const EMPTY_PENSION_PLAN_VALUATION_FORM: UpdatePensionPlanValuationInput = { value: '', date: todayIso() };
+const EMPTY_CASH_HOLDING_FORM: CashHoldingInput = { location: '' };
+const EMPTY_CASH_BALANCE_FORM: UpdateCashBalanceInput = { amount: '', date: todayIso() };
 
 /** Formulario "Añadir acción" (nivel superior): crea la acción y su primera
  *  compra en un solo paso (spec 020, revisión §3.bis) — dos llamadas
@@ -222,6 +228,14 @@ function pensionPlanContributionFormFromEntity(contribution: PensionPlanContribu
 
 function pensionPlanValuationFormFromEntity(valuation: PensionPlanValuation): UpdatePensionPlanValuationInput {
   return { value: valuation.value, date: valuation.date };
+}
+
+function cashHoldingFormFromEntity(holding: CashHolding): CashHoldingInput {
+  return { location: holding.location };
+}
+
+function cashBalanceFormFromEntity(balance: CashBalance): UpdateCashBalanceInput {
+  return { amount: balance.amount, date: balance.date };
 }
 
 /** H2 criterio 3 (spec 020): calculado, nunca guardado — ver `wealth.calculations.ts` en el backend. */
@@ -358,9 +372,20 @@ function pensionPlansTotal(plans: PensionPlan[], valuations: PensionPlanValuatio
     .toFixed(2);
 }
 
-/** La única categoría de spec 018 §2 que sigue sin funcionalidad tras spec 024
- *  (H1 criterio 3, spec 018). */
-const PLACEHOLDER_SECTIONS = [{ icon: '💵', label: 'Efectivo' }];
+/** H3 (spec 025): séptimo y último sumando de la tarjeta "Total" — mismo criterio que
+ *  `vehiclesTotal`/`bankAccountsTotal` (último importe conocido de cada ubicación, o 0 si
+ *  no tiene ninguna entrada todavía). */
+function cashTotal(holdings: CashHolding[], balances: CashBalance[]): string {
+  return holdings
+    .reduce((sum, holding) => {
+      const lastBalance = balances.find((b) => b.cashHoldingId === holding.id); // ya ordenado por fecha descendente
+      return sum + (lastBalance ? parseFloat(lastBalance.amount) : 0);
+    }, 0)
+    .toFixed(2);
+}
+
+/** Las 7 categorías de spec 018 quedan implementadas tras spec 025 — sin ninguna pendiente. */
+const PLACEHOLDER_SECTIONS: Array<{ icon: string; label: string }> = [];
 
 /**
  * Spec 018 (Resumen Patrimonio) / spec 019 (cuentas bancarias únicas, con
@@ -573,6 +598,30 @@ export function WealthPage() {
   const [pendingDeletePensionPlanValuationId, setPendingDeletePensionPlanValuationId] = useState<string | null>(null);
   const [pensionPlanValuationActionError, setPensionPlanValuationActionError] = useState<string | null>(null);
 
+  const [cashHoldingList, setCashHoldingList] = useState<CashHolding[] | null>(null);
+  const [cashHoldingsLoadError, setCashHoldingsLoadError] = useState<string | null>(null);
+  const [newCashHoldingForm, setNewCashHoldingForm] = useState<CashHoldingInput>(EMPTY_CASH_HOLDING_FORM);
+  const [createCashHoldingError, setCreateCashHoldingError] = useState<string | null>(null);
+  const [isCreatingCashHolding, setIsCreatingCashHolding] = useState(false);
+  const [editingCashHoldingId, setEditingCashHoldingId] = useState<string | null>(null);
+  const [editingCashHoldingForm, setEditingCashHoldingForm] = useState<CashHoldingInput>(EMPTY_CASH_HOLDING_FORM);
+  const [editCashHoldingError, setEditCashHoldingError] = useState<string | null>(null);
+  const [isSavingCashHolding, setIsSavingCashHolding] = useState(false);
+  const [pendingDeleteCashHoldingId, setPendingDeleteCashHoldingId] = useState<string | null>(null);
+  const [cashHoldingActionError, setCashHoldingActionError] = useState<string | null>(null);
+
+  const [cashBalanceList, setCashBalanceList] = useState<CashBalance[] | null>(null);
+  const [cashBalancesLoadError, setCashBalancesLoadError] = useState<string | null>(null);
+  const [newCashBalanceForms, setNewCashBalanceForms] = useState<Record<string, UpdateCashBalanceInput>>({});
+  const [createCashBalanceError, setCreateCashBalanceError] = useState<string | null>(null);
+  const [creatingCashBalanceForHoldingId, setCreatingCashBalanceForHoldingId] = useState<string | null>(null);
+  const [editingCashBalanceId, setEditingCashBalanceId] = useState<string | null>(null);
+  const [editingCashBalanceForm, setEditingCashBalanceForm] = useState<UpdateCashBalanceInput>(EMPTY_CASH_BALANCE_FORM);
+  const [editCashBalanceError, setEditCashBalanceError] = useState<string | null>(null);
+  const [isSavingCashBalance, setIsSavingCashBalance] = useState(false);
+  const [pendingDeleteCashBalanceId, setPendingDeleteCashBalanceId] = useState<string | null>(null);
+  const [cashBalanceActionError, setCashBalanceActionError] = useState<string | null>(null);
+
   async function reloadAccounts() {
     setAccounts(await listBankAccounts());
   }
@@ -635,6 +684,14 @@ export function WealthPage() {
 
   async function reloadPensionPlanValuations() {
     setPensionPlanValuationList(await listPensionPlanValuations());
+  }
+
+  async function reloadCashHoldings() {
+    setCashHoldingList(await listCashHoldings());
+  }
+
+  async function reloadCashBalances() {
+    setCashBalanceList(await listCashBalances());
   }
 
   useEffect(() => {
@@ -875,6 +932,36 @@ export function WealthPage() {
       } catch (err) {
         if (!cancelled)
           setPensionPlanValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadCashHoldings();
+      } catch (err) {
+        if (!cancelled) setCashHoldingsLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar las ubicaciones de efectivo.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadCashBalances();
+      } catch (err) {
+        if (!cancelled) setCashBalancesLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de efectivo.');
       }
     })();
     return () => {
@@ -1810,6 +1897,115 @@ export function WealthPage() {
     }
   }
 
+  async function handleCreateCashHolding(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateCashHoldingError(null);
+    setIsCreatingCashHolding(true);
+    try {
+      await createCashHolding(newCashHoldingForm);
+      setNewCashHoldingForm(EMPTY_CASH_HOLDING_FORM);
+      await reloadCashHoldings();
+    } catch (err) {
+      setCreateCashHoldingError(err instanceof ApiError ? err.message : 'No se ha podido crear la ubicación.');
+    } finally {
+      setIsCreatingCashHolding(false);
+    }
+  }
+
+  function startEditCashHolding(holding: CashHolding) {
+    setEditCashHoldingError(null);
+    setEditingCashHoldingId(holding.id);
+    setEditingCashHoldingForm(cashHoldingFormFromEntity(holding));
+  }
+
+  async function handleEditCashHolding(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCashHoldingId) return;
+    setEditCashHoldingError(null);
+    setIsSavingCashHolding(true);
+    try {
+      await updateCashHolding(editingCashHoldingId, editingCashHoldingForm);
+      setEditingCashHoldingId(null);
+      await reloadCashHoldings();
+    } catch (err) {
+      setEditCashHoldingError(err instanceof ApiError ? err.message : 'No se ha podido guardar la ubicación.');
+    } finally {
+      setIsSavingCashHolding(false);
+    }
+  }
+
+  async function handleDeleteCashHolding(id: string) {
+    setCashHoldingActionError(null);
+    setPendingDeleteCashHoldingId(id);
+    try {
+      await deleteCashHolding(id);
+      await Promise.all([reloadCashHoldings(), reloadCashBalances()]);
+    } catch (err) {
+      setCashHoldingActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la ubicación.');
+    } finally {
+      setPendingDeleteCashHoldingId(null);
+    }
+  }
+
+  function getNewCashBalanceForm(holdingId: string): UpdateCashBalanceInput {
+    return newCashBalanceForms[holdingId] ?? { amount: '', date: todayIso() };
+  }
+
+  function setNewCashBalanceForm(holdingId: string, form: UpdateCashBalanceInput) {
+    setNewCashBalanceForms((prev) => ({ ...prev, [holdingId]: form }));
+  }
+
+  async function handleCreateCashBalance(holdingId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateCashBalanceError(null);
+    setCreatingCashBalanceForHoldingId(holdingId);
+    try {
+      const form = getNewCashBalanceForm(holdingId);
+      await createCashBalance({ cashHoldingId: holdingId, amount: form.amount ?? '', date: form.date ?? todayIso() });
+      setNewCashBalanceForm(holdingId, { amount: '', date: todayIso() });
+      await reloadCashBalances();
+    } catch (err) {
+      setCreateCashBalanceError(err instanceof ApiError ? err.message : 'No se ha podido añadir el importe.');
+    } finally {
+      setCreatingCashBalanceForHoldingId(null);
+    }
+  }
+
+  function startEditCashBalance(balance: CashBalance) {
+    setEditCashBalanceError(null);
+    setEditingCashBalanceId(balance.id);
+    setEditingCashBalanceForm(cashBalanceFormFromEntity(balance));
+  }
+
+  async function handleEditCashBalance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCashBalanceId) return;
+    setEditCashBalanceError(null);
+    setIsSavingCashBalance(true);
+    try {
+      await updateCashBalance(editingCashBalanceId, editingCashBalanceForm);
+      setEditingCashBalanceId(null);
+      await reloadCashBalances();
+    } catch (err) {
+      setEditCashBalanceError(err instanceof ApiError ? err.message : 'No se ha podido guardar el importe.');
+    } finally {
+      setIsSavingCashBalance(false);
+    }
+  }
+
+  async function handleDeleteCashBalance(id: string) {
+    setCashBalanceActionError(null);
+    setPendingDeleteCashBalanceId(id);
+    try {
+      await deleteCashBalance(id);
+      await reloadCashBalances();
+    } catch (err) {
+      setCashBalanceActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar el importe.');
+    } finally {
+      setPendingDeleteCashBalanceId(null);
+    }
+  }
+
   if (isAuthLoading) {
     return (
       <main>
@@ -1856,7 +2052,9 @@ export function WealthPage() {
     vehicleValuationList !== null &&
     pensionPlanList !== null &&
     pensionPlanContributionList !== null &&
-    pensionPlanValuationList !== null;
+    pensionPlanValuationList !== null &&
+    cashHoldingList !== null &&
+    cashBalanceList !== null;
 
   return (
     <main>
@@ -1873,7 +2071,8 @@ export function WealthPage() {
                 parseFloat(fundsTotal(fundList, fundPurchases, fundValuations)) +
                 parseFloat(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList)) +
                 parseFloat(vehiclesTotal(vehicleList, vehicleValuationList)) +
-                parseFloat(pensionPlansTotal(pensionPlanList, pensionPlanValuationList))
+                parseFloat(pensionPlansTotal(pensionPlanList, pensionPlanValuationList)) +
+                parseFloat(cashTotal(cashHoldingList, cashBalanceList))
               ).toFixed(2),
             )}
           </span>
@@ -1883,7 +2082,8 @@ export function WealthPage() {
             {formatCurrency(fundsTotal(fundList, fundPurchases, fundValuations))} · Cripto:{' '}
             {formatCurrency(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList))} · Vehículos:{' '}
             {formatCurrency(vehiclesTotal(vehicleList, vehicleValuationList))} · Fondo Pensiones:{' '}
-            {formatCurrency(pensionPlansTotal(pensionPlanList, pensionPlanValuationList))}
+            {formatCurrency(pensionPlansTotal(pensionPlanList, pensionPlanValuationList))} · Efectivo:{' '}
+            {formatCurrency(cashTotal(cashHoldingList, cashBalanceList))}
           </p>
         </div>
       )}
@@ -4302,6 +4502,223 @@ export function WealthPage() {
           {createPensionPlanError && <p role="alert">{createPensionPlanError}</p>}
           <button type="submit" className="btn btn-primary" disabled={isCreatingPensionPlan}>
             {isCreatingPensionPlan ? 'Creando…' : 'Añadir plan'}
+          </button>
+        </form>
+      </details>
+
+      <details className="dashboard-section">
+        <summary>
+          <h2>💵 Efectivo</h2>
+        </summary>
+
+        {cashHoldingsLoadError && <p role="alert">{cashHoldingsLoadError}</p>}
+        {cashBalancesLoadError && <p role="alert">{cashBalancesLoadError}</p>}
+        {cashHoldingActionError && <p role="alert">{cashHoldingActionError}</p>}
+        {cashBalanceActionError && <p role="alert">{cashBalanceActionError}</p>}
+
+        {cashHoldingList && cashHoldingList.length === 0 && <p>Todavía no tienes ninguna ubicación de efectivo.</p>}
+
+        {cashHoldingList && cashHoldingList.length > 0 && (
+          <ul id="wealth-cash-holding-list" aria-label="Tus ubicaciones de efectivo">
+            {cashHoldingList.map((holding) => {
+              const isEditingHolding = editingCashHoldingId === holding.id;
+              const holdingBalances = (cashBalanceList ?? []).filter((b) => b.cashHoldingId === holding.id);
+              const lastBalance = holdingBalances[0] ?? null; // ya viene ordenado por fecha descendente
+              const newBalanceForm = getNewCashBalanceForm(holding.id);
+
+              if (isEditingHolding) {
+                return (
+                  <li className="card elev-sm" key={holding.id}>
+                    <form onSubmit={handleEditCashHolding} aria-label={`Editar ubicación: ${holding.location}`} noValidate>
+                      <div className="field">
+                        <label htmlFor={`cash-holding-${holding.id}-location`}>Ubicación</label>
+                        <input
+                          id={`cash-holding-${holding.id}-location`}
+                          className="input"
+                          value={editingCashHoldingForm.location}
+                          onChange={(e) => setEditingCashHoldingForm({ ...editingCashHoldingForm, location: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {editCashHoldingError && <p role="alert">{editCashHoldingError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={isSavingCashHolding}>
+                        {isSavingCashHolding ? 'Guardando…' : 'Guardar'}
+                      </button>{' '}
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={isSavingCashHolding}
+                        onClick={() => setEditingCashHoldingId(null)}
+                      >
+                        Cancelar
+                      </button>
+                    </form>
+                  </li>
+                );
+              }
+
+              return (
+                <li className="card elev-sm" key={holding.id}>
+                  <div className="wealth-item-header">
+                    <span className="card-title">{holding.location}</span>
+                    <span className="card-amount">{lastBalance ? formatCurrency(lastBalance.amount) : 'Sin importe'}</span>
+                  </div>
+                  {lastBalance && <p className="card-meta">Última fecha: {lastBalance.date}</p>}
+                  <div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      aria-label={`Editar ubicación: ${holding.location}`}
+                      onClick={() => startEditCashHolding(holding)}
+                    >
+                      Editar
+                    </button>{' '}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      aria-label={`Eliminar ubicación: ${holding.location}`}
+                      disabled={pendingDeleteCashHoldingId === holding.id}
+                      onClick={() => void handleDeleteCashHolding(holding.id)}
+                    >
+                      {pendingDeleteCashHoldingId === holding.id ? 'Eliminando…' : 'Eliminar'}
+                    </button>
+                  </div>
+
+                  <details>
+                    <summary>Historial ({holdingBalances.length})</summary>
+
+                    {holdingBalances.length === 0 && <p>Todavía no hay ningún importe registrado en esta ubicación.</p>}
+
+                    {holdingBalances.length > 0 && (
+                      <ul aria-label={`Historial de ${holding.location}`}>
+                        {holdingBalances.map((balance) => {
+                          const isEditingBalance = editingCashBalanceId === balance.id;
+
+                          if (isEditingBalance) {
+                            return (
+                              <li key={balance.id}>
+                                <form onSubmit={handleEditCashBalance} aria-label={`Editar importe del ${balance.date}`} noValidate>
+                                  <div className="field">
+                                    <label htmlFor={`cash-balance-${balance.id}-amount`}>Importe</label>
+                                    <input
+                                      id={`cash-balance-${balance.id}-amount`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingCashBalanceForm.amount}
+                                      onChange={(e) => setEditingCashBalanceForm({ ...editingCashBalanceForm, amount: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`cash-balance-${balance.id}-date`}>Fecha</label>
+                                    <input
+                                      id={`cash-balance-${balance.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingCashBalanceForm.date}
+                                      onChange={(e) => setEditingCashBalanceForm({ ...editingCashBalanceForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  {editCashBalanceError && <p role="alert">{editCashBalanceError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingCashBalance}>
+                                    {isSavingCashBalance ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingCashBalance}
+                                    onClick={() => setEditingCashBalanceId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={balance.id}>
+                              <span>{balance.date}</span> <span>{formatCurrency(balance.amount)}</span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar importe del ${balance.date}`}
+                                onClick={() => startEditCashBalance(balance)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar importe del ${balance.date}`}
+                                disabled={pendingDeleteCashBalanceId === balance.id}
+                                onClick={() => void handleDeleteCashBalance(balance.id)}
+                              >
+                                {pendingDeleteCashBalanceId === balance.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreateCashBalance(holding.id, e)}
+                      aria-label={`Añadir importe: ${holding.location}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-cash-balance-${holding.id}-amount`}>Importe</label>
+                        <input
+                          id={`new-cash-balance-${holding.id}-amount`}
+                          className="input"
+                          inputMode="decimal"
+                          placeholder="p. ej. 200.00"
+                          value={newBalanceForm.amount}
+                          onChange={(e) => setNewCashBalanceForm(holding.id, { ...newBalanceForm, amount: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-cash-balance-${holding.id}-date`}>Fecha</label>
+                        <input
+                          id={`new-cash-balance-${holding.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newBalanceForm.date}
+                          onChange={(e) => setNewCashBalanceForm(holding.id, { ...newBalanceForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {createCashBalanceError && <p role="alert">{createCashBalanceError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingCashBalanceForHoldingId === holding.id}>
+                        {creatingCashBalanceForHoldingId === holding.id ? 'Añadiendo…' : 'Añadir importe'}
+                      </button>
+                    </form>
+                  </details>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <h3>Añadir ubicación</h3>
+        <form onSubmit={handleCreateCashHolding} aria-label="Añadir ubicación de efectivo" noValidate>
+          <div className="field">
+            <label htmlFor="new-cash-holding-location">Ubicación</label>
+            <input
+              id="new-cash-holding-location"
+              className="input"
+              placeholder="p. ej. Cartera"
+              value={newCashHoldingForm.location}
+              onChange={(e) => setNewCashHoldingForm({ ...newCashHoldingForm, location: e.target.value })}
+              required
+            />
+          </div>
+          {createCashHoldingError && <p role="alert">{createCashHoldingError}</p>}
+          <button type="submit" className="btn btn-primary" disabled={isCreatingCashHolding}>
+            {isCreatingCashHolding ? 'Creando…' : 'Añadir ubicación'}
           </button>
         </form>
       </details>

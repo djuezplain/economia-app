@@ -148,6 +148,13 @@
       "when": 1788622044625,
       "tag": "0020_add_pension_plans_contributions_valuations",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788624991053,
+      "tag": "0021_add_cash_holdings_balances",
+      "breakpoints": true
     }
   ]
 }
