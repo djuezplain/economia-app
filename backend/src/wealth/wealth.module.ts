@@ -22,19 +22,25 @@ import { CryptoPurchasesController } from './crypto-purchases.controller.js';
 import { CryptoPurchasesService } from './crypto-purchases.service.js';
 import { CryptoValuationsController } from './crypto-valuations.controller.js';
 import { CryptoValuationsService } from './crypto-valuations.service.js';
+import { VehiclesController } from './vehicles.controller.js';
+import { VehiclesService } from './vehicles.service.js';
+import { VehicleValuationsController } from './vehicle-valuations.controller.js';
+import { VehicleValuationsService } from './vehicle-valuations.service.js';
 
 /**
  * Spec 018 (Resumen Patrimonio) / spec 019 (cuentas bancarias únicas) /
  * spec 020 (acciones únicas) / spec 021 (fondos de inversión únicos, mismo
- * modelo que spec 020) / spec 022 (cripto, mismo modelo también).
+ * modelo que spec 020) / spec 022 (cripto, mismo modelo también) / spec 023
+ * (vehículos, mismo modelo en dos niveles que spec 019 — sin "cantidad").
  * `AuthGuardModule` por `AuthGuard` — mismo criterio que
  * `GoalsModule`/`CategoriesModule`. A diferencia de `GoalsModule`, no
  * importa `DashboardModule`: ningún servicio de aquí reutiliza cálculos de
  * otro módulo. `BankAccountBalancesService`/`StockPurchasesService`/
  * `StockValuationsService`/`FundPurchasesService`/`FundValuationsService`/
- * `CryptoPurchasesService`/`CryptoValuationsService` inyectan
- * `BankAccountsService`/`StocksService`/`FundsService`/`CryptosService`
- * (mismo módulo) para reutilizar su `findOwnOrThrow()`.
+ * `CryptoPurchasesService`/`CryptoValuationsService`/`VehicleValuationsService`
+ * inyectan `BankAccountsService`/`StocksService`/`FundsService`/
+ * `CryptosService`/`VehiclesService` (mismo módulo) para reutilizar su
+ * `findOwnOrThrow()`.
  */
 @Module({
   imports: [AuthGuardModule],
@@ -50,6 +56,8 @@ import { CryptoValuationsService } from './crypto-valuations.service.js';
     CryptosController,
     CryptoPurchasesController,
     CryptoValuationsController,
+    VehiclesController,
+    VehicleValuationsController,
   ],
   providers: [
     BankAccountsService,
@@ -63,6 +71,8 @@ import { CryptoValuationsService } from './crypto-valuations.service.js';
     CryptosService,
     CryptoPurchasesService,
     CryptoValuationsService,
+    VehiclesService,
+    VehicleValuationsService,
   ],
 })
 export class WealthModule {}

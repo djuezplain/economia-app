@@ -134,6 +134,13 @@
       "when": 1788607655803,
       "tag": "0018_add_cryptos_purchases_valuations",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788615721113,
+      "tag": "0019_add_vehicles_valuations",
+      "breakpoints": true
     }
   ]
 }

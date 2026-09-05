@@ -17,6 +17,8 @@ import * as fundValuationsApi from '../api/fund-valuations';
 import * as cryptosApi from '../api/cryptos';
 import * as cryptoPurchasesApi from '../api/crypto-purchases';
 import * as cryptoValuationsApi from '../api/crypto-valuations';
+import * as vehiclesApi from '../api/vehicles';
+import * as vehicleValuationsApi from '../api/vehicle-valuations';
 import type { BankAccount } from '../api/bank-accounts';
 import type { BankAccountBalance } from '../api/bank-account-balances';
 import type { Stock } from '../api/stocks';
@@ -28,6 +30,8 @@ import type { FundValuation } from '../api/fund-valuations';
 import type { Crypto } from '../api/cryptos';
 import type { CryptoPurchase } from '../api/crypto-purchases';
 import type { CryptoValuation } from '../api/crypto-valuations';
+import type { Vehicle } from '../api/vehicles';
+import type { VehicleValuation } from '../api/vehicle-valuations';
 import { ApiError } from '../api/client';
 import { resetForTests } from '../offline/connectivity';
 
@@ -134,6 +138,26 @@ const CRYPTO_VALUATION: CryptoValuation = {
   updatedAt: '2026-09-04T00:00:00.000Z',
 };
 
+const VEHICLE: Vehicle = {
+  id: 'vehicle-1',
+  userId: 'user-1',
+  brandModel: 'Toyota Corolla',
+  plate: '1234ABC',
+  purchasePrice: '20000.00',
+  purchaseDate: '2026-09-04',
+  createdAt: '2026-09-04T00:00:00.000Z',
+  updatedAt: '2026-09-04T00:00:00.000Z',
+};
+
+const VEHICLE_VALUATION: VehicleValuation = {
+  id: 'vehicle-valuation-1',
+  vehicleId: 'vehicle-1',
+  value: '15000.00',
+  date: '2026-09-04',
+  createdAt: '2026-09-04T00:00:00.000Z',
+  updatedAt: '2026-09-04T00:00:00.000Z',
+};
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -189,7 +213,7 @@ describe('WealthPage', () => {
     expect(listAccountsSpy).not.toHaveBeenCalled();
   });
 
-  it('muestra las 7 categorías, con "Próximamente." en las 3 sin implementar', async () => {
+  it('muestra las 7 categorías, con "Próximamente." en las 2 sin implementar', async () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
     vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
@@ -202,6 +226,8 @@ describe('WealthPage', () => {
     vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
     vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
     vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+    vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+    vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
 
     renderPage();
 
@@ -212,11 +238,11 @@ describe('WealthPage', () => {
     expect(screen.getByRole('heading', { name: /Vehículos/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Fondo Pensiones/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Efectivo/ })).toBeInTheDocument();
-    expect(screen.getAllByText('Próximamente.')).toHaveLength(3);
+    expect(screen.getAllByText('Próximamente.')).toHaveLength(2);
   });
 
-  describe('Total (sumatorio de Cuentas Bancarias, Acciones, Fondos Inversión y Cripto)', () => {
-    it('suma el último saldo de cada cuenta bancaria, el valor actual de cada acción, fondo y posición de cripto', async () => {
+  describe('Total (sumatorio de Cuentas Bancarias, Acciones, Fondos Inversión, Cripto y Vehículos)', () => {
+    it('suma el último saldo de cada cuenta bancaria, el valor actual de cada acción, fondo, posición de cripto y vehículo', async () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
@@ -229,19 +255,23 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([VEHICLE_VALUATION]);
 
       renderPage();
 
       // Cuentas Bancarias: 1500,00 € (BANK_BALANCE). Acciones: 350,00 € (10 × 35,00 €, STOCK_VALUATION).
       // Fondos Inversión: 200,00 € (10 × 20,00 €, FUND_VALUATION). Cripto: 3500,00 € (0.1 × 35000,00 €, CRYPTO_VALUATION).
-      // Total: 5550,00 €.
-      expect(await screen.findByText('5550,00 €')).toBeInTheDocument();
+      // Vehículos: 15000,00 € (VEHICLE_VALUATION). Total: 20550,00 €.
+      expect(await screen.findByText('20.550,00 €')).toBeInTheDocument();
       expect(
-        screen.getByText('Cuentas Bancarias: 1500,00 € · Acciones: 350,00 € · Fondos Inversión: 200,00 € · Cripto: 3500,00 €'),
+        screen.getByText(
+          'Cuentas Bancarias: 1500,00 € · Acciones: 350,00 € · Fondos Inversión: 200,00 € · Cripto: 3500,00 € · Vehículos: 15.000,00 €',
+        ),
       ).toBeInTheDocument();
     });
 
-    it('sin ninguna cuenta, acción, fondo ni posición de cripto, el total es 0,00 €', async () => {
+    it('sin ninguna cuenta, acción, fondo, posición de cripto ni vehículo, el total es 0,00 €', async () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
@@ -254,13 +284,15 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
 
       renderPage();
 
       expect(await screen.findByText('0,00 €')).toBeInTheDocument();
     });
 
-    it('una cuenta sin saldo, una acción/fondo/posición de cripto sin valoración cuentan como 0 en el total', async () => {
+    it('una cuenta sin saldo, una acción/fondo/posición de cripto/vehículo sin valoración cuentan como 0 en el total', async () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
@@ -273,11 +305,15 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
 
       renderPage();
 
       expect(
-        await screen.findByText('Cuentas Bancarias: 0,00 € · Acciones: 0,00 € · Fondos Inversión: 0,00 € · Cripto: 0,00 €'),
+        await screen.findByText(
+          'Cuentas Bancarias: 0,00 € · Acciones: 0,00 € · Fondos Inversión: 0,00 € · Cripto: 0,00 € · Vehículos: 0,00 €',
+        ),
       ).toBeInTheDocument();
     });
   });
@@ -294,6 +330,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
     }
 
     it('sin ninguna cuenta, muestra el aviso de "todavía no tienes nada"', async () => {
@@ -494,6 +532,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
     }
 
     it('sin ninguna acción, muestra el aviso de "todavía no tienes nada"', async () => {
@@ -851,6 +891,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
     }
 
     it('sin ningún fondo, muestra el aviso de "todavía no tienes nada"', async () => {
@@ -1219,6 +1261,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
 
       renderPage();
 
@@ -1230,6 +1274,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
 
       renderPage();
 
@@ -1257,6 +1303,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([{ ...CRYPTO_VALUATION, pricePerUnit: '24000.00000000' }]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
 
       renderPage();
 
@@ -1271,6 +1319,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
 
       renderPage();
 
@@ -1284,6 +1334,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
 
       renderPage();
 
@@ -1298,6 +1350,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
 
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir posición de cripto' });
@@ -1315,6 +1369,8 @@ describe('WealthPage', () => {
       const listCryptosSpy = vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       const listPurchasesSpy = vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const createCryptoSpy = vi.spyOn(cryptosApi, 'createCrypto').mockResolvedValue(CRYPTO);
       const createPurchaseSpy = vi.spyOn(cryptoPurchasesApi, 'createCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
 
@@ -1345,6 +1401,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const updateSpy = vi.spyOn(cryptosApi, 'updateCrypto').mockResolvedValue(CRYPTO);
 
       renderPage();
@@ -1365,6 +1423,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const deleteSpy = vi.spyOn(cryptosApi, 'deleteCrypto').mockResolvedValue(undefined);
 
       renderPage();
@@ -1380,6 +1440,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       const listPurchasesSpy = vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const createSpy = vi.spyOn(cryptoPurchasesApi, 'createCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
 
       renderPage();
@@ -1400,6 +1462,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const createSpy = vi.spyOn(cryptoPurchasesApi, 'createCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
 
       renderPage();
@@ -1424,6 +1488,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const updateSpy = vi.spyOn(cryptoPurchasesApi, 'updateCryptoPurchase').mockResolvedValue(CRYPTO_PURCHASE);
 
       renderPage();
@@ -1447,6 +1513,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const deletePurchaseSpy = vi.spyOn(cryptoPurchasesApi, 'deleteCryptoPurchase').mockResolvedValue(undefined);
       const deleteCryptoSpy = vi.spyOn(cryptosApi, 'deleteCrypto');
 
@@ -1466,6 +1534,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       const listValuationsSpy = vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const createSpy = vi.spyOn(cryptoValuationsApi, 'createCryptoValuation').mockResolvedValue(CRYPTO_VALUATION);
 
       renderPage();
@@ -1485,6 +1555,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const createSpy = vi.spyOn(cryptoValuationsApi, 'createCryptoValuation').mockResolvedValue(CRYPTO_VALUATION);
 
       renderPage();
@@ -1503,6 +1575,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const updateSpy = vi.spyOn(cryptoValuationsApi, 'updateCryptoValuation').mockResolvedValue(CRYPTO_VALUATION);
 
       renderPage();
@@ -1525,6 +1599,8 @@ describe('WealthPage', () => {
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
       const deleteValuationSpy = vi.spyOn(cryptoValuationsApi, 'deleteCryptoValuation').mockResolvedValue(undefined);
       const deleteCryptoSpy = vi.spyOn(cryptosApi, 'deleteCrypto');
 
@@ -1535,6 +1611,214 @@ describe('WealthPage', () => {
 
       await waitFor(() => expect(deleteValuationSpy).toHaveBeenCalledWith(CRYPTO_VALUATION.id));
       expect(deleteCryptoSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Vehículos (spec 023)', () => {
+    function mockOtherApis() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+    }
+
+    it('sin ningún vehículo, muestra el aviso de "todavía no tienes nada"', async () => {
+      mockOtherApis();
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      expect(await screen.findByText('Todavía no tienes ningún vehículo.')).toBeInTheDocument();
+    });
+
+    it('lista un vehículo existente, con su valor actual y el % de ganancia o pérdida sobre el precio de compra', async () => {
+      mockOtherApis();
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([VEHICLE_VALUATION]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus vehículos' });
+      expect(within(list).getByText(/Toyota Corolla · 1234ABC/)).toBeInTheDocument();
+      // Aparece dos veces: en la tarjeta (valor actual) y en el historial (la propia entrada).
+      expect(within(list).getAllByText('15.000,00 €')).toHaveLength(2);
+      // (15000 - 20000) / 20000 × 100 = -25,00 %.
+      expect(within(list).getByText('-25.00%')).toBeInTheDocument();
+
+      const history = within(list).getByRole('list', { name: 'Historial de Toyota Corolla · 1234ABC' });
+      expect(within(history).getByText('2026-09-04')).toBeInTheDocument();
+    });
+
+    it('un vehículo sin ninguna valoración muestra "Sin valoración" y sin % de ganancia o pérdida', async () => {
+      mockOtherApis();
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus vehículos' });
+      expect(within(list).getByText('Sin valoración')).toBeInTheDocument();
+      expect(within(list).getByText('Todavía no hay ninguna valoración registrada de este vehículo.')).toBeInTheDocument();
+      expect(within(list).queryByText(/%/)).not.toBeInTheDocument();
+    });
+
+    it('crea un vehículo desde el formulario de alta', async () => {
+      mockOtherApis();
+      const listSpy = vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      const createSpy = vi.spyOn(vehiclesApi, 'createVehicle').mockResolvedValue(VEHICLE);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir vehículo' });
+
+      await userEvent.type(within(form).getByLabelText('Marca/Modelo'), 'Toyota Corolla');
+      await userEvent.type(within(form).getByLabelText('Matrícula'), '1234ABC');
+      await userEvent.type(within(form).getByLabelText('Precio de compra'), '20000.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir vehículo' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({
+          brandModel: 'Toyota Corolla',
+          plate: '1234ABC',
+          purchasePrice: '20000.00',
+          purchaseDate: todayIso(),
+        }),
+      );
+      await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('no puede crear dos veces el mismo vehículo (409)', async () => {
+      mockOtherApis();
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'createVehicle').mockRejectedValue(
+        new ApiError(409, 'Ya tienes registrado ese vehículo (misma marca/modelo y matrícula). Añade la valoración dentro de él.'),
+      );
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir vehículo' });
+
+      await userEvent.type(within(form).getByLabelText('Marca/Modelo'), 'Toyota Corolla');
+      await userEvent.type(within(form).getByLabelText('Matrícula'), '1234ABC');
+      await userEvent.type(within(form).getByLabelText('Precio de compra'), '20000.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir vehículo' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Ya tienes registrado ese vehículo');
+    });
+
+    it('edita un vehículo existente', async () => {
+      mockOtherApis();
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      const updateSpy = vi.spyOn(vehiclesApi, 'updateVehicle').mockResolvedValue(VEHICLE);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus vehículos' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Editar vehículo: Toyota Corolla · 1234ABC' }));
+      const editForm = screen.getByRole('form', { name: 'Editar vehículo: Toyota Corolla · 1234ABC' });
+      const plateInput = within(editForm).getByLabelText('Matrícula');
+      await userEvent.clear(plateInput);
+      await userEvent.type(plateInput, '5678XYZ');
+      await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() =>
+        expect(updateSpy).toHaveBeenCalledWith(VEHICLE.id, {
+          brandModel: 'Toyota Corolla',
+          plate: '5678XYZ',
+          purchasePrice: '20000.00',
+          purchaseDate: '2026-09-04',
+        }),
+      );
+    });
+
+    it('elimina un vehículo', async () => {
+      mockOtherApis();
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      const deleteSpy = vi.spyOn(vehiclesApi, 'deleteVehicle').mockResolvedValue(undefined);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus vehículos' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar vehículo: Toyota Corolla · 1234ABC' }));
+
+      await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith(VEHICLE.id));
+    });
+
+    it('el formulario de valoración de un vehículo trae la fecha de hoy por defecto', async () => {
+      mockOtherApis();
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir valoración: Toyota Corolla · 1234ABC' });
+
+      expect(within(form).getByLabelText('Fecha')).toHaveValue(todayIso());
+    });
+
+    it('añade una valoración a un vehículo existente', async () => {
+      mockOtherApis();
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      const listValuationsSpy = vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      const createSpy = vi.spyOn(vehicleValuationsApi, 'createVehicleValuation').mockResolvedValue(VEHICLE_VALUATION);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir valoración: Toyota Corolla · 1234ABC' });
+
+      await userEvent.type(within(form).getByLabelText('Valor actual'), '15000.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir valoración' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({ vehicleId: VEHICLE.id, value: '15000.00', date: todayIso() }),
+      );
+      await waitFor(() => expect(listValuationsSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('edita una valoración del historial', async () => {
+      mockOtherApis();
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([VEHICLE_VALUATION]);
+      const updateSpy = vi.spyOn(vehicleValuationsApi, 'updateVehicleValuation').mockResolvedValue(VEHICLE_VALUATION);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus vehículos' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Editar valoración del 2026-09-04' }));
+      const editForm = screen.getByRole('form', { name: 'Editar valoración del 2026-09-04' });
+      const valueInput = within(editForm).getByLabelText('Valor actual');
+      await userEvent.clear(valueInput);
+      await userEvent.type(valueInput, '14000.00');
+      await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() =>
+        expect(updateSpy).toHaveBeenCalledWith(VEHICLE_VALUATION.id, { value: '14000.00', date: '2026-09-04' }),
+      );
+    });
+
+    it('elimina una valoración del historial, sin borrar el vehículo', async () => {
+      mockOtherApis();
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([VEHICLE_VALUATION]);
+      const deleteValuationSpy = vi.spyOn(vehicleValuationsApi, 'deleteVehicleValuation').mockResolvedValue(undefined);
+      const deleteVehicleSpy = vi.spyOn(vehiclesApi, 'deleteVehicle');
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus vehículos' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar valoración del 2026-09-04' }));
+
+      await waitFor(() => expect(deleteValuationSpy).toHaveBeenCalledWith(VEHICLE_VALUATION.id));
+      expect(deleteVehicleSpy).not.toHaveBeenCalled();
     });
   });
 });
