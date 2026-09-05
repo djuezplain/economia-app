@@ -1055,7 +1055,7 @@ export function WealthPage() {
 
               return (
                 <li className="card elev-sm" key={account.id}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="wealth-item-header">
                     <span className="card-title">
                       {account.bank} · {account.accountNumber}
                     </span>
@@ -1298,7 +1298,7 @@ export function WealthPage() {
 
               return (
                 <li className="card elev-sm" key={stock.id}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="wealth-item-header">
                     <span className="card-title">
                       {stock.stock} · {stock.custodyBank}
                       {gainLoss !== null && (
@@ -1764,7 +1764,7 @@ export function WealthPage() {
 
               return (
                 <li className="card elev-sm" key={fund.id}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="wealth-item-header">
                     <span className="card-title">
                       {fund.fund} · {fund.custodyBank}
                       {gainLoss !== null && (

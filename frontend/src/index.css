@@ -902,6 +902,29 @@ main ul li:last-child {
   font-size: 28px;
   color: var(--text-h);
 }
+/* Spec 018/019/020/021 (Resumen Patrimonio): cabecera de una fila (cuenta
+   bancaria, acción o fondo) — título a la izquierda, importe a la derecha.
+   Sin `flex-wrap`/`min-width: 0`, en un móvil estrecho un título largo
+   (nombre + banco + % de ganancia/pérdida) obligaba a encoger también el
+   importe — pensado para ir solo, a 28px (`.card-amount` de más arriba) —
+   hasta partirlo en mitad de la cifra. Aquí el título cede espacio (baja de
+   línea) y el importe conserva su ancho, con un tamaño menor acorde al
+   contexto de una fila de lista, no de una cifra aislada. */
+.wealth-item-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+.wealth-item-header .card-title {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.wealth-item-header .card-amount {
+  flex-shrink: 0;
+  font-size: 20px;
+}
 .card-body {
   margin: 0;
   font-size: 13px;
