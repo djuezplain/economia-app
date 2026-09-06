@@ -67,6 +67,20 @@
   --status-orange: #eb6834;
   --status-red: #d64545;
 
+  /* Spec 028 (composición/rentabilidad de patrimonio) — primera paleta
+     categórica multi-serie de la app (7 categorías de patrimonio). Instancia
+     validada de la skill de dataviz (slots 1-7 de 8, orden fijo — cada
+     categoría siempre tiene el mismo color, spec.md decisión de negocio),
+     comprobada con `validate_palette.js` contra la superficie real de las
+     tarjetas de esta app (`--card-bg`), no la de la skill por defecto. */
+  --wealth-cat-bank: #2a78d6;
+  --wealth-cat-stocks: #eb6834;
+  --wealth-cat-funds: #1baf7a;
+  --wealth-cat-crypto: #eda100;
+  --wealth-cat-vehicles: #e87ba4;
+  --wealth-cat-pension: #008300;
+  --wealth-cat-cash: #4a3aa7;
+
   --font-body:
     'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --heading:
@@ -158,6 +172,14 @@
     --status-amber: #eab308;
     --status-orange: #f97316;
     --status-red: #f87171;
+
+    --wealth-cat-bank: #3987e5;
+    --wealth-cat-stocks: #d95926;
+    --wealth-cat-funds: #199e70;
+    --wealth-cat-crypto: #c98500;
+    --wealth-cat-vehicles: #d55181;
+    --wealth-cat-pension: #008300;
+    --wealth-cat-cash: #9085e9;
   }
 
   #social .button-icon {
