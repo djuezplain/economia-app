@@ -30,8 +30,10 @@ interface SpreadsheetMetadata {
   sheets?: { properties?: { title?: string } }[];
 }
 
+type SheetCellValue = string | number | boolean;
+
 interface BatchGetValuesResponse {
-  valueRanges?: { values?: string[][] }[];
+  valueRanges?: { values?: SheetCellValue[][] }[];
 }
 
 /**
@@ -81,7 +83,16 @@ export class GoogleSheetsService {
     // Ingresos, H-M en Gastos).
     const incomeRange = `${INCOME_SHEET_NAME}!A2:J${MAX_DATA_ROWS + 1}`;
     const expenseRange = `${EXPENSE_SHEET_NAME}!A2:M${MAX_DATA_ROWS + 1}`;
-    const params = new URLSearchParams({ valueRenderOption: 'FORMATTED_VALUE' });
+    // `UNFORMATTED_VALUE` (no el valor "mostrado" de la celda): una fecha
+    // llega como el número de serie interno de Sheets, no como el texto
+    // formateado — se convierte a `Date` en `dateCellAt`. Es deliberado:
+    // dos celdas de fecha con el mismo valor pero formato de visualización
+    // distinto (p. ej. "1/1/2026" vs "1/1/26", visto en una hoja real de
+    // Diego) darían un texto distinto con `FORMATTED_VALUE`, y esas
+    // variantes de 2 cifras no las reconoce `parseDate` (import.parsing.ts)
+    // — se perdían como "falta fecha". El número de serie es el mismo
+    // siempre, independientemente del formato que tenga la celda.
+    const params = new URLSearchParams({ valueRenderOption: 'UNFORMATTED_VALUE' });
     params.append('ranges', incomeRange);
     params.append('ranges', expenseRange);
 
@@ -128,12 +139,12 @@ export class GoogleSheetsService {
   }
 }
 
-function toIncomeRows(values: string[][]): RawIncomeRow[] {
+function toIncomeRows(values: SheetCellValue[][]): RawIncomeRow[] {
   const rows: RawIncomeRow[] = [];
   values.forEach((row, index) => {
     const raw: RawIncomeRow = {
       rowNumber: index + 2,
-      fecha: cellAt(row, INCOME_COLS.fecha),
+      fecha: dateCellAt(row, INCOME_COLS.fecha),
       tipo: cellAt(row, INCOME_COLS.tipo),
       concepto: cellAt(row, INCOME_COLS.concepto),
       valor: cellAt(row, INCOME_COLS.valor),
@@ -143,12 +154,12 @@ function toIncomeRows(values: string[][]): RawIncomeRow[] {
   return rows;
 }
 
-function toExpenseRows(values: string[][]): RawExpenseRow[] {
+function toExpenseRows(values: SheetCellValue[][]): RawExpenseRow[] {
   const rows: RawExpenseRow[] = [];
   values.forEach((row, index) => {
     const raw: RawExpenseRow = {
       rowNumber: index + 2,
-      fecha: cellAt(row, EXPENSE_COLS.fecha),
+      fecha: dateCellAt(row, EXPENSE_COLS.fecha),
       tipo: cellAt(row, EXPENSE_COLS.tipo),
       subtipo: cellAt(row, EXPENSE_COLS.subtipo),
       concepto: cellAt(row, EXPENSE_COLS.concepto),
@@ -163,6 +174,21 @@ function toExpenseRows(values: string[][]): RawExpenseRow[] {
 // La API de Sheets no rellena de vuelta las celdas vacías al final de una
 // fila — un índice fuera del array (columna vacía en el margen derecho) es
 // `undefined`, se trata igual que una celda vacía (`null`).
-function cellAt(row: string[], col1Based: number): CellPrimitive {
+function cellAt(row: SheetCellValue[], col1Based: number): CellPrimitive {
   return row[col1Based - 1] ?? null;
+}
+
+// Epoch de Sheets/Excel ("sistema de fechas 1900"): el día de serie 0 es el
+// 30 de diciembre de 1899 (no el 1 de enero — así arrastra el mismo desfase
+// histórico de Excel, deliberado por compatibilidad). Con
+// `UNFORMATTED_VALUE`, una celda de fecha llega como este número de serie
+// (días desde ese epoch), no como el texto formateado — así el resultado no
+// depende de si la celda se muestra como "1/1/2026" o "1/1/26".
+const SHEETS_DATE_EPOCH_MS = Date.UTC(1899, 11, 30);
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function dateCellAt(row: SheetCellValue[], col1Based: number): CellPrimitive {
+  const value = cellAt(row, col1Based);
+  if (typeof value !== 'number') return value;
+  return new Date(SHEETS_DATE_EPOCH_MS + Math.round(value) * MS_PER_DAY);
 }
