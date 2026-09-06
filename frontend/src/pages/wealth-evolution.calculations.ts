@@ -226,6 +226,62 @@ export function wealthEvolutionSeries(data: AllWealthData, start: string, end: s
   }));
 }
 
+export interface WealthEvolutionByCategoryPoint {
+  weekEnding: string;
+  bankAccounts: number;
+  stocks: number;
+  funds: number;
+  cryptos: number;
+  vehicles: number;
+  pensionPlans: number;
+  cash: number;
+}
+
+/** H1 (spec 028): mismas semanas y el mismo recorte por `earliestDataDate` que `wealthEvolutionSeries`
+ *  — aquí cada categoría se calcula por separado en vez de sumarse en un único `total`, para la vista
+ *  "Por categoría" (gráfico de área apilada). Cada categoría hace su propio forward-fill de forma
+ *  independiente — una sin ninguna entrada nunca se queda en 0 en toda la serie sin afectar a las demás. */
+export function wealthEvolutionByCategorySeries(
+  data: AllWealthData,
+  start: string,
+  end: string,
+): WealthEvolutionByCategoryPoint[] {
+  const earliest = earliestDataDate(data);
+  if (earliest === null) return [];
+  const effectiveStart = earliest > start ? earliest : start;
+  return weekEndingDates(effectiveStart, end).map((weekEnding) => ({
+    weekEnding,
+    bankAccounts: bankAccountsValueAsOf(data.bankAccounts, data.bankAccountBalances, weekEnding),
+    stocks: stocksValueAsOf(data.stocks, data.stockPurchases, data.stockValuations, weekEnding),
+    funds: fundsValueAsOf(data.funds, data.fundPurchases, data.fundValuations, weekEnding),
+    cryptos: cryptosValueAsOf(data.cryptos, data.cryptoPurchases, data.cryptoValuations, weekEnding),
+    vehicles: vehiclesValueAsOf(data.vehicles, data.vehicleValuations, weekEnding),
+    pensionPlans: pensionPlansValueAsOf(data.pensionPlans, data.pensionPlanValuations, weekEnding),
+    cash: cashValueAsOf(data.cashHoldings, data.cashBalances, weekEnding),
+  }));
+}
+
+export interface LiquidityRatioPoint {
+  weekEnding: string;
+  ratioPercent: number | null;
+}
+
+/** H2 (spec 028): % del patrimonio total que es dinero disponible (Cuentas Bancarias + Efectivo) en
+ *  cada semana. `null` cuando el total de esa semana es 0 — no hay nada sobre lo que calcular un
+ *  porcentaje; el componente deja un hueco en el gráfico en vez de una caída a 0 falsa. */
+export function liquidityRatioSeries(data: AllWealthData, start: string, end: string): LiquidityRatioPoint[] {
+  const earliest = earliestDataDate(data);
+  if (earliest === null) return [];
+  const effectiveStart = earliest > start ? earliest : start;
+  return weekEndingDates(effectiveStart, end).map((weekEnding) => {
+    const total = totalWealthAsOf(data, weekEnding);
+    const liquid =
+      bankAccountsValueAsOf(data.bankAccounts, data.bankAccountBalances, weekEnding) +
+      cashValueAsOf(data.cashHoldings, data.cashBalances, weekEnding);
+    return { weekEnding, ratioPercent: total === 0 ? null : (liquid / total) * 100 };
+  });
+}
+
 export type WealthEvolutionRangeMode = 'last12Months' | 'currentYear' | 'allTime' | 'custom';
 
 export interface CustomRange {

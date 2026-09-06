@@ -1,7 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { createBankAccount, deleteBankAccount, listBankAccounts, updateBankAccount } from '../api/bank-accounts';
@@ -92,7 +107,13 @@ import { createCashBalance, deleteCashBalance, listCashBalances, updateCashBalan
 import type { CashBalance, UpdateCashBalanceInput } from '../api/cash-balances';
 import { ApiError } from '../api/client';
 import { formatCurrency, formatDate } from './home-shared';
-import { isValidCustomRange, resolveRange, wealthEvolutionSeries } from './wealth-evolution.calculations';
+import {
+  isValidCustomRange,
+  liquidityRatioSeries,
+  resolveRange,
+  wealthEvolutionByCategorySeries,
+  wealthEvolutionSeries,
+} from './wealth-evolution.calculations';
 import type { CustomRange, WealthEvolutionRangeMode } from './wealth-evolution.calculations';
 
 function todayIso(): string {
@@ -111,6 +132,29 @@ const RANGE_MODE_OPTIONS: Array<{ value: WealthEvolutionRangeMode; label: string
   { value: 'currentYear', label: 'Año actual' },
   { value: 'allTime', label: 'Todo el histórico' },
   { value: 'custom', label: 'Rango personalizado' },
+];
+
+const EVOLUTION_VIEW_OPTIONS: Array<{ value: 'total' | 'byCategory' | 'liquidity'; label: string }> = [
+  { value: 'total', label: 'Total' },
+  { value: 'byCategory', label: 'Por categoría' },
+  { value: 'liquidity', label: 'Liquidez' },
+];
+
+// Spec 028: paleta categórica de las 7 categorías de patrimonio (index.css) — orden y color fijos,
+// reutilizados tal cual en la vista "Por categoría" (H1) y en "Composición actual" (H3) para que
+// cada categoría tenga siempre el mismo color en toda la sección (spec.md decisión de negocio).
+const WEALTH_CATEGORIES: Array<{
+  key: 'bankAccounts' | 'stocks' | 'funds' | 'cryptos' | 'vehicles' | 'pensionPlans' | 'cash';
+  label: string;
+  color: string;
+}> = [
+  { key: 'bankAccounts', label: 'Cuentas Bancarias', color: 'var(--wealth-cat-bank)' },
+  { key: 'stocks', label: 'Acciones', color: 'var(--wealth-cat-stocks)' },
+  { key: 'funds', label: 'Fondos Inversión', color: 'var(--wealth-cat-funds)' },
+  { key: 'cryptos', label: 'Cripto', color: 'var(--wealth-cat-crypto)' },
+  { key: 'vehicles', label: 'Vehículos', color: 'var(--wealth-cat-vehicles)' },
+  { key: 'pensionPlans', label: 'Fondo Pensiones', color: 'var(--wealth-cat-pension)' },
+  { key: 'cash', label: 'Efectivo', color: 'var(--wealth-cat-cash)' },
 ];
 
 const EMPTY_ACCOUNT_FORM: BankAccountInput = { bank: '', accountNumber: '', alias: '' };
@@ -304,6 +348,13 @@ function totalCryptoQuantity(purchases: CryptoPurchase[]): string {
  *  (`purchaseValue`, reutilizada tal cual) de todas sus compras. */
 function totalCryptoCost(purchases: CryptoPurchase[]): string {
   return purchases.reduce((sum, p) => sum + parseFloat(purchaseValue(p.purchasePrice, p.quantity) || '0'), 0).toFixed(2);
+}
+
+/** H5 (spec 028): "coste de compra" de la categoría Vehículos para el gráfico de rentabilidad —
+ *  suma de `purchasePrice` de todos los vehículos, mismo papel que `totalCost`/`totalCryptoCost`
+ *  pero sin cantidad que multiplicar (un vehículo no tiene "cantidad", igual que `vehiclesTotal`). */
+function totalVehiclePurchasePrice(vehicles: Vehicle[]): string {
+  return vehicles.reduce((sum, v) => sum + parseFloat(v.purchasePrice), 0).toFixed(2);
 }
 
 /** Resumen (parte superior de la página): sumatorio del último saldo de cada cuenta bancaria
@@ -2029,6 +2080,8 @@ export function WealthPage() {
   // Declarados junto al resto de hooks, antes de los `return` condicionales de más abajo (sesión/
   // conectividad) — los hooks de React no pueden depender de una rama condicional.
   const [rangeMode, setRangeMode] = useState<WealthEvolutionRangeMode>('last12Months');
+  // Spec 028 H1/H2: 3 vistas de la misma serie/rango — no triplica el selector de Periodo.
+  const [evolutionView, setEvolutionView] = useState<'total' | 'byCategory' | 'liquidity'>('total');
   const [customStart, setCustomStart] = useState(todayIso());
   const [customEnd, setCustomEnd] = useState(todayIso());
   const [confirmedCustomRange, setConfirmedCustomRange] = useState<CustomRange>({ start: todayIso(), end: todayIso() });
@@ -2099,10 +2152,166 @@ export function WealthPage() {
     [wealthEvolutionData, wealthEvolutionRange],
   );
 
-  // H2 criterio 4: ni el gráfico ni un rango sin ningún dato real deben verse como un gráfico
-  // vacío sin explicación — se trata igual un rango sin ningún punto que uno donde todos los
-  // puntos dan 0 (posiciones existentes pero sin ninguna valoración todavía en ese periodo).
+  // Spec 028 H1: misma serie de semanas que `wealthEvolutionPoints`, desglosada por categoría en
+  // vez de sumada — para la vista "Por categoría" (área apilada).
+  const wealthEvolutionByCategoryPoints = useMemo(
+    () =>
+      wealthEvolutionRange
+        ? wealthEvolutionByCategorySeries(wealthEvolutionData, wealthEvolutionRange.start, wealthEvolutionRange.end)
+        : [],
+    [wealthEvolutionData, wealthEvolutionRange],
+  );
+
+  // Spec 028 H2: mismo rango, % de liquidez semana a semana — para la vista "Liquidez".
+  const liquidityPoints = useMemo(
+    () =>
+      wealthEvolutionRange ? liquidityRatioSeries(wealthEvolutionData, wealthEvolutionRange.start, wealthEvolutionRange.end) : [],
+    [wealthEvolutionData, wealthEvolutionRange],
+  );
+
+  // H2 criterio 4 (spec 027): ni el gráfico ni un rango sin ningún dato real deben verse como un
+  // gráfico vacío sin explicación — se trata igual un rango sin ningún punto que uno donde todos
+  // los puntos dan 0. Las 3 vistas comparten el mismo rango/datos subyacentes (spec 028 §3), así
+  // que un único chequeo sobre el total basta para las 3 (si el total es 0 en todas las semanas,
+  // cada categoría y el ratio de liquidez también lo son).
   const hasWealthEvolutionData = wealthEvolutionPoints.some((point) => point.total > 0);
+
+  // H1 criterio 2 (spec 028): una categoría sin ninguna entrada en todo el rango elegido no
+  // aparece en el área apilada ni en la leyenda/tabla de la vista "Por categoría".
+  const activeWealthCategories = useMemo(
+    () => WEALTH_CATEGORIES.filter((category) => wealthEvolutionByCategoryPoints.some((point) => point[category.key] > 0)),
+    [wealthEvolutionByCategoryPoints],
+  );
+
+  // Spec 028 H3: foto de "hoy" de las 7 categorías (mismos `*Total` que la tarjeta "Total"), sin
+  // selector de rango. `row` lleva las 7 claves siempre (para el `stackId` del gráfico); `rows`
+  // es el subconjunto con subtotal > 0 (H3 criterio 3 — leyenda/tabla/gráfico solo muestran esas).
+  const compositionData = useMemo(() => {
+    const row: Record<(typeof WEALTH_CATEGORIES)[number]['key'], number> & { name: string } = {
+      name: 'Patrimonio',
+      bankAccounts: parseFloat(bankAccountsTotal(accounts ?? [], balances ?? [])),
+      stocks: parseFloat(stocksTotal(stockList ?? [], purchases ?? [], valuations ?? [])),
+      funds: parseFloat(fundsTotal(fundList ?? [], fundPurchases ?? [], fundValuations ?? [])),
+      cryptos: parseFloat(cryptosTotal(cryptoList ?? [], cryptoPurchaseList ?? [], cryptoValuationList ?? [])),
+      vehicles: parseFloat(vehiclesTotal(vehicleList ?? [], vehicleValuationList ?? [])),
+      pensionPlans: parseFloat(pensionPlansTotal(pensionPlanList ?? [], pensionPlanValuationList ?? [])),
+      cash: parseFloat(cashTotal(cashHoldingList ?? [], cashBalanceList ?? [])),
+    };
+    const rows = WEALTH_CATEGORIES.map((category) => ({ ...category, value: row[category.key] })).filter((r) => r.value > 0);
+    const total = rows.reduce((sum, r) => sum + r.value, 0);
+    return { row, rows, total };
+  }, [
+    accounts,
+    balances,
+    stockList,
+    purchases,
+    valuations,
+    fundList,
+    fundPurchases,
+    fundValuations,
+    cryptoList,
+    cryptoPurchaseList,
+    cryptoValuationList,
+    vehicleList,
+    vehicleValuationList,
+    pensionPlanList,
+    pensionPlanValuationList,
+    cashHoldingList,
+    cashBalanceList,
+  ]);
+
+  // Spec 028 H4: foto de "hoy" — Acciones/Fondos/Cripto/Fondo Pensiones son las únicas categorías
+  // con historial de aportación/compra (spec.md decisión de negocio). Una categoría sin ninguna
+  // posición (aportado y valor actual ambos 0) no aparece (H4 criterio 3).
+  const contributionVsValueData = useMemo(() => {
+    const rows = [
+      {
+        category: 'Acciones',
+        aportado: parseFloat(totalCost(purchases ?? [])),
+        valorActual: parseFloat(stocksTotal(stockList ?? [], purchases ?? [], valuations ?? [])),
+      },
+      {
+        category: 'Fondos Inversión',
+        aportado: parseFloat(totalCost(fundPurchases ?? [])),
+        valorActual: parseFloat(fundsTotal(fundList ?? [], fundPurchases ?? [], fundValuations ?? [])),
+      },
+      {
+        category: 'Cripto',
+        aportado: parseFloat(totalCryptoCost(cryptoPurchaseList ?? [])),
+        valorActual: parseFloat(cryptosTotal(cryptoList ?? [], cryptoPurchaseList ?? [], cryptoValuationList ?? [])),
+      },
+      {
+        category: 'Fondo Pensiones',
+        aportado: parseFloat(totalContributions(pensionPlanContributionList ?? [])),
+        valorActual: parseFloat(pensionPlansTotal(pensionPlanList ?? [], pensionPlanValuationList ?? [])),
+      },
+    ].filter((row) => row.aportado > 0 || row.valorActual > 0);
+    return {
+      rows,
+      totalAportado: rows.reduce((sum, row) => sum + row.aportado, 0),
+      totalValorActual: rows.reduce((sum, row) => sum + row.valorActual, 0),
+    };
+  }, [
+    purchases,
+    stockList,
+    valuations,
+    fundPurchases,
+    fundList,
+    fundValuations,
+    cryptoPurchaseList,
+    cryptoList,
+    cryptoValuationList,
+    pensionPlanContributionList,
+    pensionPlanList,
+    pensionPlanValuationList,
+  ]);
+
+  // Spec 028 H5: foto de "hoy" — mismo % que ya usa cada posición individual (`gainLossPercent`),
+  // agregado a nivel de categoría completa. Cuentas Bancarias/Efectivo quedan fuera (sin coste de
+  // compra, H5 criterio 3); una categoría sin posiciones o con coste 0 no muestra barra (criterio 2).
+  const profitabilityData = useMemo(() => {
+    const rows = [
+      { category: 'Acciones', pct: gainLossPercent(stocksTotal(stockList ?? [], purchases ?? [], valuations ?? []), totalCost(purchases ?? [])) },
+      {
+        category: 'Fondos Inversión',
+        pct: gainLossPercent(fundsTotal(fundList ?? [], fundPurchases ?? [], fundValuations ?? []), totalCost(fundPurchases ?? [])),
+      },
+      {
+        category: 'Cripto',
+        pct: gainLossPercent(
+          cryptosTotal(cryptoList ?? [], cryptoPurchaseList ?? [], cryptoValuationList ?? []),
+          totalCryptoCost(cryptoPurchaseList ?? []),
+        ),
+      },
+      {
+        category: 'Vehículos',
+        pct: gainLossPercent(vehiclesTotal(vehicleList ?? [], vehicleValuationList ?? []), totalVehiclePurchasePrice(vehicleList ?? [])),
+      },
+      {
+        category: 'Fondo Pensiones',
+        pct: gainLossPercent(
+          pensionPlansTotal(pensionPlanList ?? [], pensionPlanValuationList ?? []),
+          totalContributions(pensionPlanContributionList ?? []),
+        ),
+      },
+    ];
+    return rows.filter((row): row is { category: string; pct: number } => row.pct !== null);
+  }, [
+    stockList,
+    purchases,
+    valuations,
+    fundList,
+    fundPurchases,
+    fundValuations,
+    cryptoList,
+    cryptoPurchaseList,
+    cryptoValuationList,
+    vehicleList,
+    vehicleValuationList,
+    pensionPlanList,
+    pensionPlanContributionList,
+    pensionPlanValuationList,
+  ]);
 
   if (isAuthLoading) {
     return (
@@ -2186,6 +2395,145 @@ export function WealthPage() {
         </div>
       )}
 
+      {canShowTotal && compositionData.rows.length > 0 && (
+        <div className="card elev-sm" id="wealth-composition">
+          <span className="card-title">Composición actual</span>
+          <div style={{ width: '100%', height: 140 }}>
+            <ResponsiveContainer>
+              <BarChart data={[compositionData.row]} layout="vertical" margin={{ left: 8 }}>
+                <XAxis type="number" tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} tick={WEALTH_CHART_TICK_STYLE} />
+                <YAxis type="category" dataKey="name" hide />
+                <Tooltip
+                  contentStyle={WEALTH_CHART_TOOLTIP_STYLE}
+                  formatter={(value) => formatCurrency(Number(value).toFixed(2))}
+                />
+                <Legend wrapperStyle={WEALTH_CHART_TOOLTIP_STYLE} />
+                {compositionData.rows.map((row) => (
+                  <Bar key={row.key} dataKey={row.key} name={row.label} stackId="composition" fill={row.color} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <table className="table">
+            <caption>Composición actual (tabla)</caption>
+            <thead>
+              <tr>
+                <th scope="col">Categoría</th>
+                <th scope="col">Importe</th>
+                <th scope="col">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {compositionData.rows.map((row) => (
+                <tr key={row.key}>
+                  <td data-label="Categoría">{row.label}</td>
+                  <td data-label="Importe">{formatCurrency(row.value.toFixed(2))}</td>
+                  <td data-label="%">{((row.value / compositionData.total) * 100).toFixed(1)} %</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {canShowTotal && contributionVsValueData.rows.length > 0 && (
+        <div className="card elev-sm" id="wealth-contribution-vs-value">
+          <span className="card-title">Aportado vs. valor actual</span>
+          <div style={{ width: '100%', height: 280 }}>
+            <ResponsiveContainer>
+              <BarChart data={contributionVsValueData.rows} margin={{ left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="category" tick={WEALTH_CHART_TICK_STYLE} />
+                <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} tick={WEALTH_CHART_TICK_STYLE} />
+                <Tooltip
+                  contentStyle={WEALTH_CHART_TOOLTIP_STYLE}
+                  formatter={(value) => formatCurrency(Number(value).toFixed(2))}
+                />
+                <Legend wrapperStyle={WEALTH_CHART_TOOLTIP_STYLE} />
+                <Bar dataKey="aportado" name="Aportado" fill="var(--neutral-500)" />
+                <Bar dataKey="valorActual" name="Valor actual" fill="var(--accent-500)" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <table className="table">
+            <caption>Aportado vs. valor actual (tabla)</caption>
+            <thead>
+              <tr>
+                <th scope="col">Categoría</th>
+                <th scope="col">Aportado</th>
+                <th scope="col">Valor actual</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contributionVsValueData.rows.map((row) => (
+                <tr key={row.category}>
+                  <td data-label="Categoría">{row.category}</td>
+                  <td data-label="Aportado">{formatCurrency(row.aportado.toFixed(2))}</td>
+                  <td data-label="Valor actual">{formatCurrency(row.valorActual.toFixed(2))}</td>
+                </tr>
+              ))}
+              <tr>
+                <td data-label="Categoría">
+                  <strong>Total</strong>
+                </td>
+                <td data-label="Aportado">
+                  <strong>{formatCurrency(contributionVsValueData.totalAportado.toFixed(2))}</strong>
+                </td>
+                <td data-label="Valor actual">
+                  <strong>{formatCurrency(contributionVsValueData.totalValorActual.toFixed(2))}</strong>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {canShowTotal && profitabilityData.length > 0 && (
+        <div className="card elev-sm" id="wealth-profitability">
+          <span className="card-title">Rentabilidad por categoría</span>
+          <div style={{ width: '100%', height: 280 }}>
+            <ResponsiveContainer>
+              <BarChart data={profitabilityData} margin={{ left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="category" tick={WEALTH_CHART_TICK_STYLE} />
+                <YAxis
+                  domain={[(min: number) => Math.min(min, 0), (max: number) => Math.max(max, 0)]}
+                  tickFormatter={(value: number) => `${value.toFixed(0)} %`}
+                  tick={WEALTH_CHART_TICK_STYLE}
+                />
+                <Tooltip contentStyle={WEALTH_CHART_TOOLTIP_STYLE} formatter={(value) => `${Number(value).toFixed(1)} %`} />
+                <ReferenceLine y={0} stroke="var(--border)" />
+                <Bar dataKey="pct" name="Rentabilidad">
+                  {profitabilityData.map((row) => (
+                    <Cell key={row.category} fill={row.pct >= 0 ? 'var(--status-green)' : 'var(--status-red)'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <table className="table">
+            <caption>Rentabilidad por categoría (tabla)</caption>
+            <thead>
+              <tr>
+                <th scope="col">Categoría</th>
+                <th scope="col">Rentabilidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profitabilityData.map((row) => (
+                <tr key={row.category}>
+                  <td data-label="Categoría">{row.category}</td>
+                  <td data-label="Rentabilidad">
+                    {row.pct >= 0 ? '+' : ''}
+                    {row.pct.toFixed(1)} %
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {canShowTotal && (
         <div className="card elev-sm" id="wealth-evolution">
           <span className="card-title">Evolución del patrimonio</span>
@@ -2199,6 +2547,22 @@ export function WealthPage() {
               onChange={(e) => setRangeMode(e.target.value as WealthEvolutionRangeMode)}
             >
               {RANGE_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field">
+            <label htmlFor="wealth-evolution-view">Vista</label>
+            <select
+              id="wealth-evolution-view"
+              className="input"
+              value={evolutionView}
+              onChange={(e) => setEvolutionView(e.target.value as 'total' | 'byCategory' | 'liquidity')}
+            >
+              {EVOLUTION_VIEW_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -2234,7 +2598,7 @@ export function WealthPage() {
             </>
           )}
 
-          {hasWealthEvolutionData ? (
+          {hasWealthEvolutionData && evolutionView === 'total' && (
             <>
               <div style={{ width: '100%', height: 320 }}>
                 <ResponsiveContainer>
@@ -2271,9 +2635,111 @@ export function WealthPage() {
                 </tbody>
               </table>
             </>
-          ) : (
-            <p>No hay datos de patrimonio en este periodo.</p>
           )}
+
+          {hasWealthEvolutionData && evolutionView === 'byCategory' && (
+            <>
+              <div style={{ width: '100%', height: 320 }}>
+                <ResponsiveContainer>
+                  <AreaChart data={wealthEvolutionByCategoryPoints} margin={{ left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="weekEnding" tickFormatter={formatDate} tick={WEALTH_CHART_TICK_STYLE} />
+                    <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} tick={WEALTH_CHART_TICK_STYLE} />
+                    <Tooltip
+                      contentStyle={WEALTH_CHART_TOOLTIP_STYLE}
+                      labelFormatter={(label) => formatDate(String(label))}
+                      formatter={(value) => formatCurrency(Number(value).toFixed(2))}
+                    />
+                    <Legend wrapperStyle={WEALTH_CHART_TOOLTIP_STYLE} />
+                    {activeWealthCategories.map((category) => (
+                      <Area
+                        key={category.key}
+                        type="monotone"
+                        dataKey={category.key}
+                        name={category.label}
+                        stackId="wealth-by-category"
+                        stroke={category.color}
+                        fill={category.color}
+                        fillOpacity={0.85}
+                      />
+                    ))}
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <table className="table">
+                <caption>Composición del patrimonio por semana (tabla)</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Semana</th>
+                    {activeWealthCategories.map((category) => (
+                      <th scope="col" key={category.key}>
+                        {category.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {wealthEvolutionByCategoryPoints.map((point) => (
+                    <tr key={point.weekEnding}>
+                      <td data-label="Semana">{point.weekEnding}</td>
+                      {activeWealthCategories.map((category) => (
+                        <td data-label={category.label} key={category.key}>
+                          {formatCurrency(point[category.key].toFixed(2))}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {hasWealthEvolutionData && evolutionView === 'liquidity' && (
+            <>
+              <div style={{ width: '100%', height: 320 }}>
+                <ResponsiveContainer>
+                  <LineChart data={liquidityPoints} margin={{ left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="weekEnding" tickFormatter={formatDate} tick={WEALTH_CHART_TICK_STYLE} />
+                    <YAxis tickFormatter={(value: number) => `${value.toFixed(0)} %`} tick={WEALTH_CHART_TICK_STYLE} />
+                    <Tooltip
+                      contentStyle={WEALTH_CHART_TOOLTIP_STYLE}
+                      labelFormatter={(label) => formatDate(String(label))}
+                      formatter={(value) => [`${Number(value).toFixed(1)} %`, 'Liquidez']}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="ratioPercent"
+                      name="Liquidez"
+                      stroke={COLOR_WEALTH_TOTAL}
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      connectNulls={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <table className="table">
+                <caption>Liquidez del patrimonio por semana (tabla)</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Semana</th>
+                    <th scope="col">% líquido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liquidityPoints.map((point) => (
+                    <tr key={point.weekEnding}>
+                      <td data-label="Semana">{point.weekEnding}</td>
+                      <td data-label="% líquido">{point.ratioPercent === null ? 'N/D' : `${point.ratioPercent.toFixed(1)} %`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {!hasWealthEvolutionData && <p>No hay datos de patrimonio en este periodo.</p>}
         </div>
       )}
 

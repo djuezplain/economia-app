@@ -3,10 +3,12 @@ import {
   bankAccountsValueAsOf,
   earliestDataDate,
   isValidCustomRange,
+  liquidityRatioSeries,
   resolveRange,
   stocksValueAsOf,
   totalWealthAsOf,
   weekEndingDates,
+  wealthEvolutionByCategorySeries,
   wealthEvolutionSeries,
 } from './wealth-evolution.calculations';
 import type { AllWealthData } from './wealth-evolution.calculations';
@@ -208,5 +210,77 @@ describe('resolveRange', () => {
       start: '2026-01-01',
       end: '2026-03-01',
     });
+  });
+});
+
+describe('wealthEvolutionByCategorySeries', () => {
+  it('una categoría sin ninguna entrada nunca queda en 0 en toda la serie, sin afectar a las demás', () => {
+    const data = emptyData();
+    data.bankAccounts = [{ id: 'a1' } as any];
+    data.bankAccountBalances = [{ bankAccountId: 'a1', euros: '1000', date: '2026-01-01' }] as any;
+    // el resto de categorías se quedan vacías (sin ninguna entrada nunca)
+
+    const series = wealthEvolutionByCategorySeries(data, '2026-01-01', '2026-01-11');
+    for (const point of series) {
+      expect(point.bankAccounts).toBe(1000);
+      expect(point.stocks).toBe(0);
+      expect(point.funds).toBe(0);
+      expect(point.cryptos).toBe(0);
+      expect(point.vehicles).toBe(0);
+      expect(point.pensionPlans).toBe(0);
+      expect(point.cash).toBe(0);
+    }
+  });
+
+  it('cada categoría hace su propio forward-fill de forma independiente', () => {
+    const data = emptyData();
+    data.bankAccounts = [{ id: 'a1' } as any];
+    data.bankAccountBalances = [
+      { bankAccountId: 'a1', euros: '2000', date: '2026-01-20' },
+      { bankAccountId: 'a1', euros: '1000', date: '2026-01-01' },
+    ] as any;
+    data.cashHoldings = [{ id: 'c1' } as any];
+    data.cashBalances = [{ cashHoldingId: 'c1', amount: '50', date: '2026-01-10' }] as any;
+
+    const series = wealthEvolutionByCategorySeries(data, '2026-01-01', '2026-01-25');
+    const byWeek = Object.fromEntries(series.map((p) => [p.weekEnding, p]));
+    // antes de que exista efectivo, esa categoría no cuenta (0), aunque la cuenta bancaria ya tenga datos
+    expect(byWeek['2026-01-04']).toMatchObject({ bankAccounts: 1000, cash: 0 });
+    // tras la primera entrada de efectivo, ambas evolucionan cada una con su propio historial
+    expect(byWeek['2026-01-11']).toMatchObject({ bankAccounts: 1000, cash: 50 });
+    expect(byWeek['2026-01-25']).toMatchObject({ bankAccounts: 2000, cash: 50 });
+  });
+
+  it('vacía si el usuario no tiene ningún dato', () => {
+    expect(wealthEvolutionByCategorySeries(emptyData(), '2026-01-01', '2026-06-01')).toEqual([]);
+  });
+});
+
+describe('liquidityRatioSeries', () => {
+  it('calcula el % de cuentas bancarias + efectivo sobre el total de cada semana', () => {
+    const data = emptyData();
+    data.bankAccounts = [{ id: 'a1' } as any];
+    data.bankAccountBalances = [{ bankAccountId: 'a1', euros: '300', date: '2026-01-01' }] as any;
+    data.vehicles = [{ id: 'v1' } as any];
+    data.vehicleValuations = [{ vehicleId: 'v1', value: '700', date: '2026-01-01' }] as any;
+
+    const series = liquidityRatioSeries(data, '2026-01-01', '2026-01-01');
+    // total = 300 + 700 = 1000; líquido = 300 → 30%
+    expect(series).toEqual([{ weekEnding: '2026-01-01', ratioPercent: 30 }]);
+  });
+
+  it('devuelve null cuando el total de esa semana es 0', () => {
+    // earliestDataDate exige al menos una entrada para generar la serie; con una valoración
+    // de 0 el total de esa semana es 0 y el ratio no se puede calcular.
+    const data = emptyData();
+    data.vehicles = [{ id: 'v1' } as any];
+    data.vehicleValuations = [{ vehicleId: 'v1', value: '0', date: '2026-01-01' }] as any;
+
+    const series = liquidityRatioSeries(data, '2026-01-01', '2026-01-01');
+    expect(series).toEqual([{ weekEnding: '2026-01-01', ratioPercent: null }]);
+  });
+
+  it('vacía si el usuario no tiene ningún dato', () => {
+    expect(liquidityRatioSeries(emptyData(), '2026-01-01', '2026-06-01')).toEqual([]);
   });
 });

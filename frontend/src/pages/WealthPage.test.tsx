@@ -2702,4 +2702,188 @@ describe('WealthPage', () => {
       expect(screen.queryByLabelText('Periodo')).not.toBeInTheDocument();
     });
   });
+
+  describe('Composición, liquidez y rentabilidad (spec 028)', () => {
+    function mockAllApisEmpty() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
+      vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
+      vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+    }
+
+    function mockAllApisFull() {
+      mockAllApisEmpty();
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([VEHICLE_VALUATION]);
+      vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
+      vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([PENSION_PLAN_CONTRIBUTION]);
+      vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([PENSION_PLAN_VALUATION]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([CASH_BALANCE]);
+    }
+
+    describe('Evolución del patrimonio — vistas "Por categoría" y "Liquidez" (H1/H2)', () => {
+      it('vista "Por categoría" muestra la tabla de composición semanal y oculta la de "Total"', async () => {
+        mockAllApisEmpty();
+        vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+        vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
+
+        renderPage();
+        const viewSelect = await screen.findByLabelText('Vista');
+        await userEvent.selectOptions(viewSelect, 'byCategory');
+
+        expect(await screen.findByRole('table', { name: 'Composición del patrimonio por semana (tabla)' })).toBeInTheDocument();
+        expect(screen.queryByRole('table', { name: 'Evolución del patrimonio (tabla)' })).not.toBeInTheDocument();
+      });
+
+      it('una categoría sin ninguna entrada en el rango no aparece en la vista "Por categoría"', async () => {
+        mockAllApisEmpty();
+        vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+        vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
+
+        renderPage();
+        const viewSelect = await screen.findByLabelText('Vista');
+        await userEvent.selectOptions(viewSelect, 'byCategory');
+
+        const table = await screen.findByRole('table', { name: 'Composición del patrimonio por semana (tabla)' });
+        expect(within(table).getByText('Cuentas Bancarias')).toBeInTheDocument();
+        expect(within(table).queryByText('Efectivo')).not.toBeInTheDocument();
+      });
+
+      it('vista "Liquidez" calcula el % de cuentas bancarias + efectivo sobre el total', async () => {
+        mockAllApisEmpty();
+        vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+        vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
+        vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+        vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([VEHICLE_VALUATION]);
+
+        renderPage();
+        const viewSelect = await screen.findByLabelText('Vista');
+        await userEvent.selectOptions(viewSelect, 'liquidity');
+
+        // Líquido: 1500 (BANK_BALANCE). Total: 1500 + 15000 (VEHICLE_VALUATION) = 16500. Ratio: 9,1%.
+        const table = await screen.findByRole('table', { name: 'Liquidez del patrimonio por semana (tabla)' });
+        expect(within(table).getByText('9.1 %')).toBeInTheDocument();
+      });
+    });
+
+    describe('Composición actual (H3)', () => {
+      it('muestra las 7 categorías con su importe y % del total', async () => {
+        mockAllApisFull();
+
+        renderPage();
+
+        const table = await screen.findByRole('table', { name: 'Composición actual (tabla)' });
+        const rows = within(table).getAllByRole('row');
+        expect(rows.length).toBe(8); // cabecera + 7 categorías
+        expect(within(table).getByText('Vehículos')).toBeInTheDocument();
+        // Vehículos: 15.000,00 € de un total de 22.700,00 € → 66.1 %.
+        expect(within(table).getByText('66.1 %')).toBeInTheDocument();
+      });
+
+      it('una categoría con subtotal 0 no aparece en la composición actual', async () => {
+        mockAllApisFull();
+        vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+        vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+
+        renderPage();
+
+        const table = await screen.findByRole('table', { name: 'Composición actual (tabla)' });
+        expect(within(table).queryByText('Efectivo')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Aportado vs. valor actual (H4)', () => {
+      it('compara aportado y valor actual de Acciones/Fondos/Cripto/Fondo Pensiones, con el total agregado', async () => {
+        mockAllApisFull();
+
+        renderPage();
+
+        const table = await screen.findByRole('table', { name: 'Aportado vs. valor actual (tabla)' });
+        // Acciones: aportado 300,00 € (10 × 30,00 €), valor actual 350,00 € (10 × 35,00 €).
+        const stocksRow = within(table).getByText('Acciones').closest('tr')!;
+        expect(within(stocksRow).getByText('300,00 €')).toBeInTheDocument();
+        expect(within(stocksRow).getByText('350,00 €')).toBeInTheDocument();
+        // Total aportado: 300 + 300 + 3000 + 1800 = 5400,00 €. Total valor actual: 350 + 200 + 3500 + 1950 = 6000,00 €.
+        const totalRow = within(table).getByText('Total').closest('tr')!;
+        expect(within(totalRow).getByText('5400,00 €')).toBeInTheDocument();
+        expect(within(totalRow).getByText('6000,00 €')).toBeInTheDocument();
+      });
+
+      it('una categoría sin ninguna posición no aparece', async () => {
+        mockAllApisEmpty();
+        vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+        vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+        vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
+
+        renderPage();
+
+        const table = await screen.findByRole('table', { name: 'Aportado vs. valor actual (tabla)' });
+        expect(within(table).getByText('Acciones')).toBeInTheDocument();
+        expect(within(table).queryByText('Cripto')).not.toBeInTheDocument();
+        expect(within(table).queryByText('Fondo Pensiones')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Rentabilidad por categoría (H5)', () => {
+      it('calcula el % de ganancia/pérdida de las 5 categorías con coste conocido', async () => {
+        mockAllApisFull();
+
+        renderPage();
+
+        const table = await screen.findByRole('table', { name: 'Rentabilidad por categoría (tabla)' });
+        // Vehículos: (15.000 − 20.000) / 20.000 × 100 = -25.0 %.
+        const vehiclesRow = within(table).getByText('Vehículos').closest('tr')!;
+        expect(within(vehiclesRow).getByText('-25.0 %')).toBeInTheDocument();
+        // Acciones: (350 − 300) / 300 × 100 = +16.7 %.
+        const stocksRow = within(table).getByText('Acciones').closest('tr')!;
+        expect(within(stocksRow).getByText('+16.7 %')).toBeInTheDocument();
+      });
+
+      it('Cuentas Bancarias y Efectivo no aparecen (sin coste de compra)', async () => {
+        mockAllApisFull();
+
+        renderPage();
+
+        const table = await screen.findByRole('table', { name: 'Rentabilidad por categoría (tabla)' });
+        expect(within(table).queryByText('Cuentas Bancarias')).not.toBeInTheDocument();
+        expect(within(table).queryByText('Efectivo')).not.toBeInTheDocument();
+      });
+
+      it('una categoría sin ninguna posición no aparece', async () => {
+        mockAllApisEmpty();
+
+        renderPage();
+        await screen.findByLabelText('Periodo');
+
+        expect(screen.queryByRole('table', { name: 'Rentabilidad por categoría (tabla)' })).not.toBeInTheDocument();
+      });
+    });
+  });
 });
