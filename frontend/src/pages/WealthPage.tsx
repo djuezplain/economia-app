@@ -44,6 +44,13 @@ import {
   updateStockValuation,
 } from '../api/stock-valuations';
 import type { StockValuation, UpdateStockValuationInput } from '../api/stock-valuations';
+import {
+  createStockDividend,
+  deleteStockDividend,
+  listStockDividends,
+  updateStockDividend,
+} from '../api/stock-dividends';
+import type { StockDividend, UpdateStockDividendInput } from '../api/stock-dividends';
 import { createFund, deleteFund, listFunds, updateFund } from '../api/funds';
 import type { Fund, FundInput } from '../api/funds';
 import {
@@ -60,6 +67,8 @@ import {
   updateFundValuation,
 } from '../api/fund-valuations';
 import type { FundValuation, UpdateFundValuationInput } from '../api/fund-valuations';
+import { createFundDividend, deleteFundDividend, listFundDividends, updateFundDividend } from '../api/fund-dividends';
+import type { FundDividend, UpdateFundDividendInput } from '../api/fund-dividends';
 import { createCrypto, deleteCrypto, listCryptos, updateCrypto } from '../api/cryptos';
 import type { Crypto, CryptoInput } from '../api/cryptos';
 import {
@@ -162,9 +171,12 @@ const EMPTY_BALANCE_FORM: UpdateBankAccountBalanceInput = { euros: '', date: tod
 const EMPTY_STOCK_FORM: StockInput = { custodyBank: '', stock: '' };
 const EMPTY_PURCHASE_FORM: UpdateStockPurchaseInput = { shareCount: '', purchasePrice: '', date: todayIso() };
 const EMPTY_VALUATION_FORM: UpdateStockValuationInput = { pricePerShare: '', date: todayIso() };
+// H1 criterio 1 (spec 029): 19% de retención por defecto, precargado en el formulario.
+const EMPTY_STOCK_DIVIDEND_FORM: UpdateStockDividendInput = { netAmount: '', retentionPercent: '19', date: todayIso() };
 const EMPTY_FUND_FORM: FundInput = { custodyBank: '', fund: '' };
 const EMPTY_FUND_PURCHASE_FORM: UpdateFundPurchaseInput = { shareCount: '', purchasePrice: '', date: todayIso() };
 const EMPTY_FUND_VALUATION_FORM: UpdateFundValuationInput = { pricePerShare: '', date: todayIso() };
+const EMPTY_FUND_DIVIDEND_FORM: UpdateFundDividendInput = { netAmount: '', retentionPercent: '19', date: todayIso() };
 const EMPTY_CRYPTO_FORM: CryptoInput = { exchange: '', crypto: '' };
 const EMPTY_CRYPTO_PURCHASE_FORM: UpdateCryptoPurchaseInput = { quantity: '', purchasePrice: '', date: todayIso() };
 const EMPTY_CRYPTO_VALUATION_FORM: UpdateCryptoValuationInput = { pricePerUnit: '', date: todayIso() };
@@ -237,6 +249,10 @@ function valuationFormFromEntity(valuation: StockValuation): UpdateStockValuatio
   return { pricePerShare: valuation.pricePerShare, date: valuation.date };
 }
 
+function stockDividendFormFromEntity(dividend: StockDividend): UpdateStockDividendInput {
+  return { netAmount: dividend.netAmount, retentionPercent: dividend.retentionPercent, date: dividend.date };
+}
+
 function fundFormFromEntity(fund: Fund): FundInput {
   return { custodyBank: fund.custodyBank, fund: fund.fund };
 }
@@ -247,6 +263,10 @@ function fundPurchaseFormFromEntity(purchase: FundPurchase): UpdateFundPurchaseI
 
 function fundValuationFormFromEntity(valuation: FundValuation): UpdateFundValuationInput {
   return { pricePerShare: valuation.pricePerShare, date: valuation.date };
+}
+
+function fundDividendFormFromEntity(dividend: FundDividend): UpdateFundDividendInput {
+  return { netAmount: dividend.netAmount, retentionPercent: dividend.retentionPercent, date: dividend.date };
 }
 
 function cryptoFormFromEntity(crypto: Crypto): CryptoInput {
@@ -429,6 +449,36 @@ function totalContributions(contributions: PensionPlanContribution[]): string {
   return contributions.reduce((sum, c) => sum + parseFloat(c.amount), 0).toFixed(2);
 }
 
+/** H1 criterio 3 (spec 029): Bruto = Neto ÷ (1 − %Retención ÷ 100) — calculado, nunca guardado.
+ *  Mismo criterio que `purchaseValue`/`currentValue`. Genérica para acciones y fondos. */
+function grossDividend(netAmount: string, retentionPercent: string): string {
+  const net = parseFloat(netAmount);
+  const retention = parseFloat(retentionPercent);
+  if (Number.isNaN(net) || Number.isNaN(retention)) return '';
+  return (net / (1 - retention / 100)).toFixed(2);
+}
+
+/** H2/H3 (spec 029): total neto cobrado en dividendos — de una sola posición o de toda la
+ *  cartera según qué lista se le pase. Tipo estructural, mismo criterio que `totalShares`. */
+function totalDividends(dividends: Array<{ netAmount: string }>): string {
+  return dividends.reduce((sum, d) => sum + parseFloat(d.netAmount), 0).toFixed(2);
+}
+
+/** H3 (spec 029): sumando "Acciones" de la tarjeta "💰 Dividendos cobrados" — dividendos de
+ *  todas las acciones propias del usuario (filtra por `stockId` perteneciente a `stocks`,
+ *  igual que `stocksTotal` filtra compras/valoraciones por posición). */
+function stockDividendsTotal(stocks: Stock[], dividends: StockDividend[]): string {
+  const stockIds = new Set(stocks.map((s) => s.id));
+  return totalDividends(dividends.filter((d) => stockIds.has(d.stockId)));
+}
+
+/** H3 (spec 029): sumando "Fondos Inversión" de la tarjeta "💰 Dividendos cobrados" — mismo
+ *  criterio que `stockDividendsTotal`. */
+function fundDividendsTotal(funds: Fund[], dividends: FundDividend[]): string {
+  const fundIds = new Set(funds.map((f) => f.id));
+  return totalDividends(dividends.filter((d) => fundIds.has(d.fundId)));
+}
+
 /** H4 (spec 024): sexto sumando de la tarjeta "Total" — mismo criterio que `vehiclesTotal`
  *  (último valor conocido de cada posición, o 0 si no tiene ninguna valoración todavía). */
 function pensionPlansTotal(plans: PensionPlan[], valuations: PensionPlanValuation[]): string {
@@ -529,6 +579,18 @@ export function WealthPage() {
   const [pendingDeleteValuationId, setPendingDeleteValuationId] = useState<string | null>(null);
   const [valuationActionError, setValuationActionError] = useState<string | null>(null);
 
+  const [stockDividendList, setStockDividendList] = useState<StockDividend[] | null>(null);
+  const [stockDividendsLoadError, setStockDividendsLoadError] = useState<string | null>(null);
+  const [newStockDividendForms, setNewStockDividendForms] = useState<Record<string, UpdateStockDividendInput>>({});
+  const [createStockDividendError, setCreateStockDividendError] = useState<string | null>(null);
+  const [creatingStockDividendForStockId, setCreatingStockDividendForStockId] = useState<string | null>(null);
+  const [editingStockDividendId, setEditingStockDividendId] = useState<string | null>(null);
+  const [editingStockDividendForm, setEditingStockDividendForm] = useState<UpdateStockDividendInput>(EMPTY_STOCK_DIVIDEND_FORM);
+  const [editStockDividendError, setEditStockDividendError] = useState<string | null>(null);
+  const [isSavingStockDividend, setIsSavingStockDividend] = useState(false);
+  const [pendingDeleteStockDividendId, setPendingDeleteStockDividendId] = useState<string | null>(null);
+  const [stockDividendActionError, setStockDividendActionError] = useState<string | null>(null);
+
   const [fundList, setFundList] = useState<Fund[] | null>(null);
   const [fundsLoadError, setFundsLoadError] = useState<string | null>(null);
   const [newFundForm, setNewFundForm] = useState<NewFundForm>(emptyNewFundForm);
@@ -564,6 +626,18 @@ export function WealthPage() {
   const [isSavingFundValuation, setIsSavingFundValuation] = useState(false);
   const [pendingDeleteFundValuationId, setPendingDeleteFundValuationId] = useState<string | null>(null);
   const [fundValuationActionError, setFundValuationActionError] = useState<string | null>(null);
+
+  const [fundDividendList, setFundDividendList] = useState<FundDividend[] | null>(null);
+  const [fundDividendsLoadError, setFundDividendsLoadError] = useState<string | null>(null);
+  const [newFundDividendForms, setNewFundDividendForms] = useState<Record<string, UpdateFundDividendInput>>({});
+  const [createFundDividendError, setCreateFundDividendError] = useState<string | null>(null);
+  const [creatingFundDividendForFundId, setCreatingFundDividendForFundId] = useState<string | null>(null);
+  const [editingFundDividendId, setEditingFundDividendId] = useState<string | null>(null);
+  const [editingFundDividendForm, setEditingFundDividendForm] = useState<UpdateFundDividendInput>(EMPTY_FUND_DIVIDEND_FORM);
+  const [editFundDividendError, setEditFundDividendError] = useState<string | null>(null);
+  const [isSavingFundDividend, setIsSavingFundDividend] = useState(false);
+  const [pendingDeleteFundDividendId, setPendingDeleteFundDividendId] = useState<string | null>(null);
+  const [fundDividendActionError, setFundDividendActionError] = useState<string | null>(null);
 
   const [cryptoList, setCryptoList] = useState<Crypto[] | null>(null);
   const [cryptosLoadError, setCryptosLoadError] = useState<string | null>(null);
@@ -710,6 +784,10 @@ export function WealthPage() {
     setValuations(await listStockValuations());
   }
 
+  async function reloadStockDividends() {
+    setStockDividendList(await listStockDividends());
+  }
+
   async function reloadFunds() {
     setFundList(await listFunds());
   }
@@ -720,6 +798,10 @@ export function WealthPage() {
 
   async function reloadFundValuations() {
     setFundValuations(await listFundValuations());
+  }
+
+  async function reloadFundDividends() {
+    setFundDividendList(await listFundDividends());
   }
 
   async function reloadCryptos() {
@@ -842,6 +924,21 @@ export function WealthPage() {
     let cancelled = false;
     (async () => {
       try {
+        await reloadStockDividends();
+      } catch (err) {
+        if (!cancelled) setStockDividendsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de dividendos.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
         await reloadFunds();
       } catch (err) {
         if (!cancelled) setFundsLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar los fondos de inversión.');
@@ -876,6 +973,21 @@ export function WealthPage() {
       } catch (err) {
         if (!cancelled)
           setFundValuationsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de valoraciones.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadFundDividends();
+      } catch (err) {
+        if (!cancelled) setFundDividendsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de dividendos.');
       }
     })();
     return () => {
@@ -1194,7 +1306,7 @@ export function WealthPage() {
     setPendingDeleteStockId(id);
     try {
       await deleteStock(id);
-      await Promise.all([reloadStocks(), reloadPurchases(), reloadValuations()]);
+      await Promise.all([reloadStocks(), reloadPurchases(), reloadValuations(), reloadStockDividends()]);
     } catch (err) {
       setStockActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la acción.');
     } finally {
@@ -1325,6 +1437,70 @@ export function WealthPage() {
     }
   }
 
+  function getNewStockDividendForm(stockId: string): UpdateStockDividendInput {
+    return newStockDividendForms[stockId] ?? { netAmount: '', retentionPercent: '19', date: todayIso() };
+  }
+
+  function setNewStockDividendForm(stockId: string, form: UpdateStockDividendInput) {
+    setNewStockDividendForms((prev) => ({ ...prev, [stockId]: form }));
+  }
+
+  async function handleCreateStockDividend(stockId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateStockDividendError(null);
+    setCreatingStockDividendForStockId(stockId);
+    try {
+      const form = getNewStockDividendForm(stockId);
+      await createStockDividend({
+        stockId,
+        netAmount: form.netAmount ?? '',
+        retentionPercent: form.retentionPercent,
+        date: form.date ?? todayIso(),
+      });
+      setNewStockDividendForm(stockId, { netAmount: '', retentionPercent: '19', date: todayIso() });
+      await reloadStockDividends();
+    } catch (err) {
+      setCreateStockDividendError(err instanceof ApiError ? err.message : 'No se ha podido añadir el dividendo.');
+    } finally {
+      setCreatingStockDividendForStockId(null);
+    }
+  }
+
+  function startEditStockDividend(dividend: StockDividend) {
+    setEditStockDividendError(null);
+    setEditingStockDividendId(dividend.id);
+    setEditingStockDividendForm(stockDividendFormFromEntity(dividend));
+  }
+
+  async function handleEditStockDividend(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingStockDividendId) return;
+    setEditStockDividendError(null);
+    setIsSavingStockDividend(true);
+    try {
+      await updateStockDividend(editingStockDividendId, editingStockDividendForm);
+      setEditingStockDividendId(null);
+      await reloadStockDividends();
+    } catch (err) {
+      setEditStockDividendError(err instanceof ApiError ? err.message : 'No se ha podido guardar el dividendo.');
+    } finally {
+      setIsSavingStockDividend(false);
+    }
+  }
+
+  async function handleDeleteStockDividend(id: string) {
+    setStockDividendActionError(null);
+    setPendingDeleteStockDividendId(id);
+    try {
+      await deleteStockDividend(id);
+      await reloadStockDividends();
+    } catch (err) {
+      setStockDividendActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar el dividendo.');
+    } finally {
+      setPendingDeleteStockDividendId(null);
+    }
+  }
+
   async function handleCreateFund(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCreateFundError(null);
@@ -1373,7 +1549,7 @@ export function WealthPage() {
     setPendingDeleteFundId(id);
     try {
       await deleteFund(id);
-      await Promise.all([reloadFunds(), reloadFundPurchases(), reloadFundValuations()]);
+      await Promise.all([reloadFunds(), reloadFundPurchases(), reloadFundValuations(), reloadFundDividends()]);
     } catch (err) {
       setFundActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar el fondo.');
     } finally {
@@ -1501,6 +1677,70 @@ export function WealthPage() {
       setFundValuationActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la valoración.');
     } finally {
       setPendingDeleteFundValuationId(null);
+    }
+  }
+
+  function getNewFundDividendForm(fundId: string): UpdateFundDividendInput {
+    return newFundDividendForms[fundId] ?? { netAmount: '', retentionPercent: '19', date: todayIso() };
+  }
+
+  function setNewFundDividendForm(fundId: string, form: UpdateFundDividendInput) {
+    setNewFundDividendForms((prev) => ({ ...prev, [fundId]: form }));
+  }
+
+  async function handleCreateFundDividend(fundId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateFundDividendError(null);
+    setCreatingFundDividendForFundId(fundId);
+    try {
+      const form = getNewFundDividendForm(fundId);
+      await createFundDividend({
+        fundId,
+        netAmount: form.netAmount ?? '',
+        retentionPercent: form.retentionPercent,
+        date: form.date ?? todayIso(),
+      });
+      setNewFundDividendForm(fundId, { netAmount: '', retentionPercent: '19', date: todayIso() });
+      await reloadFundDividends();
+    } catch (err) {
+      setCreateFundDividendError(err instanceof ApiError ? err.message : 'No se ha podido añadir el dividendo.');
+    } finally {
+      setCreatingFundDividendForFundId(null);
+    }
+  }
+
+  function startEditFundDividend(dividend: FundDividend) {
+    setEditFundDividendError(null);
+    setEditingFundDividendId(dividend.id);
+    setEditingFundDividendForm(fundDividendFormFromEntity(dividend));
+  }
+
+  async function handleEditFundDividend(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingFundDividendId) return;
+    setEditFundDividendError(null);
+    setIsSavingFundDividend(true);
+    try {
+      await updateFundDividend(editingFundDividendId, editingFundDividendForm);
+      setEditingFundDividendId(null);
+      await reloadFundDividends();
+    } catch (err) {
+      setEditFundDividendError(err instanceof ApiError ? err.message : 'No se ha podido guardar el dividendo.');
+    } finally {
+      setIsSavingFundDividend(false);
+    }
+  }
+
+  async function handleDeleteFundDividend(id: string) {
+    setFundDividendActionError(null);
+    setPendingDeleteFundDividendId(id);
+    try {
+      await deleteFundDividend(id);
+      await reloadFundDividends();
+    } catch (err) {
+      setFundDividendActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar el dividendo.');
+    } finally {
+      setPendingDeleteFundDividendId(null);
     }
   }
 
@@ -2363,6 +2603,10 @@ export function WealthPage() {
     cashHoldingList !== null &&
     cashBalanceList !== null;
 
+  // H3 (spec 029): tarjeta aparte de "Total" — depende solo de las listas que necesita, no de
+  // `canShowTotal` (evita esperar a categorías que nada tienen que ver, p. ej. Efectivo).
+  const canShowDividendsTotal = stockList !== null && stockDividendList !== null && fundList !== null && fundDividendList !== null;
+
   return (
     <main>
       <h1>Resumen Patrimonio</h1>
@@ -2391,6 +2635,23 @@ export function WealthPage() {
             {formatCurrency(vehiclesTotal(vehicleList, vehicleValuationList))} · Fondo Pensiones:{' '}
             {formatCurrency(pensionPlansTotal(pensionPlanList, pensionPlanValuationList))} · Efectivo:{' '}
             {formatCurrency(cashTotal(cashHoldingList, cashBalanceList))}
+          </p>
+        </div>
+      )}
+
+      {canShowDividendsTotal && (
+        <div className="card elev-sm" id="wealth-dividends-summary">
+          <span className="card-title">💰 Dividendos cobrados</span>
+          <span className="card-amount">
+            {formatCurrency(
+              (
+                parseFloat(stockDividendsTotal(stockList, stockDividendList)) + parseFloat(fundDividendsTotal(fundList, fundDividendList))
+              ).toFixed(2),
+            )}
+          </span>
+          <p className="card-meta">
+            Acciones: {formatCurrency(stockDividendsTotal(stockList, stockDividendList))} · Fondos Inversión:{' '}
+            {formatCurrency(fundDividendsTotal(fundList, fundDividendList))}
           </p>
         </div>
       )}
@@ -3019,9 +3280,11 @@ export function WealthPage() {
         {stocksLoadError && <p role="alert">{stocksLoadError}</p>}
         {purchasesLoadError && <p role="alert">{purchasesLoadError}</p>}
         {valuationsLoadError && <p role="alert">{valuationsLoadError}</p>}
+        {stockDividendsLoadError && <p role="alert">{stockDividendsLoadError}</p>}
         {stockActionError && <p role="alert">{stockActionError}</p>}
         {purchaseActionError && <p role="alert">{purchaseActionError}</p>}
         {valuationActionError && <p role="alert">{valuationActionError}</p>}
+        {stockDividendActionError && <p role="alert">{stockDividendActionError}</p>}
 
         {stockList && stockList.length === 0 && <p>Todavía no tienes ninguna acción.</p>}
 
@@ -3031,9 +3294,11 @@ export function WealthPage() {
               const isEditingStock = editingStockId === stock.id;
               const stockPurchases = (purchases ?? []).filter((p) => p.stockId === stock.id);
               const stockValuations = (valuations ?? []).filter((v) => v.stockId === stock.id);
+              const stockDividendHistory = (stockDividendList ?? []).filter((d) => d.stockId === stock.id);
               const lastValuation = stockValuations[0] ?? null; // `valuations` ya viene ordenado por fecha descendente
               const newPurchaseForm = getNewPurchaseForm(stock.id);
               const newValuationForm = getNewValuationForm(stock.id);
+              const newStockDividendForm = getNewStockDividendForm(stock.id);
               const gainLoss = lastValuation
                 ? gainLossPercent(currentValue(lastValuation.pricePerShare, totalShares(stockPurchases)), totalCost(stockPurchases))
                 : null;
@@ -3099,6 +3364,8 @@ export function WealthPage() {
                         · Precio actual: {formatCurrency(lastValuation.pricePerShare)}/acción · Última fecha: {lastValuation.date}
                       </>
                     )}
+                    {' · Dividendos cobrados: '}
+                    {stockDividendHistory.length > 0 ? formatCurrency(totalDividends(stockDividendHistory)) : 'Sin dividendos'}
                   </p>
                   <div>
                     <button
@@ -3403,6 +3670,172 @@ export function WealthPage() {
                       </button>
                     </form>
                   </details>
+
+                  <details>
+                    <summary>Historial de dividendos ({stockDividendHistory.length})</summary>
+
+                    {stockDividendHistory.length === 0 && <p>Todavía no hay ningún dividendo registrado en esta acción.</p>}
+
+                    {stockDividendHistory.length > 0 && (
+                      <ul aria-label={`Historial de dividendos de ${stock.stock} · ${stock.custodyBank}`}>
+                        {stockDividendHistory.map((dividend) => {
+                          const isEditingDividend = editingStockDividendId === dividend.id;
+                          const dividendLabel = `${dividend.date} · ${dividend.netAmount}€ netos`;
+
+                          if (isEditingDividend) {
+                            return (
+                              <li key={dividend.id}>
+                                <form
+                                  onSubmit={handleEditStockDividend}
+                                  aria-label={`Editar dividendo de ${stock.stock}: ${dividendLabel}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`stock-dividend-${dividend.id}-netAmount`}>Importe neto</label>
+                                    <input
+                                      id={`stock-dividend-${dividend.id}-netAmount`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingStockDividendForm.netAmount}
+                                      onChange={(e) =>
+                                        setEditingStockDividendForm({ ...editingStockDividendForm, netAmount: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`stock-dividend-${dividend.id}-retentionPercent`}>% Retención</label>
+                                    <input
+                                      id={`stock-dividend-${dividend.id}-retentionPercent`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingStockDividendForm.retentionPercent}
+                                      onChange={(e) =>
+                                        setEditingStockDividendForm({ ...editingStockDividendForm, retentionPercent: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`stock-dividend-${dividend.id}-date`}>Fecha</label>
+                                    <input
+                                      id={`stock-dividend-${dividend.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingStockDividendForm.date}
+                                      onChange={(e) => setEditingStockDividendForm({ ...editingStockDividendForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <p className="card-meta">
+                                    Importe bruto:{' '}
+                                    {formatCurrency(
+                                      grossDividend(
+                                        editingStockDividendForm.netAmount ?? '',
+                                        editingStockDividendForm.retentionPercent ?? '',
+                                      ) || '0.00',
+                                    )}
+                                  </p>
+                                  {editStockDividendError && <p role="alert">{editStockDividendError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingStockDividend}>
+                                    {isSavingStockDividend ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingStockDividend}
+                                    onClick={() => setEditingStockDividendId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={dividend.id}>
+                              <span>{dividend.date}</span>{' '}
+                              <span>
+                                Neto: {formatCurrency(dividend.netAmount)} · Bruto:{' '}
+                                {formatCurrency(grossDividend(dividend.netAmount, dividend.retentionPercent))} ({dividend.retentionPercent}
+                                % retención)
+                              </span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar dividendo de ${stock.stock}: ${dividendLabel}`}
+                                onClick={() => startEditStockDividend(dividend)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar dividendo de ${stock.stock}: ${dividendLabel}`}
+                                disabled={pendingDeleteStockDividendId === dividend.id}
+                                onClick={() => void handleDeleteStockDividend(dividend.id)}
+                              >
+                                {pendingDeleteStockDividendId === dividend.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreateStockDividend(stock.id, e)}
+                      aria-label={`Añadir dividendo: ${stock.stock}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-stock-dividend-${stock.id}-netAmount`}>Importe neto</label>
+                        <input
+                          id={`new-stock-dividend-${stock.id}-netAmount`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newStockDividendForm.netAmount}
+                          onChange={(e) => setNewStockDividendForm(stock.id, { ...newStockDividendForm, netAmount: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-stock-dividend-${stock.id}-retentionPercent`}>% Retención</label>
+                        <input
+                          id={`new-stock-dividend-${stock.id}-retentionPercent`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newStockDividendForm.retentionPercent}
+                          onChange={(e) =>
+                            setNewStockDividendForm(stock.id, { ...newStockDividendForm, retentionPercent: e.target.value })
+                          }
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-stock-dividend-${stock.id}-date`}>Fecha</label>
+                        <input
+                          id={`new-stock-dividend-${stock.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newStockDividendForm.date}
+                          onChange={(e) => setNewStockDividendForm(stock.id, { ...newStockDividendForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <p className="card-meta">
+                        Importe bruto:{' '}
+                        {formatCurrency(
+                          grossDividend(newStockDividendForm.netAmount ?? '', newStockDividendForm.retentionPercent ?? '') || '0.00',
+                        )}
+                      </p>
+                      {createStockDividendError && <p role="alert">{createStockDividendError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingStockDividendForStockId === stock.id}>
+                        {creatingStockDividendForStockId === stock.id ? 'Añadiendo…' : 'Añadir dividendo'}
+                      </button>
+                    </form>
+                  </details>
                 </li>
               );
             })}
@@ -3486,9 +3919,11 @@ export function WealthPage() {
         {fundsLoadError && <p role="alert">{fundsLoadError}</p>}
         {fundPurchasesLoadError && <p role="alert">{fundPurchasesLoadError}</p>}
         {fundValuationsLoadError && <p role="alert">{fundValuationsLoadError}</p>}
+        {fundDividendsLoadError && <p role="alert">{fundDividendsLoadError}</p>}
         {fundActionError && <p role="alert">{fundActionError}</p>}
         {fundPurchaseActionError && <p role="alert">{fundPurchaseActionError}</p>}
         {fundValuationActionError && <p role="alert">{fundValuationActionError}</p>}
+        {fundDividendActionError && <p role="alert">{fundDividendActionError}</p>}
 
         {fundList && fundList.length === 0 && <p>Todavía no tienes ningún fondo de inversión.</p>}
 
@@ -3498,9 +3933,11 @@ export function WealthPage() {
               const isEditingFund = editingFundId === fund.id;
               const fundPurchaseHistory = (fundPurchases ?? []).filter((p) => p.fundId === fund.id);
               const fundValuationHistory = (fundValuations ?? []).filter((v) => v.fundId === fund.id);
+              const fundDividendHistory = (fundDividendList ?? []).filter((d) => d.fundId === fund.id);
               const lastValuation = fundValuationHistory[0] ?? null; // `fundValuations` ya viene ordenado por fecha descendente
               const newFundPurchaseForm = getNewFundPurchaseForm(fund.id);
               const newFundValuationForm = getNewFundValuationForm(fund.id);
+              const newFundDividendForm = getNewFundDividendForm(fund.id);
               const gainLoss = lastValuation
                 ? gainLossPercent(
                     currentValue(lastValuation.pricePerShare, totalShares(fundPurchaseHistory)),
@@ -3571,6 +4008,8 @@ export function WealthPage() {
                         · Precio actual: {formatCurrency(lastValuation.pricePerShare)}/participación · Última fecha: {lastValuation.date}
                       </>
                     )}
+                    {' · Dividendos cobrados: '}
+                    {fundDividendHistory.length > 0 ? formatCurrency(totalDividends(fundDividendHistory)) : 'Sin dividendos'}
                   </p>
                   <div>
                     <button
@@ -3881,6 +4320,172 @@ export function WealthPage() {
                       {createFundValuationError && <p role="alert">{createFundValuationError}</p>}
                       <button type="submit" className="btn btn-primary" disabled={creatingFundValuationForFundId === fund.id}>
                         {creatingFundValuationForFundId === fund.id ? 'Añadiendo…' : 'Añadir valoración'}
+                      </button>
+                    </form>
+                  </details>
+
+                  <details>
+                    <summary>Historial de dividendos ({fundDividendHistory.length})</summary>
+
+                    {fundDividendHistory.length === 0 && <p>Todavía no hay ningún dividendo registrado en este fondo.</p>}
+
+                    {fundDividendHistory.length > 0 && (
+                      <ul aria-label={`Historial de dividendos de ${fund.fund} · ${fund.custodyBank}`}>
+                        {fundDividendHistory.map((dividend) => {
+                          const isEditingDividend = editingFundDividendId === dividend.id;
+                          const dividendLabel = `${dividend.date} · ${dividend.netAmount}€ netos`;
+
+                          if (isEditingDividend) {
+                            return (
+                              <li key={dividend.id}>
+                                <form
+                                  onSubmit={handleEditFundDividend}
+                                  aria-label={`Editar dividendo de ${fund.fund}: ${dividendLabel}`}
+                                  noValidate
+                                >
+                                  <div className="field">
+                                    <label htmlFor={`fund-dividend-${dividend.id}-netAmount`}>Importe neto</label>
+                                    <input
+                                      id={`fund-dividend-${dividend.id}-netAmount`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingFundDividendForm.netAmount}
+                                      onChange={(e) =>
+                                        setEditingFundDividendForm({ ...editingFundDividendForm, netAmount: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`fund-dividend-${dividend.id}-retentionPercent`}>% Retención</label>
+                                    <input
+                                      id={`fund-dividend-${dividend.id}-retentionPercent`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingFundDividendForm.retentionPercent}
+                                      onChange={(e) =>
+                                        setEditingFundDividendForm({ ...editingFundDividendForm, retentionPercent: e.target.value })
+                                      }
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`fund-dividend-${dividend.id}-date`}>Fecha</label>
+                                    <input
+                                      id={`fund-dividend-${dividend.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingFundDividendForm.date}
+                                      onChange={(e) => setEditingFundDividendForm({ ...editingFundDividendForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <p className="card-meta">
+                                    Importe bruto:{' '}
+                                    {formatCurrency(
+                                      grossDividend(
+                                        editingFundDividendForm.netAmount ?? '',
+                                        editingFundDividendForm.retentionPercent ?? '',
+                                      ) || '0.00',
+                                    )}
+                                  </p>
+                                  {editFundDividendError && <p role="alert">{editFundDividendError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingFundDividend}>
+                                    {isSavingFundDividend ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingFundDividend}
+                                    onClick={() => setEditingFundDividendId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={dividend.id}>
+                              <span>{dividend.date}</span>{' '}
+                              <span>
+                                Neto: {formatCurrency(dividend.netAmount)} · Bruto:{' '}
+                                {formatCurrency(grossDividend(dividend.netAmount, dividend.retentionPercent))} ({dividend.retentionPercent}
+                                % retención)
+                              </span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar dividendo de ${fund.fund}: ${dividendLabel}`}
+                                onClick={() => startEditFundDividend(dividend)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar dividendo de ${fund.fund}: ${dividendLabel}`}
+                                disabled={pendingDeleteFundDividendId === dividend.id}
+                                onClick={() => void handleDeleteFundDividend(dividend.id)}
+                              >
+                                {pendingDeleteFundDividendId === dividend.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form
+                      onSubmit={(e) => void handleCreateFundDividend(fund.id, e)}
+                      aria-label={`Añadir dividendo: ${fund.fund}`}
+                      noValidate
+                    >
+                      <div className="field">
+                        <label htmlFor={`new-fund-dividend-${fund.id}-netAmount`}>Importe neto</label>
+                        <input
+                          id={`new-fund-dividend-${fund.id}-netAmount`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newFundDividendForm.netAmount}
+                          onChange={(e) => setNewFundDividendForm(fund.id, { ...newFundDividendForm, netAmount: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-fund-dividend-${fund.id}-retentionPercent`}>% Retención</label>
+                        <input
+                          id={`new-fund-dividend-${fund.id}-retentionPercent`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newFundDividendForm.retentionPercent}
+                          onChange={(e) =>
+                            setNewFundDividendForm(fund.id, { ...newFundDividendForm, retentionPercent: e.target.value })
+                          }
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-fund-dividend-${fund.id}-date`}>Fecha</label>
+                        <input
+                          id={`new-fund-dividend-${fund.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newFundDividendForm.date}
+                          onChange={(e) => setNewFundDividendForm(fund.id, { ...newFundDividendForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <p className="card-meta">
+                        Importe bruto:{' '}
+                        {formatCurrency(
+                          grossDividend(newFundDividendForm.netAmount ?? '', newFundDividendForm.retentionPercent ?? '') || '0.00',
+                        )}
+                      </p>
+                      {createFundDividendError && <p role="alert">{createFundDividendError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingFundDividendForFundId === fund.id}>
+                        {creatingFundDividendForFundId === fund.id ? 'Añadiendo…' : 'Añadir dividendo'}
                       </button>
                     </form>
                   </details>

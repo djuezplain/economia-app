@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
-import { stockPurchases, stockValuations, stocks, users } from '../src/db/schema/index.js';
+import { stockDividends, stockPurchases, stockValuations, stocks, users } from '../src/db/schema/index.js';
 
 describe('Acciones (e2e) — spec 020 H1', () => {
   let app: INestApplication<App>;
@@ -33,6 +33,7 @@ describe('Acciones (e2e) — spec 020 H1', () => {
   });
 
   beforeEach(async () => {
+    await db.delete(stockDividends);
     await db.delete(stockValuations);
     await db.delete(stockPurchases);
     await db.delete(stocks);
@@ -184,12 +185,13 @@ describe('Acciones (e2e) — spec 020 H1', () => {
   });
 
   describe('DELETE /stocks/:id', () => {
-    it('H1 criterio 4: elimina la acción y, en cascada, sus historiales de compras y valoraciones', async () => {
+    it('H1 criterio 4: elimina la acción y, en cascada, sus historiales de compras, valoraciones y dividendos', async () => {
       const user = await createUser('eliminar@example.com');
       const token = await login(user.email);
       const [stock] = await db.insert(stocks).values({ userId: user.id, custodyBank: 'BBVA', stock: 'Inditex' }).returning();
       await db.insert(stockPurchases).values({ stockId: stock.id, shareCount: '10.0000', purchasePrice: '28.50', date: '2026-09-01' });
       await db.insert(stockValuations).values({ stockId: stock.id, pricePerShare: '350.00', date: '2026-09-01' });
+      await db.insert(stockDividends).values({ stockId: stock.id, netAmount: '40.00', date: '2026-09-01' });
 
       await request(app.getHttpServer()).delete(`/stocks/${stock.id}`).set('Authorization', auth(token)).expect(204);
 
@@ -199,6 +201,8 @@ describe('Acciones (e2e) — spec 020 H1', () => {
       expect(remainingPurchases).toHaveLength(0);
       const remainingValuations = await db.query.stockValuations.findMany({ where: (v, { eq }) => eq(v.stockId, stock.id) });
       expect(remainingValuations).toHaveLength(0);
+      const remainingDividends = await db.query.stockDividends.findMany({ where: (d, { eq }) => eq(d.stockId, stock.id) });
+      expect(remainingDividends).toHaveLength(0);
     });
 
     it('una acción ajena → 404, sin borrarla', async () => {

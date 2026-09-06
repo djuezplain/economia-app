@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
-import { fundPurchases, fundValuations, funds, users } from '../src/db/schema/index.js';
+import { fundDividends, fundPurchases, fundValuations, funds, users } from '../src/db/schema/index.js';
 
 describe('Fondos de inversión (e2e) — spec 021 H1', () => {
   let app: INestApplication<App>;
@@ -33,6 +33,7 @@ describe('Fondos de inversión (e2e) — spec 021 H1', () => {
   });
 
   beforeEach(async () => {
+    await db.delete(fundDividends);
     await db.delete(fundValuations);
     await db.delete(fundPurchases);
     await db.delete(funds);
@@ -193,7 +194,7 @@ describe('Fondos de inversión (e2e) — spec 021 H1', () => {
   });
 
   describe('DELETE /funds/:id', () => {
-    it('H1 criterio 4: elimina el fondo y, en cascada, sus historiales de compras y valoraciones', async () => {
+    it('H1 criterio 4: elimina el fondo y, en cascada, sus historiales de compras, valoraciones y dividendos', async () => {
       const user = await createUser('eliminar@example.com');
       const token = await login(user.email);
       const [fund] = await db
@@ -202,6 +203,7 @@ describe('Fondos de inversión (e2e) — spec 021 H1', () => {
         .returning();
       await db.insert(fundPurchases).values({ fundId: fund.id, shareCount: '10.0000', purchasePrice: '28.50', date: '2026-09-01' });
       await db.insert(fundValuations).values({ fundId: fund.id, pricePerShare: '35.00', date: '2026-09-01' });
+      await db.insert(fundDividends).values({ fundId: fund.id, netAmount: '20.00', date: '2026-09-01' });
 
       await request(app.getHttpServer()).delete(`/funds/${fund.id}`).set('Authorization', auth(token)).expect(204);
 
@@ -211,6 +213,8 @@ describe('Fondos de inversión (e2e) — spec 021 H1', () => {
       expect(remainingPurchases).toHaveLength(0);
       const remainingValuations = await db.query.fundValuations.findMany({ where: (v, { eq }) => eq(v.fundId, fund.id) });
       expect(remainingValuations).toHaveLength(0);
+      const remainingDividends = await db.query.fundDividends.findMany({ where: (d, { eq }) => eq(d.fundId, fund.id) });
+      expect(remainingDividends).toHaveLength(0);
     });
 
     it('un fondo ajeno → 404, sin borrarlo', async () => {
