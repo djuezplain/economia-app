@@ -1,10 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { confirmImport, previewImport } from '../api/import';
 import type { ImportConfirmResult, ImportPreviewResult, InvalidImportRow } from '../api/import';
+import {
+  getGoogleSheetConfig,
+  removeGoogleSheetConfig,
+  runGoogleSheetImportNow,
+  saveGoogleSheetConfig,
+  setGoogleSheetAutoImport,
+} from '../api/google-sheets-import';
+import type { GoogleSheetsImportConfig } from '../api/google-sheets-import';
 import { ApiError } from '../api/client';
 
 /**
@@ -25,6 +33,97 @@ export function ImportPage() {
   const [confirmResult, setConfirmResult] = useState<ImportConfirmResult | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
+
+  // H1-H3 (spec 026): configuración de la importación desde Google Sheets.
+  const [googleSheetConfig, setGoogleSheetConfig] = useState<GoogleSheetsImportConfig | null>(null);
+  const [googleSheetConfigError, setGoogleSheetConfigError] = useState<string | null>(null);
+  const [googleSheetInput, setGoogleSheetInput] = useState('');
+  const [saveGoogleSheetError, setSaveGoogleSheetError] = useState<string | null>(null);
+  const [isSavingGoogleSheet, setIsSavingGoogleSheet] = useState(false);
+  const [isRemovingGoogleSheet, setIsRemovingGoogleSheet] = useState(false);
+  const [isTogglingAutoImport, setIsTogglingAutoImport] = useState(false);
+  const [googleSheetRunResult, setGoogleSheetRunResult] = useState<ImportConfirmResult | null>(null);
+  const [runGoogleSheetError, setRunGoogleSheetError] = useState<string | null>(null);
+  const [isRunningGoogleSheetImport, setIsRunningGoogleSheetImport] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const config = await getGoogleSheetConfig();
+        if (!cancelled) setGoogleSheetConfig(config);
+      } catch (err) {
+        if (!cancelled) {
+          // Un 503 (sin credenciales de servicio en este entorno) no es un
+          // error del usuario — se trata igual que "función no disponible",
+          // sin bloquear el resto de la página de importación.
+          setGoogleSheetConfigError(
+            err instanceof ApiError ? err.message : 'No se ha podido cargar la configuración de Google Sheets.',
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  async function handleSaveGoogleSheetConfig(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaveGoogleSheetError(null);
+    setIsSavingGoogleSheet(true);
+    try {
+      const config = await saveGoogleSheetConfig(googleSheetInput);
+      setGoogleSheetConfig(config);
+      setGoogleSheetInput('');
+    } catch (err) {
+      setSaveGoogleSheetError(err instanceof ApiError ? err.message : 'No se ha podido guardar la hoja.');
+    } finally {
+      setIsSavingGoogleSheet(false);
+    }
+  }
+
+  async function handleRemoveGoogleSheetConfig() {
+    setIsRemovingGoogleSheet(true);
+    try {
+      await removeGoogleSheetConfig();
+      setGoogleSheetConfig((prev) => (prev ? { ...prev, spreadsheetId: null, autoImportEnabled: false, lastRun: null } : prev));
+      setGoogleSheetRunResult(null);
+      setRunGoogleSheetError(null);
+    } catch (err) {
+      setGoogleSheetConfigError(err instanceof ApiError ? err.message : 'No se ha podido quitar la hoja.');
+    } finally {
+      setIsRemovingGoogleSheet(false);
+    }
+  }
+
+  async function handleToggleAutoImport(enabled: boolean) {
+    setIsTogglingAutoImport(true);
+    try {
+      const config = await setGoogleSheetAutoImport(enabled);
+      setGoogleSheetConfig(config);
+    } catch (err) {
+      setGoogleSheetConfigError(err instanceof ApiError ? err.message : 'No se ha podido cambiar la importación automática.');
+    } finally {
+      setIsTogglingAutoImport(false);
+    }
+  }
+
+  async function handleRunGoogleSheetImport() {
+    setRunGoogleSheetError(null);
+    setIsRunningGoogleSheetImport(true);
+    try {
+      const result = await runGoogleSheetImportNow();
+      setGoogleSheetRunResult(result);
+      const config = await getGoogleSheetConfig();
+      setGoogleSheetConfig(config);
+    } catch (err) {
+      setRunGoogleSheetError(err instanceof ApiError ? err.message : 'No se ha podido importar desde Google Sheets.');
+    } finally {
+      setIsRunningGoogleSheetImport(false);
+    }
+  }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     // Un fichero nuevo invalida cualquier vista previa/resultado anterior —
@@ -173,31 +272,126 @@ export function ImportPage() {
       {confirmResult && (
         <section>
           <h2>Importación completada</h2>
-          <ul>
-            <li>
-              Ingresos importados: {confirmResult.income.importedCount} (descartados: {confirmResult.income.invalid.length},
-              ya registrados: {confirmResult.income.skippedDuplicateCount})
-            </li>
-            <li>
-              Gastos importados: {confirmResult.expense.importedCount} (descartados: {confirmResult.expense.invalid.length},
-              ya registrados: {confirmResult.expense.skippedDuplicateCount})
-            </li>
-          </ul>
-
-          {confirmResult.categoriesCreated.length > 0 && (
-            <p>Categorías nuevas creadas: {confirmResult.categoriesCreated.join(', ')}.</p>
-          )}
-
-          <InvalidRowsTable title="Ingresos descartados" rows={confirmResult.income.invalid} />
-          <InvalidRowsTable title="Gastos descartados" rows={confirmResult.expense.invalid} />
-
+          <ImportResultSummary result={confirmResult} />
           <p>
             <Link to="/movements">Ver movimientos</Link> · <Link to="/dashboard">Ver dashboard</Link>
           </p>
         </section>
       )}
+
+      <section>
+        <h2>Importar desde Google Sheets</h2>
+        <p>
+          Configura tu Google Sheet una vez y trae desde ahí tus ingresos y gastos, con las mismas hojas y columnas
+          que el Excel — a mano cuando quieras, o automáticamente cada 4 horas.
+        </p>
+
+        {googleSheetConfigError && <p role="alert">{googleSheetConfigError}</p>}
+
+        {googleSheetConfig && !googleSheetConfig.spreadsheetId && (
+          <form onSubmit={(e) => void handleSaveGoogleSheetConfig(e)} aria-label="Configurar Google Sheet" noValidate>
+            <div className="field">
+              <label htmlFor="google-sheet-input">URL o ID de tu Google Sheet</label>
+              <input
+                id="google-sheet-input"
+                className="input"
+                value={googleSheetInput}
+                onChange={(e) => setGoogleSheetInput(e.target.value)}
+                required
+              />
+            </div>
+            <p>
+              Antes de guardar, comparte tu hoja (permiso de Lector) con{' '}
+              <strong>{googleSheetConfig.serviceAccountEmail}</strong>.
+            </p>
+            {saveGoogleSheetError && <p role="alert">{saveGoogleSheetError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={isSavingGoogleSheet}>
+              {isSavingGoogleSheet ? 'Comprobando acceso…' : 'Guardar hoja'}
+            </button>
+          </form>
+        )}
+
+        {googleSheetConfig && googleSheetConfig.spreadsheetId && (
+          <div>
+            <p>
+              Hoja configurada: <code>{googleSheetConfig.spreadsheetId}</code>
+            </p>
+
+            <div className="field">
+              <label htmlFor="google-sheet-auto-import">
+                <input
+                  id="google-sheet-auto-import"
+                  type="checkbox"
+                  checked={googleSheetConfig.autoImportEnabled}
+                  disabled={isTogglingAutoImport}
+                  onChange={(e) => void handleToggleAutoImport(e.target.checked)}
+                />{' '}
+                Importar automáticamente cada 4 horas
+              </label>
+            </div>
+
+            {runGoogleSheetError && <p role="alert">{runGoogleSheetError}</p>}
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={isRunningGoogleSheetImport}
+              onClick={() => void handleRunGoogleSheetImport()}
+            >
+              {isRunningGoogleSheetImport ? 'Importando…' : 'Importar ahora'}
+            </button>{' '}
+            <button type="button" className="btn btn-ghost" disabled={isRemovingGoogleSheet} onClick={() => void handleRemoveGoogleSheetConfig()}>
+              {isRemovingGoogleSheet ? 'Quitando…' : 'Quitar hoja'}
+            </button>
+
+            {googleSheetRunResult && (
+              <div>
+                <h3>Resultado de la última importación</h3>
+                <ImportResultSummary result={googleSheetRunResult} />
+              </div>
+            )}
+
+            {!googleSheetRunResult && googleSheetConfig.lastRun && (
+              <div>
+                <h3>Última ejecución ({formatDateTime(googleSheetConfig.lastRun.at)})</h3>
+                {googleSheetConfig.lastRun.error ? (
+                  <p role="alert">{googleSheetConfig.lastRun.error}</p>
+                ) : (
+                  googleSheetConfig.lastRun.result && <ImportResultSummary result={googleSheetConfig.lastRun.result} />
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </main>
   );
+}
+
+function ImportResultSummary({ result }: { result: ImportConfirmResult }) {
+  return (
+    <>
+      <ul>
+        <li>
+          Ingresos importados: {result.income.importedCount} (descartados: {result.income.invalid.length}, ya
+          registrados: {result.income.skippedDuplicateCount})
+        </li>
+        <li>
+          Gastos importados: {result.expense.importedCount} (descartados: {result.expense.invalid.length}, ya
+          registrados: {result.expense.skippedDuplicateCount})
+        </li>
+      </ul>
+
+      {result.categoriesCreated.length > 0 && <p>Categorías nuevas creadas: {result.categoriesCreated.join(', ')}.</p>}
+
+      <InvalidRowsTable title="Ingresos descartados" rows={result.income.invalid} />
+      <InvalidRowsTable title="Gastos descartados" rows={result.expense.invalid} />
+    </>
+  );
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('es-ES');
 }
 
 function InvalidRowsTable({ title, rows }: { title: string; rows: InvalidImportRow[] }) {

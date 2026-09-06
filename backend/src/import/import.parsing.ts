@@ -24,13 +24,16 @@ import type { PaymentMethod } from '../db/schema/transactions.schema.js';
  * una nueva con `rawCategoryName`.
  */
 
-const INCOME_SHEET_NAME = 'Ingresos';
-const EXPENSE_SHEET_NAME = 'Gastos';
+// Exportadas (spec 026, plan.md §3): `GoogleSheetsService` reutiliza
+// exactamente estos mismos nombres de pestaña y columnas para producir un
+// `ParsedWorkbook` con la misma forma que este fichero, sin duplicarlos.
+export const INCOME_SHEET_NAME = 'Ingresos';
+export const EXPENSE_SHEET_NAME = 'Gastos';
 
 // Columnas verificadas contra el fichero real (plan.md §4) — 1-based, como
 // las usa `exceljs` (`row.getCell(n)`), no letras de columna.
-const INCOME_COLS = { fecha: 7, tipo: 8, concepto: 9, valor: 10 } as const; // G, H, I, J
-const EXPENSE_COLS = {
+export const INCOME_COLS = { fecha: 7, tipo: 8, concepto: 9, valor: 10 } as const; // G, H, I, J
+export const EXPENSE_COLS = {
   fecha: 8,
   tipo: 9,
   subtipo: 10,
@@ -157,11 +160,14 @@ function extractExpenseRows(sheet: Worksheet): RawExpenseRow[] {
 // dato relleno no es "solo espacio en blanco del Excel", es una fila
 // incompleta real y debe pasar por `validateIncomeRow`/`validateExpenseRow`
 // para descartarse con su motivo (plan.md §6), no saltarse en silencio.
-function isIncomeRowBlank(raw: RawIncomeRow): boolean {
+// Exportadas (spec 026, plan.md §3): `GoogleSheetsService` las reutiliza
+// para saltar en silencio las filas vacías del margen pedido a la API de
+// Sheets, con el mismo criterio que ya aplica el Excel.
+export function isIncomeRowBlank(raw: RawIncomeRow): boolean {
   return [raw.fecha, raw.tipo, raw.concepto, raw.valor].every(isBlankCell);
 }
 
-function isExpenseRowBlank(raw: RawExpenseRow): boolean {
+export function isExpenseRowBlank(raw: RawExpenseRow): boolean {
   return [raw.fecha, raw.tipo, raw.subtipo, raw.concepto, raw.tienda, raw.valor].every(isBlankCell);
 }
 

@@ -8,8 +8,24 @@ import * as authApi from '../api/auth';
 import * as usersApi from '../api/users';
 import * as importApi from '../api/import';
 import type { ImportConfirmResult, ImportPreviewResult } from '../api/import';
+import * as googleSheetsImportApi from '../api/google-sheets-import';
+import type { GoogleSheetsImportConfig } from '../api/google-sheets-import';
 import { ApiError } from '../api/client';
 import { resetForTests } from '../offline/connectivity';
+
+const GOOGLE_SHEET_CONFIG_SIN_HOJA: GoogleSheetsImportConfig = {
+  serviceAccountEmail: 'import@economia-app.iam.gserviceaccount.com',
+  spreadsheetId: null,
+  autoImportEnabled: false,
+  lastRun: null,
+};
+
+const GOOGLE_SHEET_CONFIG_CON_HOJA: GoogleSheetsImportConfig = {
+  serviceAccountEmail: 'import@economia-app.iam.gserviceaccount.com',
+  spreadsheetId: 'hoja-abc123',
+  autoImportEnabled: false,
+  lastRun: null,
+};
 
 const PREVIEW_RESULT: ImportPreviewResult = {
   income: {
@@ -72,6 +88,7 @@ describe('ImportPage', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       hasPassword: true,
     });
+    vi.spyOn(googleSheetsImportApi, 'getGoogleSheetConfig').mockResolvedValue(GOOGLE_SHEET_CONFIG_SIN_HOJA);
   });
 
   function renderPage() {
@@ -252,5 +269,84 @@ describe('ImportPage', () => {
 
     expect(await screen.findByText('Esta página requiere conexión a internet.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Fichero .xlsx')).not.toBeInTheDocument();
+  });
+
+  describe('Importar desde Google Sheets (spec 026)', () => {
+    it('sin hoja configurada, muestra el email de la cuenta de servicio y el formulario para guardarla', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+
+      renderPage();
+
+      expect(await screen.findByText(GOOGLE_SHEET_CONFIG_SIN_HOJA.serviceAccountEmail)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Guardar hoja' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Importar ahora' })).not.toBeInTheDocument();
+    });
+
+    it('guardar una hoja válida la sustituye por el panel ya configurado', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      const saveSpy = vi.spyOn(googleSheetsImportApi, 'saveGoogleSheetConfig').mockResolvedValue(GOOGLE_SHEET_CONFIG_CON_HOJA);
+
+      renderPage();
+      await userEvent.type(await screen.findByLabelText('URL o ID de tu Google Sheet'), 'hoja-abc123');
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar hoja' }));
+
+      expect(saveSpy).toHaveBeenCalledWith('hoja-abc123');
+      expect(await screen.findByText('hoja-abc123')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Importar ahora' })).toBeInTheDocument();
+    });
+
+    it('guardar una hoja inaccesible muestra el error del backend y no cambia de panel', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(googleSheetsImportApi, 'saveGoogleSheetConfig').mockRejectedValue(
+        new ApiError(400, 'No se puede acceder a esta Google Sheet.'),
+      );
+
+      renderPage();
+      await userEvent.type(await screen.findByLabelText('URL o ID de tu Google Sheet'), 'hoja-sin-permiso');
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar hoja' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('No se puede acceder a esta Google Sheet.');
+      expect(screen.getByRole('button', { name: 'Guardar hoja' })).toBeInTheDocument();
+    });
+
+    it('con una hoja configurada, "Importar ahora" muestra el resumen de la ejecución', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(googleSheetsImportApi, 'getGoogleSheetConfig').mockResolvedValue(GOOGLE_SHEET_CONFIG_CON_HOJA);
+      const runSpy = vi.spyOn(googleSheetsImportApi, 'runGoogleSheetImportNow').mockResolvedValue(CONFIRM_RESULT);
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Importar ahora' }));
+
+      expect(runSpy).toHaveBeenCalled();
+      expect(await screen.findByRole('heading', { name: 'Resultado de la última importación' })).toBeInTheDocument();
+      expect(screen.getByText(/Ingresos importados: 2 \(descartados: 1, ya registrados: 0\)/)).toBeInTheDocument();
+    });
+
+    it('activa y desactiva la importación automática', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(googleSheetsImportApi, 'getGoogleSheetConfig').mockResolvedValue(GOOGLE_SHEET_CONFIG_CON_HOJA);
+      const toggleSpy = vi
+        .spyOn(googleSheetsImportApi, 'setGoogleSheetAutoImport')
+        .mockResolvedValue({ ...GOOGLE_SHEET_CONFIG_CON_HOJA, autoImportEnabled: true });
+
+      renderPage();
+      const checkbox = await screen.findByLabelText('Importar automáticamente cada 4 horas');
+      await userEvent.click(checkbox);
+
+      expect(toggleSpy).toHaveBeenCalledWith(true);
+      expect(await screen.findByLabelText('Importar automáticamente cada 4 horas')).toBeChecked();
+    });
+
+    it('quitar la hoja vuelve a mostrar el formulario de configuración', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(googleSheetsImportApi, 'getGoogleSheetConfig').mockResolvedValue(GOOGLE_SHEET_CONFIG_CON_HOJA);
+      const removeSpy = vi.spyOn(googleSheetsImportApi, 'removeGoogleSheetConfig').mockResolvedValue(undefined);
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Quitar hoja' }));
+
+      expect(removeSpy).toHaveBeenCalled();
+      expect(await screen.findByRole('button', { name: 'Guardar hoja' })).toBeInTheDocument();
+    });
   });
 });

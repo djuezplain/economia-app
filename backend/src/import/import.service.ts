@@ -83,7 +83,17 @@ export class ImportService {
 
   async confirm(userId: string, buffer: Buffer): Promise<ImportConfirmResult> {
     const workbook = await this.parseOrThrow(buffer);
+    return this.importWorkbook(userId, workbook);
+  }
 
+  /**
+   * Spec 026, plan.md §4: tramo común a partir de un `ParsedWorkbook` ya
+   * obtenido, extraído de `confirm()` sin cambiar su comportamiento —
+   * reutilizado también por la importación desde Google Sheets
+   * (`GoogleSheetsImportService`), que produce el `ParsedWorkbook` a partir
+   * de la API de Sheets en vez de un fichero `.xlsx`.
+   */
+  async importWorkbook(userId: string, workbook: ParsedWorkbook): Promise<ImportConfirmResult> {
     return this.db.transaction(async (tx) => {
       const existingCategories = await tx.query.categories.findMany({ where: eq(categories.userId, userId) });
       const existingTransactions = await tx.query.transactions.findMany({ where: eq(transactions.userId, userId) });
