@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { createBankAccount, deleteBankAccount, listBankAccounts, updateBankAccount } from '../api/bank-accounts';
@@ -90,11 +91,27 @@ import type { CashHolding, CashHoldingInput } from '../api/cash-holdings';
 import { createCashBalance, deleteCashBalance, listCashBalances, updateCashBalance } from '../api/cash-balances';
 import type { CashBalance, UpdateCashBalanceInput } from '../api/cash-balances';
 import { ApiError } from '../api/client';
-import { formatCurrency } from './home-shared';
+import { formatCurrency, formatDate } from './home-shared';
+import { isValidCustomRange, resolveRange, wealthEvolutionSeries } from './wealth-evolution.calculations';
+import type { CustomRange, WealthEvolutionRangeMode } from './wealth-evolution.calculations';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+// Spec 027: mismos tokens de estilo que `DashboardPage.tsx` (`CHART_TICK_STYLE`/
+// `CHART_TOOLTIP_STYLE`), duplicados aquí en vez de extraer un módulo
+// compartido — no hay todavía una tercera consumidora (plan.md §3).
+const WEALTH_CHART_TICK_STYLE = { fontFamily: 'var(--font-body)', fontSize: 12, fill: 'var(--text)' };
+const WEALTH_CHART_TOOLTIP_STYLE = { fontFamily: 'var(--font-body)', fontSize: 13 };
+const COLOR_WEALTH_TOTAL = 'var(--accent-300)';
+
+const RANGE_MODE_OPTIONS: Array<{ value: WealthEvolutionRangeMode; label: string }> = [
+  { value: 'last12Months', label: 'Últimos 12 meses' },
+  { value: 'currentYear', label: 'Año actual' },
+  { value: 'allTime', label: 'Todo el histórico' },
+  { value: 'custom', label: 'Rango personalizado' },
+];
 
 const EMPTY_ACCOUNT_FORM: BankAccountInput = { bank: '', accountNumber: '', alias: '' };
 const EMPTY_BALANCE_FORM: UpdateBankAccountBalanceInput = { euros: '', date: todayIso() };
@@ -2006,6 +2023,87 @@ export function WealthPage() {
     }
   }
 
+  // Spec 027 (Evolución del Patrimonio): estado del selector de rango (H2). `confirmedCustomRange`
+  // guarda el último rango personalizado VÁLIDO — si el usuario deja los inputs en un estado
+  // inválido, el gráfico se queda con el último rango válido en vez de desaparecer (H2 criterio 3).
+  // Declarados junto al resto de hooks, antes de los `return` condicionales de más abajo (sesión/
+  // conectividad) — los hooks de React no pueden depender de una rama condicional.
+  const [rangeMode, setRangeMode] = useState<WealthEvolutionRangeMode>('last12Months');
+  const [customStart, setCustomStart] = useState(todayIso());
+  const [customEnd, setCustomEnd] = useState(todayIso());
+  const [confirmedCustomRange, setConfirmedCustomRange] = useState<CustomRange>({ start: todayIso(), end: todayIso() });
+
+  function handleCustomRangeChange(start: string, end: string) {
+    setCustomStart(start);
+    setCustomEnd(end);
+    if (isValidCustomRange(start, end, new Date())) {
+      setConfirmedCustomRange({ start, end });
+    }
+  }
+
+  const customRangeInvalid = rangeMode === 'custom' && !isValidCustomRange(customStart, customEnd, new Date());
+
+  // Todo el histórico de las 7 categorías, tal cual ya lo carga esta página (plan.md §0) —
+  // mismos datos que alimentan `bankAccountsTotal`/`stocksTotal`/etc., con una fecha de más.
+  const wealthEvolutionData = useMemo(
+    () => ({
+      bankAccounts: accounts ?? [],
+      bankAccountBalances: balances ?? [],
+      stocks: stockList ?? [],
+      stockPurchases: purchases ?? [],
+      stockValuations: valuations ?? [],
+      funds: fundList ?? [],
+      fundPurchases: fundPurchases ?? [],
+      fundValuations: fundValuations ?? [],
+      cryptos: cryptoList ?? [],
+      cryptoPurchases: cryptoPurchaseList ?? [],
+      cryptoValuations: cryptoValuationList ?? [],
+      vehicles: vehicleList ?? [],
+      vehicleValuations: vehicleValuationList ?? [],
+      pensionPlans: pensionPlanList ?? [],
+      pensionPlanValuations: pensionPlanValuationList ?? [],
+      cashHoldings: cashHoldingList ?? [],
+      cashBalances: cashBalanceList ?? [],
+    }),
+    [
+      accounts,
+      balances,
+      stockList,
+      purchases,
+      valuations,
+      fundList,
+      fundPurchases,
+      fundValuations,
+      cryptoList,
+      cryptoPurchaseList,
+      cryptoValuationList,
+      vehicleList,
+      vehicleValuationList,
+      pensionPlanList,
+      pensionPlanValuationList,
+      cashHoldingList,
+      cashBalanceList,
+    ],
+  );
+
+  const wealthEvolutionRange = useMemo(
+    () => resolveRange(rangeMode, rangeMode === 'custom' ? confirmedCustomRange : null, wealthEvolutionData, new Date()),
+    [rangeMode, confirmedCustomRange, wealthEvolutionData],
+  );
+
+  const wealthEvolutionPoints = useMemo(
+    () =>
+      wealthEvolutionRange
+        ? wealthEvolutionSeries(wealthEvolutionData, wealthEvolutionRange.start, wealthEvolutionRange.end)
+        : [],
+    [wealthEvolutionData, wealthEvolutionRange],
+  );
+
+  // H2 criterio 4: ni el gráfico ni un rango sin ningún dato real deben verse como un gráfico
+  // vacío sin explicación — se trata igual un rango sin ningún punto que uno donde todos los
+  // puntos dan 0 (posiciones existentes pero sin ninguna valoración todavía en ese periodo).
+  const hasWealthEvolutionData = wealthEvolutionPoints.some((point) => point.total > 0);
+
   if (isAuthLoading) {
     return (
       <main>
@@ -2085,6 +2183,97 @@ export function WealthPage() {
             {formatCurrency(pensionPlansTotal(pensionPlanList, pensionPlanValuationList))} · Efectivo:{' '}
             {formatCurrency(cashTotal(cashHoldingList, cashBalanceList))}
           </p>
+        </div>
+      )}
+
+      {canShowTotal && (
+        <div className="card elev-sm" id="wealth-evolution">
+          <span className="card-title">Evolución del patrimonio</span>
+
+          <div className="field">
+            <label htmlFor="wealth-evolution-range">Periodo</label>
+            <select
+              id="wealth-evolution-range"
+              className="input"
+              value={rangeMode}
+              onChange={(e) => setRangeMode(e.target.value as WealthEvolutionRangeMode)}
+            >
+              {RANGE_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {rangeMode === 'custom' && (
+            <>
+              <div className="field">
+                <label htmlFor="wealth-evolution-custom-start">Desde</label>
+                <input
+                  id="wealth-evolution-custom-start"
+                  type="date"
+                  className="input"
+                  value={customStart}
+                  onChange={(e) => handleCustomRangeChange(e.target.value, customEnd)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="wealth-evolution-custom-end">Hasta</label>
+                <input
+                  id="wealth-evolution-custom-end"
+                  type="date"
+                  className="input"
+                  value={customEnd}
+                  onChange={(e) => handleCustomRangeChange(customStart, e.target.value)}
+                />
+              </div>
+              {customRangeInvalid && (
+                <p role="alert">La fecha de fin no puede ser anterior a la de inicio, ni posterior a hoy.</p>
+              )}
+            </>
+          )}
+
+          {hasWealthEvolutionData ? (
+            <>
+              <div style={{ width: '100%', height: 320 }}>
+                <ResponsiveContainer>
+                  <LineChart data={wealthEvolutionPoints} margin={{ left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="weekEnding" tickFormatter={formatDate} tick={WEALTH_CHART_TICK_STYLE} />
+                    <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} tick={WEALTH_CHART_TICK_STYLE} />
+                    <Tooltip
+                      contentStyle={WEALTH_CHART_TOOLTIP_STYLE}
+                      labelFormatter={(label) => formatDate(String(label))}
+                      formatter={(value) => [formatCurrency(Number(value).toFixed(2)), 'Patrimonio total']}
+                    />
+                    <Line type="monotone" dataKey="total" name="Patrimonio total" stroke={COLOR_WEALTH_TOTAL} strokeWidth={2} dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              {/* Mismo criterio que "Evolución mensual" en DashboardPage.tsx: tabla accesible con
+                  los mismos datos que el gráfico, no solo un SVG que un lector de pantalla no puede leer. */}
+              <table className="table">
+                <caption>Evolución del patrimonio (tabla)</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Semana</th>
+                    <th scope="col">Patrimonio total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {wealthEvolutionPoints.map((point) => (
+                    <tr key={point.weekEnding}>
+                      <td data-label="Semana">{point.weekEnding}</td>
+                      <td data-label="Patrimonio total">{formatCurrency(point.total.toFixed(2))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <p>No hay datos de patrimonio en este periodo.</p>
+          )}
         </div>
       )}
 

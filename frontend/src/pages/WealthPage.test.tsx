@@ -328,9 +328,13 @@ describe('WealthPage', () => {
       // Fondos Inversión: 200,00 € (10 × 20,00 €, FUND_VALUATION). Cripto: 3500,00 € (0.1 × 35000,00 €, CRYPTO_VALUATION).
       // Vehículos: 15000,00 € (VEHICLE_VALUATION). Fondo Pensiones: 1950,00 € (PENSION_PLAN_VALUATION).
       // Efectivo: 200,00 € (CASH_BALANCE). Total: 22700,00 €.
-      expect(await screen.findByText('22.700,00 €')).toBeInTheDocument();
+      // Acotado a la tarjeta "Total" (id="wealth-total-summary"): el mismo importe puede repetirse
+      // en la tabla de "Evolución del patrimonio" (spec 027) si la última semana mostrada es hoy.
+      await waitFor(() => expect(document.getElementById('wealth-total-summary')).toBeInTheDocument());
+      const totalCard = within(document.getElementById('wealth-total-summary')!);
+      expect(totalCard.getByText('22.700,00 €')).toBeInTheDocument();
       expect(
-        screen.getByText(
+        totalCard.getByText(
           'Cuentas Bancarias: 1500,00 € · Acciones: 350,00 € · Fondos Inversión: 200,00 € · Cripto: 3500,00 € · Vehículos: 15.000,00 € · Fondo Pensiones: 1950,00 € · Efectivo: 200,00 €',
         ),
       ).toBeInTheDocument();
@@ -2594,6 +2598,108 @@ describe('WealthPage', () => {
 
       await waitFor(() => expect(deleteBalanceSpy).toHaveBeenCalledWith(CASH_BALANCE.id));
       expect(deleteHoldingSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Evolución del patrimonio (spec 027)', () => {
+    function mockAllApisEmpty() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
+      vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
+      vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+    }
+
+    it('rango por defecto "Últimos 12 meses" y pinta la serie con los datos disponibles', async () => {
+      mockAllApisEmpty();
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
+
+      renderPage();
+
+      const select = await screen.findByLabelText('Periodo');
+      expect(select).toHaveValue('last12Months');
+      expect(await screen.findByRole('table', { name: 'Evolución del patrimonio (tabla)' })).toBeInTheDocument();
+      expect(screen.queryByText('No hay datos de patrimonio en este periodo.')).not.toBeInTheDocument();
+    });
+
+    it('sin ningún dato en ninguna categoría, muestra el estado vacío en vez de un gráfico en blanco', async () => {
+      mockAllApisEmpty();
+
+      renderPage();
+
+      await screen.findByLabelText('Periodo');
+      expect(screen.getByText('No hay datos de patrimonio en este periodo.')).toBeInTheDocument();
+      expect(screen.queryByRole('table', { name: 'Evolución del patrimonio (tabla)' })).not.toBeInTheDocument();
+    });
+
+    it('cambiar a "Todo el histórico" recalcula el gráfico con los datos disponibles', async () => {
+      mockAllApisEmpty();
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
+
+      renderPage();
+      const select = await screen.findByLabelText('Periodo');
+
+      await userEvent.selectOptions(select, 'allTime');
+      expect(await screen.findByRole('table', { name: 'Evolución del patrimonio (tabla)' })).toBeInTheDocument();
+    });
+
+    it('rango personalizado: elegir un modo "custom" muestra los selectores de fecha', async () => {
+      mockAllApisEmpty();
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
+
+      renderPage();
+      const select = await screen.findByLabelText('Periodo');
+      await userEvent.selectOptions(select, 'custom');
+
+      expect(await screen.findByLabelText('Desde')).toBeInTheDocument();
+      expect(screen.getByLabelText('Hasta')).toBeInTheDocument();
+    });
+
+    it('rango personalizado inválido (fin anterior a inicio) muestra un aviso y no rompe el render', async () => {
+      mockAllApisEmpty();
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
+
+      renderPage();
+      const select = await screen.findByLabelText('Periodo');
+      await userEvent.selectOptions(select, 'custom');
+
+      const startInput = await screen.findByLabelText('Desde');
+      const endInput = screen.getByLabelText('Hasta');
+      await userEvent.clear(endInput);
+      await userEvent.type(endInput, '2020-01-01');
+      await userEvent.clear(startInput);
+      await userEvent.type(startInput, '2026-01-01');
+
+      expect(
+        await screen.findByText('La fecha de fin no puede ser anterior a la de inicio, ni posterior a hoy.'),
+      ).toBeInTheDocument();
+    });
+
+    it('sin sesión activa, no se pinta ninguna parte de esta sección', async () => {
+      vi.spyOn(authApi, 'refresh').mockRejectedValue(new ApiError(401, 'No hay sesión.'));
+
+      renderPage();
+
+      await screen.findByRole('alert');
+      expect(screen.queryByLabelText('Periodo')).not.toBeInTheDocument();
     });
   });
 });
