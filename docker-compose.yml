@@ -38,6 +38,11 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?falta JWT_REFRESH_SECRET en .env}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Cuenta de servicio para la importación desde Google Sheets (spec
+      # 026) — opcional, igual que GOOGLE_CLIENT_ID/SECRET: sin rellenar,
+      # el backend responde 503 de forma controlada en esos endpoints.
+      GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL: ${GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL:-}
+      GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY: ${GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY:-}
       # `backend/src/config/env.validation.ts`: a diferencia de
       # GOOGLE_CLIENT_ID/SECRET, este campo no admite cadena vacía (solo
       # `.uri()`) — sin Google configurado da igual qué URL lleve (el
