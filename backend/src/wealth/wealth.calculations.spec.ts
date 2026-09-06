@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   currentValue,
+  grossDividend,
   purchaseValue,
   totalContributions,
   totalCost,
   totalCryptoCost,
   totalCryptoQuantity,
+  totalDividends,
   totalShares,
 } from './wealth.calculations.js';
 
@@ -111,6 +113,30 @@ describe('wealth.calculations', () => {
 
     it('sin ninguna aportación, 0', () => {
       expect(totalContributions([])).toBe('0.00');
+    });
+  });
+
+  describe('grossDividend (spec 029)', () => {
+    it('bruto = neto ÷ (1 − retención/100), con retención del 19%', () => {
+      expect(grossDividend('81.00', '19')).toBe('100.00');
+    });
+
+    it('retención 0%, bruto = neto', () => {
+      expect(grossDividend('50.00', '0')).toBe('50.00');
+    });
+
+    it('redondea a 2 decimales', () => {
+      expect(grossDividend('10.00', '33.33')).toBe('15.00');
+    });
+  });
+
+  describe('totalDividends (spec 029)', () => {
+    it('suma el importe neto de todos los dividendos', () => {
+      expect(totalDividends([{ netAmount: '81.00' }, { netAmount: '40.50' }])).toBe('121.50');
+    });
+
+    it('sin ningún dividendo, 0', () => {
+      expect(totalDividends([])).toBe('0.00');
     });
   });
 });

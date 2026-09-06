@@ -136,6 +136,36 @@ export const stockValuations = pgTable(
 );
 
 /**
+ * H1 (spec 029): historial de dividendos cobrados de una acción — tercer
+ * historial independiente, junto a compras y valoraciones (no afecta a
+ * ninguno de los dos, H1 criterio 7 de spec.md). Sin `userId` propio: el
+ * aislamiento por usuario pasa siempre por `stocks.userId`, mismo criterio
+ * que `stockPurchases`/`stockValuations`.
+ */
+export const stockDividends = pgTable(
+  'stock_dividends',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    // `onDelete: 'cascade'`: H1 criterio 4 de spec 020 ya pide que borrar la
+    // acción se lleve su historial por delante — dividendos incluidos.
+    stockId: uuid('stock_id')
+      .notNull()
+      .references(() => stocks.id, { onDelete: 'cascade' }),
+    // H1 criterio 2/3 (spec 029): importe neto cobrado, siempre positivo,
+    // hasta dos decimales — `IsMoneyAmount`, reutilizado tal cual.
+    netAmount: numeric('net_amount', { precision: 12, scale: 2 }).notNull(),
+    // % de retención, editable, 19.00 por defecto (tipo habitual en España).
+    // precision(5,2) permite hasta 999.99 aunque el rango válido
+    // (`IsRetentionPercent`) sea [0, 100).
+    retentionPercent: numeric('retention_percent', { precision: 5, scale: 2 }).notNull().default('19.00'),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('stock_dividends_stock_idx').on(table.stockId), index('stock_dividends_stock_date_idx').on(table.stockId, table.date)],
+);
+
+/**
  * H1 (spec 021): un fondo de inversión (banco custodia + fondo) es una
  * entidad única por usuario — mismo criterio que `stocks` (spec 020), del
  * que esta spec replica el modelo entero. "Mismo fondo dos veces" se valida
@@ -203,6 +233,26 @@ export const fundValuations = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('fund_valuations_fund_date_idx').on(table.fundId, table.date)],
+);
+
+/**
+ * H1 (spec 029): historial de dividendos cobrados de un fondo — mismo
+ * criterio que `stockDividends`, misma forma pero sobre `funds`/`fundId`.
+ */
+export const fundDividends = pgTable(
+  'fund_dividends',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    fundId: uuid('fund_id')
+      .notNull()
+      .references(() => funds.id, { onDelete: 'cascade' }),
+    netAmount: numeric('net_amount', { precision: 12, scale: 2 }).notNull(),
+    retentionPercent: numeric('retention_percent', { precision: 5, scale: 2 }).notNull().default('19.00'),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('fund_dividends_fund_idx').on(table.fundId), index('fund_dividends_fund_date_idx').on(table.fundId, table.date)],
 );
 
 /**
@@ -471,6 +521,7 @@ export const stocksRelations = relations(stocks, ({ one, many }) => ({
   user: one(users, { fields: [stocks.userId], references: [users.id] }),
   purchases: many(stockPurchases),
   valuations: many(stockValuations),
+  dividends: many(stockDividends),
 }));
 
 export const stockPurchasesRelations = relations(stockPurchases, ({ one }) => ({
@@ -481,10 +532,15 @@ export const stockValuationsRelations = relations(stockValuations, ({ one }) => 
   stock: one(stocks, { fields: [stockValuations.stockId], references: [stocks.id] }),
 }));
 
+export const stockDividendsRelations = relations(stockDividends, ({ one }) => ({
+  stock: one(stocks, { fields: [stockDividends.stockId], references: [stocks.id] }),
+}));
+
 export const fundsRelations = relations(funds, ({ one, many }) => ({
   user: one(users, { fields: [funds.userId], references: [users.id] }),
   purchases: many(fundPurchases),
   valuations: many(fundValuations),
+  dividends: many(fundDividends),
 }));
 
 export const fundPurchasesRelations = relations(fundPurchases, ({ one }) => ({
@@ -493,6 +549,10 @@ export const fundPurchasesRelations = relations(fundPurchases, ({ one }) => ({
 
 export const fundValuationsRelations = relations(fundValuations, ({ one }) => ({
   fund: one(funds, { fields: [fundValuations.fundId], references: [funds.id] }),
+}));
+
+export const fundDividendsRelations = relations(fundDividends, ({ one }) => ({
+  fund: one(funds, { fields: [fundDividends.fundId], references: [funds.id] }),
 }));
 
 export const cryptosRelations = relations(cryptos, ({ one, many }) => ({

@@ -48,3 +48,16 @@ export function totalCryptoCost(purchases: Array<{ quantity: string; purchasePri
 export function totalContributions(contributions: Array<{ amount: string }>): string {
   return contributions.reduce((sum, c) => sum.plus(c.amount), new Decimal(0)).toFixed(2);
 }
+
+/** H1 criterio 3 (spec 029): Bruto = Neto ÷ (1 − %Retención ÷ 100). Se calcula, no se guarda —
+ *  mismo criterio que `purchaseValue`/`currentValue`. Genérica para dividendos de acciones y fondos. */
+export function grossDividend(netAmount: string, retentionPercent: string): string {
+  return new Decimal(netAmount).dividedBy(new Decimal(1).minus(new Decimal(retentionPercent).dividedBy(100))).toFixed(2);
+}
+
+/** H2/H3 (spec 029): total neto cobrado en dividendos — de una sola posición (H2) o de toda
+ *  la cartera (H3, sumando `stockDividends` + `fundDividends`) según qué lista se le pase.
+ *  Misma forma que `totalContributions`, sobre `netAmount` en vez de `amount`. */
+export function totalDividends(dividends: Array<{ netAmount: string }>): string {
+  return dividends.reduce((sum, d) => sum.plus(d.netAmount), new Decimal(0)).toFixed(2);
+}

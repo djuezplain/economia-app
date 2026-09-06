@@ -10,12 +10,16 @@ import { StockPurchasesController } from './stock-purchases.controller.js';
 import { StockPurchasesService } from './stock-purchases.service.js';
 import { StockValuationsController } from './stock-valuations.controller.js';
 import { StockValuationsService } from './stock-valuations.service.js';
+import { StockDividendsController } from './stock-dividends.controller.js';
+import { StockDividendsService } from './stock-dividends.service.js';
 import { FundsController } from './funds.controller.js';
 import { FundsService } from './funds.service.js';
 import { FundPurchasesController } from './fund-purchases.controller.js';
 import { FundPurchasesService } from './fund-purchases.service.js';
 import { FundValuationsController } from './fund-valuations.controller.js';
 import { FundValuationsService } from './fund-valuations.service.js';
+import { FundDividendsController } from './fund-dividends.controller.js';
+import { FundDividendsService } from './fund-dividends.service.js';
 import { CryptosController } from './cryptos.controller.js';
 import { CryptosService } from './cryptos.service.js';
 import { CryptoPurchasesController } from './crypto-purchases.controller.js';
@@ -46,7 +50,9 @@ import { CashBalancesService } from './cash-balances.service.js';
  * cantidad ni precio por unidad — aportaciones y valoraciones son importes
  * directos) / spec 025 (efectivo, mismo modelo en dos niveles que spec 019
  * pero con un único campo identificativo — cierra spec 018, las 7
- * categorías quedan implementadas). `AuthGuardModule` por `AuthGuard` —
+ * categorías quedan implementadas) / spec 029 (dividendos de Acciones y
+ * Fondos Inversión, tercer historial dentro de cada posición ya existente,
+ * sin tabla ni módulo propio). `AuthGuardModule` por `AuthGuard` —
  * mismo criterio que `GoalsModule`/`CategoriesModule`. A diferencia de
  * `GoalsModule`, no importa `DashboardModule`: ningún servicio de aquí
  * reutiliza cálculos de otro módulo. `BankAccountBalancesService`/
@@ -66,9 +72,11 @@ import { CashBalancesService } from './cash-balances.service.js';
     StocksController,
     StockPurchasesController,
     StockValuationsController,
+    StockDividendsController,
     FundsController,
     FundPurchasesController,
     FundValuationsController,
+    FundDividendsController,
     CryptosController,
     CryptoPurchasesController,
     CryptoValuationsController,
@@ -86,9 +94,11 @@ import { CashBalancesService } from './cash-balances.service.js';
     StocksService,
     StockPurchasesService,
     StockValuationsService,
+    StockDividendsService,
     FundsService,
     FundPurchasesService,
     FundValuationsService,
+    FundDividendsService,
     CryptosService,
     CryptoPurchasesService,
     CryptoValuationsService,
