@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { to: '/patrimonio', end: false, label: 'Resumen Patrimonio' },
   { to: '/import', end: false, label: 'Importar Excel' },
   { to: '/goals', end: false, label: 'Objetivos y presupuestos' },
+  { to: '/backup', end: false, label: 'Copia de seguridad' },
   { to: '/profile', end: false, label: 'Tu perfil' },
   { to: '/sessions', end: false, label: 'Dispositivos y sesiones' },
 ] as const;

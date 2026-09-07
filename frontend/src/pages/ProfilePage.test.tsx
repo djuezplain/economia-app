@@ -140,42 +140,17 @@ describe('ProfilePage', () => {
     expect(logoutSpy).not.toHaveBeenCalled();
   });
 
-  describe('Mi cuenta — exportar datos (H8 criterio 1)', () => {
-    beforeEach(() => {
-      // jsdom no implementa URL.createObjectURL/revokeObjectURL (son APIs de
-      // navegador para Blob, no del estándar URL que jsdom sí cubre).
-      URL.createObjectURL = vi.fn(() => 'blob:mock-url');
-      URL.revokeObjectURL = vi.fn();
-    });
+  // Spec 032 (H1/H3): exportar/importar se mudan a `/backup` — aquí solo
+  // queda un enlace, ya no el botón ni la llamada directa a la API.
+  it('Mi cuenta enlaza a Copia de seguridad en vez de exportar directamente', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
 
-    it('exporta los datos de la cuenta al pulsar el botón', async () => {
-      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
-      vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
-      const exportSpy = vi
-        .spyOn(usersApi, 'exportAccountData')
-        .mockResolvedValue({ exportedAt: '2026-01-01T00:00:00.000Z', profile: PROFILE, economicData: {} });
+    renderPage();
+    await screen.findByLabelText('Nombre');
 
-      renderPage();
-      await screen.findByLabelText('Nombre');
-
-      await userEvent.click(screen.getByRole('button', { name: 'Exportar mis datos' }));
-
-      await waitFor(() => expect(exportSpy).toHaveBeenCalled());
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    });
-
-    it('si falla la exportación, muestra el error', async () => {
-      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
-      vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
-      vi.spyOn(usersApi, 'exportAccountData').mockRejectedValue(new ApiError(500, 'Error de servidor.'));
-
-      renderPage();
-      await screen.findByLabelText('Nombre');
-
-      await userEvent.click(screen.getByRole('button', { name: 'Exportar mis datos' }));
-
-      expect(await screen.findByRole('alert')).toHaveTextContent('Error de servidor.');
-    });
+    expect(screen.getByRole('link', { name: 'Ir a Copia de seguridad' })).toHaveAttribute('href', '/backup');
+    expect(screen.queryByRole('button', { name: 'Exportar mis datos' })).not.toBeInTheDocument();
   });
 
   describe('Mi cuenta — eliminar cuenta (H8 criterio 2)', () => {

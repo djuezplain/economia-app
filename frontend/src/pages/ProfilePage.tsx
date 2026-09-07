@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
-import { getProfile, updateProfile, changePassword, exportAccountData, deleteAccount } from '../api/users';
+import { getProfile, updateProfile, changePassword, deleteAccount } from '../api/users';
 import type { UserProfile } from '../api/users';
 import { ApiError } from '../api/client';
 import { isStrongPassword, PASSWORD_POLICY_MESSAGE } from '../validators/password';
@@ -34,10 +34,6 @@ export function ProfilePage() {
   const [passwordFormError, setPasswordFormError] = useState<string | null>(null);
   const [passwordChanged, setPasswordChanged] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-
-  // Exportar datos (H8 criterio 1).
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
 
   // Eliminar cuenta (H8 criterio 2 — panel de confirmación explícita).
   const [isDeletePanelOpen, setIsDeletePanelOpen] = useState(false);
@@ -115,29 +111,6 @@ export function ProfilePage() {
       );
     } finally {
       setIsChangingPassword(false);
-    }
-  }
-
-  async function handleExport() {
-    setExportError(null);
-    setIsExporting(true);
-    try {
-      const data = await exportAccountData();
-      // H8 criterio 1: fichero JSON descargable. Se genera en el cliente a
-      // partir de la respuesta (sin endpoint aparte para "descargar como
-      // fichero"): un Blob + un enlace temporal es suficiente y no necesita
-      // que el backend sirva `Content-Disposition`.
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `economia-app-datos-${new Date().toISOString().slice(0, 10)}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setExportError(err instanceof ApiError ? err.message : 'No se han podido exportar tus datos.');
-    } finally {
-      setIsExporting(false);
     }
   }
 
@@ -328,18 +301,15 @@ export function ProfilePage() {
           <section>
             <h2>Mi cuenta</h2>
 
+            {/* Spec 032 (H1/H3): "Exportar mis datos" se muda a su propia
+                página, junto con la importación — un único sitio, en vez de
+                mantener el mismo botón aquí también. */}
             <div className="card elev-sm">
-              <p className="card-body">Descarga una copia de todos tus datos (perfil y, cuando existan, datos económicos).</p>
-              {exportError && <p role="alert">{exportError}</p>}
-              {/* `.btn` es `inline-flex`, pero como hijo directo de `.card`
-                  (flex-column) heredaría `align-items: stretch` y ocuparía
-                  todo el ancho — se envuelve en un `<div>` (mismo patrón que
-                  los botones de acción de Categorías/Movimientos/Objetivos)
-                  para que conserve su ancho natural. */}
+              <p className="card-body">Exporta todos tus datos, o importa un fichero exportado antes, desde Copia de seguridad.</p>
               <div>
-                <button type="button" className="btn btn-secondary" disabled={isExporting} onClick={() => void handleExport()}>
-                  {isExporting ? 'Exportando…' : 'Exportar mis datos'}
-                </button>
+                <Link to="/backup" className="btn btn-secondary">
+                  Ir a Copia de seguridad
+                </Link>
               </div>
             </div>
 

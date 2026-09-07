@@ -20,6 +20,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ImportPage } from './pages/ImportPage';
 import { GoalsPage } from './pages/GoalsPage';
 import { WealthPage } from './pages/WealthPage';
+import { BackupPage } from './pages/BackupPage';
 
 function App() {
   return (
@@ -43,6 +44,7 @@ function App() {
             <Route path="/patrimonio" element={<WealthPage />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/goals" element={<GoalsPage />} />
+            <Route path="/backup" element={<BackupPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/sessions" element={<SessionsPage />} />
           </Route>

@@ -1,9 +1,36 @@
 import { BadRequestException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import * as argon2 from 'argon2';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
-import { categories, transactions, users } from '../db/schema/index.js';
+import {
+  bankAccountBalances,
+  bankAccounts,
+  cashBalances,
+  cashHoldings,
+  categories,
+  cryptoPurchases,
+  cryptoValuations,
+  cryptos,
+  expenseBudgets,
+  fundDividends,
+  fundPurchases,
+  fundValuations,
+  funds,
+  pensionPlanContributions,
+  pensionPlanValuations,
+  pensionPlans,
+  savingsGoals,
+  stockDividends,
+  stockPurchases,
+  stockSales,
+  stockValuations,
+  stocks,
+  transactions,
+  users,
+  vehicleValuations,
+  vehicles,
+} from '../db/schema/index.js';
 import { SessionsService } from '../auth/sessions.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { accountDeletedEmail } from '../mail/templates.js';
@@ -11,6 +38,8 @@ import { AuditLogService } from '../audit/audit-log.service.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { DeleteAccountDto } from './dto/delete-account.dto.js';
+import { EXPORT_FORMAT_VERSION } from '../data-export/account-export.types.js';
+import type { EconomicData } from '../data-export/account-export.types.js';
 
 export interface UserProfile {
   id: string;
@@ -29,9 +58,6 @@ export interface UserProfile {
   hasPassword: boolean;
 }
 
-type CategoryRow = typeof categories.$inferSelect;
-type TransactionRow = typeof transactions.$inferSelect;
-
 /**
  * H8 (spec 001), criterio 1. Desde la spec 002 (T2.2), `economicData`
  * incluye las categorías y movimientos reales del usuario — hasta entonces
@@ -39,14 +65,18 @@ type TransactionRow = typeof transactions.$inferSelect;
  * Se avisó a Diego de este cambio al revisar `spec.md` de la 002, pero no
  * quedó anotado como tarea en `plan.md`: hueco encontrado al desglosar
  * `tasks.md`, corregido aquí (T2.2), no un cambio de alcance nuevo.
+ *
+ * Spec 032 (plan.md §2) amplía `economicData` de 2 a las 24 tablas de datos
+ * económicos que existen hoy (specs 019-031 habían quedado fuera) y añade
+ * `formatVersion` — este mismo endpoint (`GET /users/me/export`) pasa a
+ * servir a la vez para la obligación RGPD (H8) y como copia de seguridad
+ * completa que `data-import/` sabe restaurar.
  */
 export interface AccountExport {
+  formatVersion: typeof EXPORT_FORMAT_VERSION;
   exportedAt: string;
   profile: UserProfile;
-  economicData: {
-    categories: CategoryRow[];
-    transactions: TransactionRow[];
-  };
+  economicData: EconomicData;
 }
 
 type UserRow = typeof users.$inferSelect;
@@ -127,17 +157,119 @@ export class UsersService {
     return { message: 'Contraseña actualizada correctamente.' };
   }
 
-  /** H8, criterio 1. Ver la nota de `AccountExport` — categorías y movimientos reales del usuario (spec 002, T2.2). */
+  /**
+   * H8, criterio 1 / spec 032 H1. Ver la nota de `AccountExport` — las 24
+   * tablas de datos económicos del usuario (spec 032, plan.md §2). Las
+   * tablas raíz (con `userId` propio) se filtran directamente; las tablas
+   * hijas (sin `userId` propio, aislamiento normalizado vía su padre, igual
+   * que en el resto de la app) se filtran con `inArray(<fk>, idsDelPadre)`.
+   */
   async exportData(userId: string): Promise<AccountExport> {
     const user = await this.findOrThrow(userId);
-    const [userCategories, userTransactions] = await Promise.all([
+
+    const [
+      userCategories,
+      userTransactions,
+      userSavingsGoals,
+      userExpenseBudgets,
+      userBankAccounts,
+      userStocks,
+      userFunds,
+      userCryptos,
+      userVehicles,
+      userPensionPlans,
+      userCashHoldings,
+    ] = await Promise.all([
       this.db.query.categories.findMany({ where: eq(categories.userId, userId) }),
       this.db.query.transactions.findMany({ where: eq(transactions.userId, userId) }),
+      this.db.query.savingsGoals.findMany({ where: eq(savingsGoals.userId, userId) }),
+      this.db.query.expenseBudgets.findMany({ where: eq(expenseBudgets.userId, userId) }),
+      this.db.query.bankAccounts.findMany({ where: eq(bankAccounts.userId, userId) }),
+      this.db.query.stocks.findMany({ where: eq(stocks.userId, userId) }),
+      this.db.query.funds.findMany({ where: eq(funds.userId, userId) }),
+      this.db.query.cryptos.findMany({ where: eq(cryptos.userId, userId) }),
+      this.db.query.vehicles.findMany({ where: eq(vehicles.userId, userId) }),
+      this.db.query.pensionPlans.findMany({ where: eq(pensionPlans.userId, userId) }),
+      this.db.query.cashHoldings.findMany({ where: eq(cashHoldings.userId, userId) }),
     ]);
+
+    const bankAccountIds = userBankAccounts.map((a) => a.id);
+    const stockIds = userStocks.map((s) => s.id);
+    const fundIds = userFunds.map((f) => f.id);
+    const cryptoIds = userCryptos.map((c) => c.id);
+    const vehicleIds = userVehicles.map((v) => v.id);
+    const pensionPlanIds = userPensionPlans.map((p) => p.id);
+    const cashHoldingIds = userCashHoldings.map((h) => h.id);
+
+    const [
+      userBankAccountBalances,
+      userStockPurchases,
+      userStockSales,
+      userStockValuations,
+      userStockDividends,
+      userFundPurchases,
+      userFundValuations,
+      userFundDividends,
+      userCryptoPurchases,
+      userCryptoValuations,
+      userVehicleValuations,
+      userPensionPlanContributions,
+      userPensionPlanValuations,
+      userCashBalances,
+    ] = await Promise.all([
+      bankAccountIds.length
+        ? this.db.query.bankAccountBalances.findMany({ where: inArray(bankAccountBalances.bankAccountId, bankAccountIds) })
+        : [],
+      stockIds.length ? this.db.query.stockPurchases.findMany({ where: inArray(stockPurchases.stockId, stockIds) }) : [],
+      stockIds.length ? this.db.query.stockSales.findMany({ where: inArray(stockSales.stockId, stockIds) }) : [],
+      stockIds.length ? this.db.query.stockValuations.findMany({ where: inArray(stockValuations.stockId, stockIds) }) : [],
+      stockIds.length ? this.db.query.stockDividends.findMany({ where: inArray(stockDividends.stockId, stockIds) }) : [],
+      fundIds.length ? this.db.query.fundPurchases.findMany({ where: inArray(fundPurchases.fundId, fundIds) }) : [],
+      fundIds.length ? this.db.query.fundValuations.findMany({ where: inArray(fundValuations.fundId, fundIds) }) : [],
+      fundIds.length ? this.db.query.fundDividends.findMany({ where: inArray(fundDividends.fundId, fundIds) }) : [],
+      cryptoIds.length ? this.db.query.cryptoPurchases.findMany({ where: inArray(cryptoPurchases.cryptoId, cryptoIds) }) : [],
+      cryptoIds.length ? this.db.query.cryptoValuations.findMany({ where: inArray(cryptoValuations.cryptoId, cryptoIds) }) : [],
+      vehicleIds.length ? this.db.query.vehicleValuations.findMany({ where: inArray(vehicleValuations.vehicleId, vehicleIds) }) : [],
+      pensionPlanIds.length
+        ? this.db.query.pensionPlanContributions.findMany({ where: inArray(pensionPlanContributions.pensionPlanId, pensionPlanIds) })
+        : [],
+      pensionPlanIds.length
+        ? this.db.query.pensionPlanValuations.findMany({ where: inArray(pensionPlanValuations.pensionPlanId, pensionPlanIds) })
+        : [],
+      cashHoldingIds.length ? this.db.query.cashBalances.findMany({ where: inArray(cashBalances.cashHoldingId, cashHoldingIds) }) : [],
+    ]);
+
     return {
+      formatVersion: EXPORT_FORMAT_VERSION,
       exportedAt: new Date().toISOString(),
       profile: this.toProfile(user),
-      economicData: { categories: userCategories, transactions: userTransactions },
+      economicData: {
+        categories: userCategories,
+        transactions: userTransactions,
+        savingsGoals: userSavingsGoals,
+        expenseBudgets: userExpenseBudgets,
+        bankAccounts: userBankAccounts,
+        bankAccountBalances: userBankAccountBalances,
+        stocks: userStocks,
+        stockPurchases: userStockPurchases,
+        stockSales: userStockSales,
+        stockValuations: userStockValuations,
+        stockDividends: userStockDividends,
+        funds: userFunds,
+        fundPurchases: userFundPurchases,
+        fundValuations: userFundValuations,
+        fundDividends: userFundDividends,
+        cryptos: userCryptos,
+        cryptoPurchases: userCryptoPurchases,
+        cryptoValuations: userCryptoValuations,
+        vehicles: userVehicles,
+        vehicleValuations: userVehicleValuations,
+        pensionPlans: userPensionPlans,
+        pensionPlanContributions: userPensionPlanContributions,
+        pensionPlanValuations: userPensionPlanValuations,
+        cashHoldings: userCashHoldings,
+        cashBalances: userCashBalances,
+      },
     };
   }
 

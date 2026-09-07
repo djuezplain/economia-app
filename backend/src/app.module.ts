@@ -14,6 +14,7 @@ import { DashboardModule } from './dashboard/dashboard.module.js';
 import { ImportModule } from './import/import.module.js';
 import { GoalsModule } from './goals/goals.module.js';
 import { WealthModule } from './wealth/wealth.module.js';
+import { DataImportModule } from './data-import/data-import.module.js';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { WealthModule } from './wealth/wealth.module.js';
     ImportModule,
     GoalsModule,
     WealthModule,
+    DataImportModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],
