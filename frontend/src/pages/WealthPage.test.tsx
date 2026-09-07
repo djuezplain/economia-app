@@ -1633,6 +1633,151 @@ describe('WealthPage', () => {
     });
   });
 
+  describe('Rentabilidad con y sin dividendos (spec 030)', () => {
+    function mockOtherApis() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
+      vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
+      vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+    }
+
+    describe('H1 — título de una acción o fondo', () => {
+      it('una acción con dividendos muestra las tres rentabilidades: sin dividendos, con dividendos netos y con dividendos brutos', async () => {
+        mockOtherApis();
+        vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+        vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+        vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
+        vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([STOCK_DIVIDEND]);
+        vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
+        vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
+        vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+        vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+
+        renderPage();
+
+        const list = await screen.findByRole('list', { name: 'Tus acciones' });
+        // Coste 300,00 € (10 × 30,00 €), valor actual 350,00 € (10 × 35,00 €), dividendo 81,00 € netos / 100,00 € brutos.
+        // Sin dividendos: (350−300)/300×100 = +16.67 %. Con netos: (350+81−300)/300×100 = +43.67 %.
+        // Con brutos: (350+100−300)/300×100 = +50.00 %.
+        expect(within(list).getByText('+16.67%')).toBeInTheDocument();
+        expect(within(list).getByText(/neto \+43\.67%/)).toBeInTheDocument();
+        expect(within(list).getByText(/bruto \+50\.00%/)).toBeInTheDocument();
+      });
+
+      it('una acción sin ningún dividendo solo muestra la rentabilidad sin dividendos', async () => {
+        mockOtherApis();
+        vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+        vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+        vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
+        vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
+        vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
+        vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
+        vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+        vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+
+        renderPage();
+
+        const list = await screen.findByRole('list', { name: 'Tus acciones' });
+        expect(within(list).getByText('+16.67%')).toBeInTheDocument();
+        // Acotado a "· neto"/"· bruto" (no solo "neto"/"bruto"): el formulario "Añadir dividendo"
+        // de la misma tarjeta tiene un campo con la etiqueta "Importe neto".
+        expect(within(list).queryByText(/· neto/)).not.toBeInTheDocument();
+        expect(within(list).queryByText(/· bruto/)).not.toBeInTheDocument();
+      });
+
+      it('un fondo con dividendos muestra las tres rentabilidades, cada una con su propio signo', async () => {
+        mockOtherApis();
+        vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+        vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+        vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+        vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
+        vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+        vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
+        vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
+        // Dividendo grande y sin retención, a propósito, para que la rentabilidad "con dividendos"
+        // cruce a positivo aunque la de precio ("sin dividendos") sea negativa — H1 criterio 6.
+        vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([
+          { ...FUND_DIVIDEND, netAmount: '150.00', retentionPercent: '0.00' },
+        ]);
+
+        renderPage();
+
+        const list = await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+        // Coste 300,00 €, valor actual 200,00 € → sin dividendos: (200−300)/300×100 = -33.33 % (rojo).
+        // Con 150,00 € de dividendo (neto = bruto, 0% retención): (200+150−300)/300×100 = +16.67 % (verde), en ambas variantes.
+        const gainLossEl = within(list).getByText('-33.33%');
+        expect(gainLossEl).toHaveStyle({ color: 'var(--status-red)' });
+        const gainLossNetEl = within(list).getByText(/neto \+16\.67%/);
+        expect(gainLossNetEl).toHaveStyle({ color: 'var(--status-green)' });
+        const gainLossGrossEl = within(list).getByText(/bruto \+16\.67%/);
+        expect(gainLossGrossEl).toHaveStyle({ color: 'var(--status-green)' });
+      });
+    });
+
+    describe('H2 — "Rentabilidad por categoría" (spec 028 H5)', () => {
+      function mockAllApisFull() {
+        vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+        vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([BANK_ACCOUNT]);
+        vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
+        vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+        vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+        vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
+        vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([STOCK_DIVIDEND]);
+        vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+        vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
+        vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
+        vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([FUND_DIVIDEND]);
+        vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
+        vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
+        vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
+        vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([VEHICLE]);
+        vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([VEHICLE_VALUATION]);
+        vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([PENSION_PLAN]);
+        vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([PENSION_PLAN_CONTRIBUTION]);
+        vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([PENSION_PLAN_VALUATION]);
+        vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([CASH_HOLDING]);
+        vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([CASH_BALANCE]);
+      }
+
+      it('añade filas de "Acciones" y "Fondos Inversión" con dividendos netos/brutos cuando hay dividendos cobrados', async () => {
+        mockAllApisFull();
+
+        renderPage();
+
+        const table = await screen.findByRole('table', { name: 'Rentabilidad por categoría (tabla)' });
+        // Acciones: sin dividendos +16.7 % (ya existente); con netos (350+81−300)/300×100 = +43.7 %;
+        // con brutos (350+100−300)/300×100 = +50.0 %.
+        expect(within(table).getByText('Acciones').closest('tr')).toBeInTheDocument();
+        expect(within(table).getByText('Acciones (con dividendos netos)').closest('tr')).toHaveTextContent('+43.7 %');
+        expect(within(table).getByText('Acciones (con dividendos brutos)').closest('tr')).toHaveTextContent('+50.0 %');
+        // Fondos Inversión: sin dividendos (200−300)/300×100 = -33.3 %; con netos (200+40.50−300)/300×100 = -19.8 %;
+        // con brutos (200+50−300)/300×100 = -16.7 %.
+        expect(within(table).getByText('Fondos Inversión (con dividendos netos)').closest('tr')).toHaveTextContent('-19.8 %');
+        expect(within(table).getByText('Fondos Inversión (con dividendos brutos)').closest('tr')).toHaveTextContent('-16.7 %');
+      });
+
+      it('sin ningún dividendo cobrado, Acciones y Fondos Inversión no añaden filas extra', async () => {
+        mockAllApisFull();
+        vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
+        vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+
+        renderPage();
+
+        const table = await screen.findByRole('table', { name: 'Rentabilidad por categoría (tabla)' });
+        expect(within(table).queryByText(/con dividendos/)).not.toBeInTheDocument();
+      });
+    });
+  });
+
   describe('Cripto (spec 022)', () => {
     function mockOtherApis() {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
