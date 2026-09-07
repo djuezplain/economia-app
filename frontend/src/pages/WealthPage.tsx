@@ -479,6 +479,35 @@ function fundDividendsTotal(funds: Fund[], dividends: FundDividend[]): string {
   return totalDividends(dividends.filter((d) => fundIds.has(d.fundId)));
 }
 
+/** H1 criterio 3 (spec 030): total de dividendos brutos de una lista — suma el bruto de cada
+ *  dividendo individual (`grossDividend` por dividendo, no el bruto de la suma de netos), porque
+ *  cada uno puede tener una retención distinta. */
+function totalGrossDividends(dividends: Array<{ netAmount: string; retentionPercent: string }>): string {
+  return dividends.reduce((sum, d) => sum + parseFloat(grossDividend(d.netAmount, d.retentionPercent) || '0'), 0).toFixed(2);
+}
+
+/** H2 (spec 030, agregado): total bruto de dividendos de todas las acciones/fondos del usuario —
+ *  mismo criterio de filtrado por posición propia que `stockDividendsTotal`/`fundDividendsTotal`. */
+function stockGrossDividendsTotal(stocks: Stock[], dividends: StockDividend[]): string {
+  const stockIds = new Set(stocks.map((s) => s.id));
+  return totalGrossDividends(dividends.filter((d) => stockIds.has(d.stockId)));
+}
+
+function fundGrossDividendsTotal(funds: Fund[], dividends: FundDividend[]): string {
+  const fundIds = new Set(funds.map((f) => f.id));
+  return totalGrossDividends(dividends.filter((d) => fundIds.has(d.fundId)));
+}
+
+/** H1 criterio 2/3 (spec 030): mismo `gainLossPercent` ya existente, pero sumando un importe de
+ *  dividendos al valor actual antes de comparar con el coste — reutilizado tal cual, sin duplicar
+ *  su lógica de `null` (coste 0, importes inválidos). */
+function gainLossPercentWithDividends(currentVal: string, cost: string, dividendsTotal: string): number | null {
+  const value = parseFloat(currentVal);
+  const dividends = parseFloat(dividendsTotal);
+  if (Number.isNaN(value) || Number.isNaN(dividends)) return null;
+  return gainLossPercent((value + dividends).toFixed(2), cost);
+}
+
 /** H4 (spec 024): sexto sumando de la tarjeta "Total" — mismo criterio que `vehiclesTotal`
  *  (último valor conocido de cada posición, o 0 si no tiene ninguna valoración todavía). */
 function pensionPlansTotal(plans: PensionPlan[], valuations: PensionPlanValuation[]): string {
@@ -2509,40 +2538,81 @@ export function WealthPage() {
   // Spec 028 H5: foto de "hoy" — mismo % que ya usa cada posición individual (`gainLossPercent`),
   // agregado a nivel de categoría completa. Cuentas Bancarias/Efectivo quedan fuera (sin coste de
   // compra, H5 criterio 3); una categoría sin posiciones o con coste 0 no muestra barra (criterio 2).
+  // Spec 030 H2: Acciones y Fondos Inversión añaden hasta dos filas más (con dividendos netos/brutos)
+  // cuando la categoría tiene al menos un euro de dividendos cobrados — `pushCategoryRows` centraliza
+  // ese criterio para no repetirlo 5 veces; Cripto/Vehículos/Fondo Pensiones le pasan '0.00' de
+  // dividendos, así que nunca añaden filas extra (mismo resultado que antes de spec 030).
   const profitabilityData = useMemo(() => {
-    const rows = [
-      { category: 'Acciones', pct: gainLossPercent(stocksTotal(stockList ?? [], purchases ?? [], valuations ?? []), totalCost(purchases ?? [])) },
-      {
-        category: 'Fondos Inversión',
-        pct: gainLossPercent(fundsTotal(fundList ?? [], fundPurchases ?? [], fundValuations ?? []), totalCost(fundPurchases ?? [])),
-      },
-      {
-        category: 'Cripto',
-        pct: gainLossPercent(
-          cryptosTotal(cryptoList ?? [], cryptoPurchaseList ?? [], cryptoValuationList ?? []),
-          totalCryptoCost(cryptoPurchaseList ?? []),
-        ),
-      },
-      {
-        category: 'Vehículos',
-        pct: gainLossPercent(vehiclesTotal(vehicleList ?? [], vehicleValuationList ?? []), totalVehiclePurchasePrice(vehicleList ?? [])),
-      },
-      {
-        category: 'Fondo Pensiones',
-        pct: gainLossPercent(
-          pensionPlansTotal(pensionPlanList ?? [], pensionPlanValuationList ?? []),
-          totalContributions(pensionPlanContributionList ?? []),
-        ),
-      },
-    ];
-    return rows.filter((row): row is { category: string; pct: number } => row.pct !== null);
+    function pushCategoryRows(
+      rows: Array<{ category: string; pct: number }>,
+      label: string,
+      currentVal: string,
+      cost: string,
+      netDividends: string,
+      grossDividends: string,
+    ) {
+      const pct = gainLossPercent(currentVal, cost);
+      if (pct === null) return;
+      rows.push({ category: label, pct });
+      if (parseFloat(netDividends) > 0) {
+        const pctNet = gainLossPercentWithDividends(currentVal, cost, netDividends);
+        const pctGross = gainLossPercentWithDividends(currentVal, cost, grossDividends);
+        if (pctNet !== null) rows.push({ category: `${label} (con dividendos netos)`, pct: pctNet });
+        if (pctGross !== null) rows.push({ category: `${label} (con dividendos brutos)`, pct: pctGross });
+      }
+    }
+
+    const rows: Array<{ category: string; pct: number }> = [];
+    pushCategoryRows(
+      rows,
+      'Acciones',
+      stocksTotal(stockList ?? [], purchases ?? [], valuations ?? []),
+      totalCost(purchases ?? []),
+      stockDividendsTotal(stockList ?? [], stockDividendList ?? []),
+      stockGrossDividendsTotal(stockList ?? [], stockDividendList ?? []),
+    );
+    pushCategoryRows(
+      rows,
+      'Fondos Inversión',
+      fundsTotal(fundList ?? [], fundPurchases ?? [], fundValuations ?? []),
+      totalCost(fundPurchases ?? []),
+      fundDividendsTotal(fundList ?? [], fundDividendList ?? []),
+      fundGrossDividendsTotal(fundList ?? [], fundDividendList ?? []),
+    );
+    pushCategoryRows(
+      rows,
+      'Cripto',
+      cryptosTotal(cryptoList ?? [], cryptoPurchaseList ?? [], cryptoValuationList ?? []),
+      totalCryptoCost(cryptoPurchaseList ?? []),
+      '0.00',
+      '0.00',
+    );
+    pushCategoryRows(
+      rows,
+      'Vehículos',
+      vehiclesTotal(vehicleList ?? [], vehicleValuationList ?? []),
+      totalVehiclePurchasePrice(vehicleList ?? []),
+      '0.00',
+      '0.00',
+    );
+    pushCategoryRows(
+      rows,
+      'Fondo Pensiones',
+      pensionPlansTotal(pensionPlanList ?? [], pensionPlanValuationList ?? []),
+      totalContributions(pensionPlanContributionList ?? []),
+      '0.00',
+      '0.00',
+    );
+    return rows;
   }, [
     stockList,
     purchases,
     valuations,
+    stockDividendList,
     fundList,
     fundPurchases,
     fundValuations,
+    fundDividendList,
     cryptoList,
     cryptoPurchaseList,
     cryptoValuationList,
@@ -3302,6 +3372,23 @@ export function WealthPage() {
               const gainLoss = lastValuation
                 ? gainLossPercent(currentValue(lastValuation.pricePerShare, totalShares(stockPurchases)), totalCost(stockPurchases))
                 : null;
+              // H1 (spec 030): mismo % que `gainLoss`, sumando los dividendos cobrados (netos/brutos)
+              // al valor actual antes de comparar con el coste. `null` si `gainLoss` también lo es
+              // (coste 0 o sin valoración) — `gainLossPercentWithDividends` hereda ese mismo criterio.
+              const gainLossNet = lastValuation
+                ? gainLossPercentWithDividends(
+                    currentValue(lastValuation.pricePerShare, totalShares(stockPurchases)),
+                    totalCost(stockPurchases),
+                    totalDividends(stockDividendHistory),
+                  )
+                : null;
+              const gainLossGross = lastValuation
+                ? gainLossPercentWithDividends(
+                    currentValue(lastValuation.pricePerShare, totalShares(stockPurchases)),
+                    totalCost(stockPurchases),
+                    totalGrossDividends(stockDividendHistory),
+                  )
+                : null;
 
               if (isEditingStock) {
                 return (
@@ -3349,6 +3436,20 @@ export function WealthPage() {
                           {' '}
                           {gainLoss >= 0 ? '+' : ''}
                           {gainLoss.toFixed(2)}%
+                        </span>
+                      )}
+                      {stockDividendHistory.length > 0 && gainLossNet !== null && (
+                        <span style={{ color: gainLossNet >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                          {' '}
+                          · neto {gainLossNet >= 0 ? '+' : ''}
+                          {gainLossNet.toFixed(2)}%
+                        </span>
+                      )}
+                      {stockDividendHistory.length > 0 && gainLossGross !== null && (
+                        <span style={{ color: gainLossGross >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                          {' '}
+                          · bruto {gainLossGross >= 0 ? '+' : ''}
+                          {gainLossGross.toFixed(2)}%
                         </span>
                       )}
                     </span>
@@ -3944,6 +4045,21 @@ export function WealthPage() {
                     totalCost(fundPurchaseHistory),
                   )
                 : null;
+              // H1 (spec 030): mismo criterio que en Acciones — ver comentario junto a `gainLossNet` allí.
+              const gainLossNet = lastValuation
+                ? gainLossPercentWithDividends(
+                    currentValue(lastValuation.pricePerShare, totalShares(fundPurchaseHistory)),
+                    totalCost(fundPurchaseHistory),
+                    totalDividends(fundDividendHistory),
+                  )
+                : null;
+              const gainLossGross = lastValuation
+                ? gainLossPercentWithDividends(
+                    currentValue(lastValuation.pricePerShare, totalShares(fundPurchaseHistory)),
+                    totalCost(fundPurchaseHistory),
+                    totalGrossDividends(fundDividendHistory),
+                  )
+                : null;
 
               if (isEditingFund) {
                 return (
@@ -3991,6 +4107,20 @@ export function WealthPage() {
                           {' '}
                           {gainLoss >= 0 ? '+' : ''}
                           {gainLoss.toFixed(2)}%
+                        </span>
+                      )}
+                      {fundDividendHistory.length > 0 && gainLossNet !== null && (
+                        <span style={{ color: gainLossNet >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                          {' '}
+                          · neto {gainLossNet >= 0 ? '+' : ''}
+                          {gainLossNet.toFixed(2)}%
+                        </span>
+                      )}
+                      {fundDividendHistory.length > 0 && gainLossGross !== null && (
+                        <span style={{ color: gainLossGross >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                          {' '}
+                          · bruto {gainLossGross >= 0 ? '+' : ''}
+                          {gainLossGross.toFixed(2)}%
                         </span>
                       )}
                     </span>
