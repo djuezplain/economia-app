@@ -10,8 +10,8 @@ import { users } from './auth.schema.js';
  * de la capa de servicio.
  */
 export interface GoogleSheetsImportRunResult {
-  income: { importedCount: number; invalid: { rowNumber: number; reason: string }[]; skippedDuplicateCount: number };
-  expense: { importedCount: number; invalid: { rowNumber: number; reason: string }[]; skippedDuplicateCount: number };
+  income: { importedCount: number; invalid: { rowNumber: number; reason: string }[]; skippedDuplicateCount: number; updatedAmountCount: number };
+  expense: { importedCount: number; invalid: { rowNumber: number; reason: string }[]; skippedDuplicateCount: number; updatedAmountCount: number };
   categoriesCreated: string[];
 }
 

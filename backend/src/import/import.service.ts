@@ -20,6 +20,8 @@ export interface ImportSideSummary {
   invalid: InvalidRow[];
   /** Spec 012 (detección de duplicados): subconjunto de las válidas que ya existen como movimiento — `validCount` no cambia de significado, sigue contando todas las válidas. */
   duplicates: InvalidRow[];
+  /** Subconjunto de las válidas que coinciden con un movimiento ya guardado en todo salvo el importe — al confirmar se actualiza el importe de ese movimiento en vez de insertar uno nuevo. */
+  updated: InvalidRow[];
 }
 
 export interface ImportPreviewResult {
@@ -30,12 +32,20 @@ export interface ImportPreviewResult {
 }
 
 export interface ImportConfirmResult {
-  income: { importedCount: number; invalid: InvalidRow[]; skippedDuplicateCount: number };
-  expense: { importedCount: number; invalid: InvalidRow[]; skippedDuplicateCount: number };
+  income: { importedCount: number; invalid: InvalidRow[]; skippedDuplicateCount: number; updatedAmountCount: number };
+  expense: { importedCount: number; invalid: InvalidRow[]; skippedDuplicateCount: number; updatedAmountCount: number };
   categoriesCreated: string[];
 }
 
 type MovementType = Category['type'];
+
+/** Fila válida que coincide con un movimiento ya guardado salvo el importe — se actualiza en vez de insertarse. */
+interface AmountUpdate {
+  rowNumber: number;
+  transactionId: string;
+  previousAmount: string;
+  newAmount: string;
+}
 
 interface ClassifiedRows {
   validIncome: ValidatedIncomeRow[];
@@ -47,6 +57,9 @@ interface ClassifiedRows {
   /** Spec 012, plan.md §3: subconjunto de `validIncome`/`validExpense` que ya existe como movimiento (mismo `InvalidRow` que las filas inválidas, con `reason` explicando el motivo). */
   duplicateIncome: InvalidRow[];
   duplicateExpense: InvalidRow[];
+  /** Filas que coinciden con un movimiento existente en todo salvo el importe: se actualiza ese movimiento, no se inserta uno nuevo ni se cuenta como duplicado. */
+  amountUpdateIncome: AmountUpdate[];
+  amountUpdateExpense: AmountUpdate[];
 }
 
 /**
@@ -75,8 +88,18 @@ export class ImportService {
     const classified = this.classify(workbook, existingCategories, existingTransactions);
 
     return {
-      income: { validCount: classified.validIncome.length, invalid: classified.invalidIncome, duplicates: classified.duplicateIncome },
-      expense: { validCount: classified.validExpense.length, invalid: classified.invalidExpense, duplicates: classified.duplicateExpense },
+      income: {
+        validCount: classified.validIncome.length,
+        invalid: classified.invalidIncome,
+        duplicates: classified.duplicateIncome,
+        updated: classified.amountUpdateIncome.map(toUpdatedInvalidRow),
+      },
+      expense: {
+        validCount: classified.validExpense.length,
+        invalid: classified.invalidExpense,
+        duplicates: classified.duplicateExpense,
+        updated: classified.amountUpdateExpense.map(toUpdatedInvalidRow),
+      },
       newCategories: Array.from(classified.missingCategories.values()),
     };
   }
@@ -119,12 +142,23 @@ export class ImportService {
       }
 
       // Spec 012, plan.md §4: las filas detectadas como duplicado (mismo
-      // `rowNumber` que `classify` ya identificó) no se insertan.
+      // `rowNumber` que `classify` ya identificó) no se insertan. Las
+      // detectadas como "mismo movimiento salvo el importe" tampoco se
+      // insertan — se actualiza el movimiento existente más abajo.
       const duplicateIncomeRowNumbers = new Set(classified.duplicateIncome.map((d) => d.rowNumber));
       const duplicateExpenseRowNumbers = new Set(classified.duplicateExpense.map((d) => d.rowNumber));
+      const amountUpdateIncomeRowNumbers = new Set(classified.amountUpdateIncome.map((u) => u.rowNumber));
+      const amountUpdateExpenseRowNumbers = new Set(classified.amountUpdateExpense.map((u) => u.rowNumber));
+
+      for (const update of classified.amountUpdateIncome) {
+        await tx.update(transactions).set({ amount: update.newAmount, updatedAt: new Date() }).where(eq(transactions.id, update.transactionId));
+      }
+      for (const update of classified.amountUpdateExpense) {
+        await tx.update(transactions).set({ amount: update.newAmount, updatedAt: new Date() }).where(eq(transactions.id, update.transactionId));
+      }
 
       const incomeValues = classified.validIncome
-        .filter((row) => !duplicateIncomeRowNumbers.has(row.rowNumber))
+        .filter((row) => !duplicateIncomeRowNumbers.has(row.rowNumber) && !amountUpdateIncomeRowNumbers.has(row.rowNumber))
         .map((row) => ({
           userId,
           type: 'INCOME' as const,
@@ -134,7 +168,7 @@ export class ImportService {
           amount: row.amount,
         }));
       const expenseValues = classified.validExpense
-        .filter((row) => !duplicateExpenseRowNumbers.has(row.rowNumber))
+        .filter((row) => !duplicateExpenseRowNumbers.has(row.rowNumber) && !amountUpdateExpenseRowNumbers.has(row.rowNumber))
         .map((row) => ({
           userId,
           type: 'EXPENSE' as const,
@@ -154,11 +188,13 @@ export class ImportService {
           importedCount: incomeValues.length,
           invalid: classified.invalidIncome,
           skippedDuplicateCount: classified.duplicateIncome.length,
+          updatedAmountCount: classified.amountUpdateIncome.length,
         },
         expense: {
           importedCount: expenseValues.length,
           invalid: classified.invalidExpense,
           skippedDuplicateCount: classified.duplicateExpense.length,
+          updatedAmountCount: classified.amountUpdateExpense.length,
         },
         categoriesCreated: Array.from(classified.missingCategories.values()),
       };
@@ -222,39 +258,75 @@ export class ImportService {
     // sigue detectando la reimportación aunque la categoría se haya
     // renombrado desde entonces.
     const existingKeys = new Set(existingTransactions.map((t) => transactionKey(t)));
+    // Mismo criterio de coincidencia que `existingKeys`, pero sin el importe
+    // — permite detectar "es el mismo movimiento, solo cambió el importe"
+    // (p. ej. una hoja de Google Sheets donde Diego corrige a mano un valor
+    // ya importado antes) en vez de tratarlo como uno nuevo. Si hubiera más
+    // de un movimiento existente con la misma clave sin importe (no debería,
+    // sería ya de por sí una colisión rara), gana el último — caso límite no
+    // crítico, ninguna fila del Excel/Sheet puede distinguir entre ellos.
+    const existingByMatchKey = new Map(existingTransactions.map((t) => [matchKeyWithoutAmount(t), t] as const));
 
     const duplicateIncome: InvalidRow[] = [];
+    const amountUpdateIncome: AmountUpdate[] = [];
     for (const row of validIncome) {
       const categoryId = incomeCategoryMap.get(row.categoryName)?.id;
       // Categoría nueva (todavía no existe) → ningún movimiento previo
-      // puede referenciarla, así que nunca es duplicado.
+      // puede referenciarla, así que nunca es duplicado ni actualización.
       if (!categoryId) continue;
-      const key = transactionKey({ type: 'INCOME', date: row.date, categoryId, concept: row.concept, amount: row.amount, merchant: null, paymentMethod: null });
-      if (existingKeys.has(key)) {
+      const fields = { type: 'INCOME' as const, date: row.date, categoryId, concept: row.concept, merchant: null, paymentMethod: null };
+      if (existingKeys.has(transactionKey({ ...fields, amount: row.amount }))) {
         duplicateIncome.push({ rowNumber: row.rowNumber, reason: `Fila ${row.rowNumber}: ya existe un movimiento igual en tu histórico.` });
+        continue;
+      }
+      const existing = existingByMatchKey.get(matchKeyWithoutAmount(fields));
+      if (existing) {
+        amountUpdateIncome.push({ rowNumber: row.rowNumber, transactionId: existing.id, previousAmount: existing.amount, newAmount: row.amount });
       }
     }
 
     const duplicateExpense: InvalidRow[] = [];
+    const amountUpdateExpense: AmountUpdate[] = [];
     for (const row of validExpense) {
       const categoryId = expenseCategoryMap.get(row.categoryName)?.id;
       if (!categoryId) continue;
-      const key = transactionKey({
-        type: 'EXPENSE',
+      const fields = {
+        type: 'EXPENSE' as const,
         date: row.date,
         categoryId,
         concept: row.concept,
-        amount: row.amount,
         merchant: row.merchant,
         paymentMethod: row.paymentMethod,
-      });
-      if (existingKeys.has(key)) {
+      };
+      if (existingKeys.has(transactionKey({ ...fields, amount: row.amount }))) {
         duplicateExpense.push({ rowNumber: row.rowNumber, reason: `Fila ${row.rowNumber}: ya existe un movimiento igual en tu histórico.` });
+        continue;
+      }
+      const existing = existingByMatchKey.get(matchKeyWithoutAmount(fields));
+      if (existing) {
+        amountUpdateExpense.push({ rowNumber: row.rowNumber, transactionId: existing.id, previousAmount: existing.amount, newAmount: row.amount });
       }
     }
 
-    return { validIncome, invalidIncome, validExpense, invalidExpense, missingCategories, duplicateIncome, duplicateExpense };
+    return {
+      validIncome,
+      invalidIncome,
+      validExpense,
+      invalidExpense,
+      missingCategories,
+      duplicateIncome,
+      duplicateExpense,
+      amountUpdateIncome,
+      amountUpdateExpense,
+    };
   }
+}
+
+function toUpdatedInvalidRow(update: AmountUpdate): InvalidRow {
+  return {
+    rowNumber: update.rowNumber,
+    reason: `Fila ${update.rowNumber}: ya existe un movimiento igual salvo el importe — se actualizaría de ${update.previousAmount} a ${update.newAmount}.`,
+  };
 }
 
 /** Spec 012, plan.md §3: clave de comparación exacta, misma forma para una fila validada (con `categoryId` ya resuelto) y para un movimiento ya guardado. */
@@ -267,7 +339,19 @@ function transactionKey(fields: {
   merchant: string | null;
   paymentMethod: string | null;
 }): string {
-  return [fields.type, fields.date, fields.categoryId, fields.concept, fields.amount, fields.merchant ?? '', fields.paymentMethod ?? ''].join('|');
+  return `${matchKeyWithoutAmount(fields)}|${fields.amount}`;
+}
+
+/** Misma clave que `transactionKey` pero sin el importe — identifica "el mismo movimiento" para decidir si una fila que no es duplicado exacto debe actualizar el importe en su lugar. */
+function matchKeyWithoutAmount(fields: {
+  type: MovementType;
+  date: string;
+  categoryId: string;
+  concept: string;
+  merchant: string | null;
+  paymentMethod: string | null;
+}): string {
+  return [fields.type, fields.date, fields.categoryId, fields.concept, fields.merchant ?? '', fields.paymentMethod ?? ''].join('|');
 }
 
 function categoryKey(type: MovementType, normalizedCategoryName: string): string {

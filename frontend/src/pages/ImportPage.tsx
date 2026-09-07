@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { confirmImport, previewImport } from '../api/import';
-import type { ImportConfirmResult, ImportPreviewResult, InvalidImportRow } from '../api/import';
+import type { ImportConfirmResult, ImportPreviewResult, ImportSideSummary, InvalidImportRow } from '../api/import';
 import {
   getGoogleSheetConfig,
   removeGoogleSheetConfig,
@@ -227,14 +227,8 @@ export function ImportPage() {
         <section>
           <h2>2. Vista previa</h2>
           <ul>
-            <li>
-              Ingresos: {preview.income.validCount} válidos ({preview.income.validCount - preview.income.duplicates.length}{' '}
-              nuevos, {preview.income.duplicates.length} ya registrados), {preview.income.invalid.length} con problemas.
-            </li>
-            <li>
-              Gastos: {preview.expense.validCount} válidos ({preview.expense.validCount - preview.expense.duplicates.length}{' '}
-              nuevos, {preview.expense.duplicates.length} ya registrados), {preview.expense.invalid.length} con problemas.
-            </li>
+            <li>{importSideSummaryLine('Ingresos', preview.income)}</li>
+            <li>{importSideSummaryLine('Gastos', preview.expense)}</li>
           </ul>
 
           {preview.newCategories.length > 0 && (
@@ -254,6 +248,11 @@ export function ImportPage() {
               filas con problemas. */}
           <InvalidRowsTable title="Ingresos ya registrados" rows={preview.income.duplicates} />
           <InvalidRowsTable title="Gastos ya registrados" rows={preview.expense.duplicates} />
+
+          {/* Mismo movimiento salvo el importe: al confirmar se actualiza el
+              importe ya guardado en vez de crear un movimiento duplicado. */}
+          <InvalidRowsTable title="Ingresos con importe a actualizar" rows={preview.income.updated} />
+          <InvalidRowsTable title="Gastos con importe a actualizar" rows={preview.expense.updated} />
 
           <InvalidRowsTable title="Ingresos con problemas" rows={preview.income.invalid} />
           <InvalidRowsTable title="Gastos con problemas" rows={preview.expense.invalid} />
@@ -368,18 +367,21 @@ export function ImportPage() {
   );
 }
 
+function importSideSummaryLine(label: string, summary: ImportSideSummary): string {
+  const newCount = summary.validCount - summary.duplicates.length - summary.updated.length;
+  return `${label}: ${summary.validCount} válidos (${newCount} nuevos, ${summary.duplicates.length} ya registrados, ${summary.updated.length} con importe distinto), ${summary.invalid.length} con problemas.`;
+}
+
+function importResultSummaryLine(label: string, side: ImportConfirmResult['income']): string {
+  return `${label} importados: ${side.importedCount} (descartados: ${side.invalid.length}, ya registrados: ${side.skippedDuplicateCount}, importe actualizado: ${side.updatedAmountCount})`;
+}
+
 function ImportResultSummary({ result }: { result: ImportConfirmResult }) {
   return (
     <>
       <ul>
-        <li>
-          Ingresos importados: {result.income.importedCount} (descartados: {result.income.invalid.length}, ya
-          registrados: {result.income.skippedDuplicateCount})
-        </li>
-        <li>
-          Gastos importados: {result.expense.importedCount} (descartados: {result.expense.invalid.length}, ya
-          registrados: {result.expense.skippedDuplicateCount})
-        </li>
+        <li>{importResultSummaryLine('Ingresos', result.income)}</li>
+        <li>{importResultSummaryLine('Gastos', result.expense)}</li>
       </ul>
 
       {result.categoriesCreated.length > 0 && <p>Categorías nuevas creadas: {result.categoriesCreated.join(', ')}.</p>}

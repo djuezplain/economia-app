@@ -32,14 +32,15 @@ const PREVIEW_RESULT: ImportPreviewResult = {
     validCount: 2,
     invalid: [{ rowNumber: 50, reason: 'Fila 50: faltan categoría, concepto y importe.' }],
     duplicates: [],
+    updated: [],
   },
-  expense: { validCount: 1, invalid: [], duplicates: [] },
+  expense: { validCount: 1, invalid: [], duplicates: [], updated: [] },
   newCategories: ['Bancos', 'Peluqueria'],
 };
 
 const PREVIEW_RESULT_SIN_PROBLEMAS: ImportPreviewResult = {
-  income: { validCount: 3, invalid: [], duplicates: [] },
-  expense: { validCount: 5, invalid: [], duplicates: [] },
+  income: { validCount: 3, invalid: [], duplicates: [], updated: [] },
+  expense: { validCount: 5, invalid: [], duplicates: [], updated: [] },
   newCategories: [],
 };
 
@@ -48,8 +49,9 @@ const PREVIEW_RESULT_CON_DUPLICADOS: ImportPreviewResult = {
     validCount: 3,
     invalid: [],
     duplicates: [{ rowNumber: 4, reason: 'Fila 4: ya existe un movimiento igual en tu histórico.' }],
+    updated: [],
   },
-  expense: { validCount: 2, invalid: [], duplicates: [] },
+  expense: { validCount: 2, invalid: [], duplicates: [], updated: [] },
   newCategories: [],
 };
 
@@ -58,14 +60,15 @@ const CONFIRM_RESULT: ImportConfirmResult = {
     importedCount: 2,
     invalid: [{ rowNumber: 50, reason: 'Fila 50: faltan categoría, concepto y importe.' }],
     skippedDuplicateCount: 0,
+    updatedAmountCount: 0,
   },
-  expense: { importedCount: 1, invalid: [], skippedDuplicateCount: 0 },
+  expense: { importedCount: 1, invalid: [], skippedDuplicateCount: 0, updatedAmountCount: 0 },
   categoriesCreated: ['Bancos', 'Peluqueria'],
 };
 
 const CONFIRM_RESULT_CON_DUPLICADOS: ImportConfirmResult = {
-  income: { importedCount: 2, invalid: [], skippedDuplicateCount: 1 },
-  expense: { importedCount: 2, invalid: [], skippedDuplicateCount: 0 },
+  income: { importedCount: 2, invalid: [], skippedDuplicateCount: 1, updatedAmountCount: 0 },
+  expense: { importedCount: 2, invalid: [], skippedDuplicateCount: 0, updatedAmountCount: 0 },
   categoriesCreated: [],
 };
 
@@ -132,8 +135,8 @@ describe('ImportPage', () => {
     await userEvent.upload(input, file);
     await userEvent.click(screen.getByRole('button', { name: 'Validar' }));
 
-    expect(await screen.findByText('Ingresos: 2 válidos (2 nuevos, 0 ya registrados), 1 con problemas.')).toBeInTheDocument();
-    expect(screen.getByText('Gastos: 1 válidos (1 nuevos, 0 ya registrados), 0 con problemas.')).toBeInTheDocument();
+    expect(await screen.findByText('Ingresos: 2 válidos (2 nuevos, 0 ya registrados, 0 con importe distinto), 1 con problemas.')).toBeInTheDocument();
+    expect(screen.getByText('Gastos: 1 válidos (1 nuevos, 0 ya registrados, 0 con importe distinto), 0 con problemas.')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Categorías nuevas que se crearían' })).toBeInTheDocument();
     expect(screen.getByText('Bancos')).toBeInTheDocument();
     expect(screen.getByText('Peluqueria')).toBeInTheDocument();
@@ -155,7 +158,7 @@ describe('ImportPage', () => {
     await userEvent.upload(await screen.findByLabelText('Fichero .xlsx'), buildXlsxFile());
     await userEvent.click(screen.getByRole('button', { name: 'Validar' }));
 
-    expect(await screen.findByText('Ingresos: 3 válidos (3 nuevos, 0 ya registrados), 0 con problemas.')).toBeInTheDocument();
+    expect(await screen.findByText('Ingresos: 3 válidos (3 nuevos, 0 ya registrados, 0 con importe distinto), 0 con problemas.')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Categorías nuevas que se crearían' })).not.toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
@@ -188,8 +191,8 @@ describe('ImportPage', () => {
 
     expect(confirmSpy).toHaveBeenCalledWith(file); // mismo fichero, no se ha vuelto a pedir
     expect(await screen.findByRole('heading', { name: 'Importación completada' })).toBeInTheDocument();
-    expect(screen.getByText(/Ingresos importados: 2 \(descartados: 1, ya registrados: 0\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Gastos importados: 1 \(descartados: 0, ya registrados: 0\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Ingresos importados: 2 \(descartados: 1, ya registrados: 0, importe actualizado: 0\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Gastos importados: 1 \(descartados: 0, ya registrados: 0, importe actualizado: 0\)/)).toBeInTheDocument();
     expect(screen.getByText(/Categorías nuevas creadas: Bancos, Peluqueria\./)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ver movimientos' })).toHaveAttribute('href', '/movements');
     expect(screen.getByRole('link', { name: 'Ver dashboard' })).toHaveAttribute('href', '/dashboard');
@@ -236,7 +239,7 @@ describe('ImportPage', () => {
     await userEvent.upload(await screen.findByLabelText('Fichero .xlsx'), buildXlsxFile());
     await userEvent.click(screen.getByRole('button', { name: 'Validar' }));
 
-    expect(await screen.findByText('Ingresos: 3 válidos (2 nuevos, 1 ya registrados), 0 con problemas.')).toBeInTheDocument();
+    expect(await screen.findByText('Ingresos: 3 válidos (2 nuevos, 1 ya registrados, 0 con importe distinto), 0 con problemas.')).toBeInTheDocument();
 
     const table = screen.getByRole('table', { name: 'Ingresos ya registrados' });
     const row = within(table).getAllByRole('row')[1];
@@ -258,7 +261,7 @@ describe('ImportPage', () => {
     await screen.findByRole('heading', { name: 'Confirmar' });
     await userEvent.click(screen.getByRole('button', { name: 'Confirmar importación' }));
 
-    expect(await screen.findByText(/Ingresos importados: 2 \(descartados: 0, ya registrados: 1\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Ingresos importados: 2 \(descartados: 0, ya registrados: 1, importe actualizado: 0\)/)).toBeInTheDocument();
   });
 
   it('sin conexión (H6, spec 011), avisa de que la página requiere conexión', async () => {
@@ -319,7 +322,7 @@ describe('ImportPage', () => {
 
       expect(runSpy).toHaveBeenCalled();
       expect(await screen.findByRole('heading', { name: 'Resultado de la última importación' })).toBeInTheDocument();
-      expect(screen.getByText(/Ingresos importados: 2 \(descartados: 1, ya registrados: 0\)/)).toBeInTheDocument();
+      expect(screen.getByText(/Ingresos importados: 2 \(descartados: 1, ya registrados: 0, importe actualizado: 0\)/)).toBeInTheDocument();
     });
 
     it('activa y desactiva la importación automática', async () => {

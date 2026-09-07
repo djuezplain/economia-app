@@ -208,6 +208,37 @@ describe('Importación de Excel (e2e) — spec 003 H1/H2', () => {
       expect(allTransactions).toHaveLength(1); // solo la que ya existía de antes
     });
 
+    // Corrección reportada por Diego: reimportar desde Google Sheets tras
+    // corregir a mano un importe ya registrado duplicaba el movimiento en
+    // vez de actualizarlo. `updated` señala en la vista previa las filas que
+    // coinciden con un movimiento existente salvo el importe.
+    it('señala en la vista previa las filas que coinciden con un movimiento existente salvo el importe', async () => {
+      const user = await createUser('preview-importe-distinto@example.com');
+      const token = await login(user.email);
+      const [category] = await db.insert(categories).values({ userId: user.id, type: 'INCOME', name: 'Otros' }).returning();
+      await db.insert(transactions).values({
+        userId: user.id,
+        type: 'INCOME',
+        date: '2026-06-01',
+        categoryId: category.id,
+        concept: 'Ya existente',
+        amount: '100.00',
+      });
+
+      const buffer = await buildWorkbookBuffer({
+        incomeRows: [
+          { fecha: new Date('2026-06-01'), tipo: 'Otros', concepto: 'Ya existente', valor: 120 }, // mismo movimiento, importe corregido
+        ],
+      });
+
+      const res = await attach('/import/excel/preview', token, buffer).expect(201);
+
+      expect(res.body.income.validCount).toBe(1);
+      expect(res.body.income.duplicates).toHaveLength(0); // no es un duplicado exacto: el importe cambió
+      expect(res.body.income.updated).toHaveLength(1);
+      expect(res.body.income.updated[0].reason).toMatch(/importe/);
+    });
+
     it('una fila cuya categoría todavía no existe nunca se marca como duplicado (caso límite 3)', async () => {
       const user = await createUser('categoria-nueva-nunca-duplicado@example.com');
       const token = await login(user.email);
@@ -349,6 +380,39 @@ describe('Importación de Excel (e2e) — spec 003 H1/H2', () => {
 
       const allTransactions = await db.query.transactions.findMany({ where: eq(transactions.userId, user.id) });
       expect(allTransactions).toHaveLength(1); // spec 012: ya no se duplica
+    });
+
+    // Corrección reportada por Diego: reimportar (típicamente desde Google
+    // Sheets, ver google-sheets-import.e2e-spec.ts) la misma fila con el
+    // importe corregido duplicaba el movimiento en vez de actualizarlo —
+    // ahora se actualiza el importe del movimiento existente.
+    it('confirmar con la misma fila pero otro importe actualiza el movimiento existente en vez de duplicarlo', async () => {
+      const user = await createUser('actualiza-importe@example.com');
+      const token = await login(user.email);
+
+      const buffer = await buildWorkbookBuffer({
+        expenseRows: [
+          { fecha: new Date('2026-04-05'), tipo: 'Tarjeta', subtipo: 'Bancos', concepto: 'Comisión', valor: 5 },
+        ],
+      });
+      const first = await attach('/import/excel/confirm', token, buffer).expect(201);
+      expect(first.body.expense.importedCount).toBe(1);
+      expect(first.body.expense.updatedAmountCount).toBe(0);
+
+      const bufferConImporteCorregido = await buildWorkbookBuffer({
+        expenseRows: [
+          { fecha: new Date('2026-04-05'), tipo: 'Tarjeta', subtipo: 'Bancos', concepto: 'Comisión', valor: 7.5 },
+        ],
+      });
+      const second = await attach('/import/excel/confirm', token, bufferConImporteCorregido).expect(201);
+
+      expect(second.body.expense.importedCount).toBe(0);
+      expect(second.body.expense.skippedDuplicateCount).toBe(0);
+      expect(second.body.expense.updatedAmountCount).toBe(1);
+
+      const allTransactions = await db.query.transactions.findMany({ where: eq(transactions.userId, user.id) });
+      expect(allTransactions).toHaveLength(1); // no duplica: actualiza el importe del mismo movimiento
+      expect(allTransactions[0].amount).toBe('7.50');
     });
 
     it('una fila con los mismos datos pero otra categoría no se detecta como duplicado (H1 criterio 1: coincidencia exacta)', async () => {
