@@ -8,7 +8,23 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
-import { auditLogs, categories, emailTokens, oauthAccounts, sessions, transactions, users } from '../src/db/schema/index.js';
+import {
+  auditLogs,
+  bankAccountBalances,
+  bankAccounts,
+  categories,
+  emailTokens,
+  oauthAccounts,
+  sessions,
+  stockDividends,
+  stockPurchases,
+  stockSales,
+  stockValuations,
+  stocks,
+  transactions,
+  users,
+} from '../src/db/schema/index.js';
+import { ECONOMIC_DATA_TABLE_ORDER } from '../src/data-export/account-export.types.js';
 import { AuthService } from '../src/auth/auth.service.js';
 
 describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
@@ -66,7 +82,7 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       await request(app.getHttpServer()).get('/users/me/export').expect(401);
     });
 
-    it('sin movimientos, devuelve el perfil con economicData vacío pero con la forma real (H8 criterio 1)', async () => {
+    it('sin datos, devuelve el perfil con las 24 tablas de economicData vacías (H8 criterio 1 / spec 032 H1)', async () => {
       const user = await createActiveUser('exportar-vacio@example.com');
       const accessToken = await login(user.email);
 
@@ -76,9 +92,13 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
         .expect(200);
 
       expect(res.body).toHaveProperty('exportedAt');
+      expect(res.body.formatVersion).toBe(1);
       expect(res.body.profile).toMatchObject({ id: user.id, email: user.email, name: 'Usuario de Prueba' });
       expect(res.body.profile).not.toHaveProperty('passwordHash');
-      expect(res.body.economicData).toEqual({ categories: [], transactions: [] });
+      expect(Object.keys(res.body.economicData).sort()).toEqual([...ECONOMIC_DATA_TABLE_ORDER].sort());
+      for (const key of ECONOMIC_DATA_TABLE_ORDER) {
+        expect(res.body.economicData[key]).toEqual([]);
+      }
     });
 
     // spec 002, T2.2: desde que existen categorías/movimientos reales (grupo
@@ -108,6 +128,43 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       expect(res.body.economicData.categories[0]).toMatchObject({ id: category.id, name: 'Nómina' });
       expect(res.body.economicData.transactions).toHaveLength(1);
       expect(res.body.economicData.transactions[0]).toMatchObject({ concept: 'Nómina agosto', amount: '2000.00' });
+    });
+
+    // Spec 032, H1 criterio 1: el export ya no se queda solo en
+    // categorías/movimientos (spec 002) — cubre también patrimonio, con
+    // todo su historial anidado (compras/ventas/valoraciones/dividendos de
+    // una acción, más una cuenta bancaria con su historial de saldos), y
+    // sigue aislado por usuario.
+    it('con patrimonio, el export incluye cuentas bancarias, acciones y todos sus historiales (spec 032 H1)', async () => {
+      const owner = await createActiveUser('exportar-patrimonio-dueno@example.com');
+      const other = await createActiveUser('exportar-patrimonio-otro@example.com');
+
+      const [account] = await db.insert(bankAccounts).values({ userId: owner.id, bank: 'Banco Ejemplo', accountNumber: 'ES00' }).returning();
+      await db.insert(bankAccountBalances).values({ bankAccountId: account.id, euros: '1000.00', date: '2026-08-01' });
+
+      const [stock] = await db.insert(stocks).values({ userId: owner.id, custodyBank: 'Broker', stock: 'ACME' }).returning();
+      await db.insert(stockPurchases).values({ stockId: stock.id, shareCount: '10', purchasePrice: '5', date: '2026-01-01' });
+      await db.insert(stockSales).values({ stockId: stock.id, shareCount: '2', salePrice: '6', date: '2026-02-01' });
+      await db.insert(stockValuations).values({ stockId: stock.id, pricePerShare: '7', date: '2026-03-01' });
+      await db.insert(stockDividends).values({ stockId: stock.id, netAmount: '10.00', date: '2026-04-01' });
+
+      const [otherStock] = await db.insert(stocks).values({ userId: other.id, custodyBank: 'Broker', stock: 'No debería salir' }).returning();
+      await db.insert(stockPurchases).values({ stockId: otherStock.id, shareCount: '1', purchasePrice: '1', date: '2026-01-01' });
+
+      const accessToken = await login(owner.email);
+      const res = await request(app.getHttpServer())
+        .get('/users/me/export')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.economicData.bankAccounts).toHaveLength(1);
+      expect(res.body.economicData.bankAccountBalances).toMatchObject([{ bankAccountId: account.id, euros: '1000.00' }]);
+      expect(res.body.economicData.stocks).toHaveLength(1);
+      expect(res.body.economicData.stocks[0]).toMatchObject({ id: stock.id, stock: 'ACME' });
+      expect(res.body.economicData.stockPurchases).toMatchObject([{ stockId: stock.id, shareCount: '10.00000000' }]);
+      expect(res.body.economicData.stockSales).toMatchObject([{ stockId: stock.id, shareCount: '2.00000000' }]);
+      expect(res.body.economicData.stockValuations).toMatchObject([{ stockId: stock.id, pricePerShare: '7.00' }]);
+      expect(res.body.economicData.stockDividends).toMatchObject([{ stockId: stock.id, netAmount: '10.00' }]);
     });
   });
 
