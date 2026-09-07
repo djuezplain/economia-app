@@ -30,9 +30,15 @@ Como usuario, quiero saber en la vista previa cuántas filas de mi fichero ya es
 ## 2. Fuera de alcance de esta spec
 
 - Detectar duplicados entre movimientos creados a mano (fuera de la importación) — esta spec solo mira la comparación entre lo que trae el fichero de Excel y lo que ya existe en la base, no entre dos movimientos manuales parecidos.
-- Cualquier forma de "fusionar" o actualizar un movimiento existente con datos ligeramente distintos de una fila del fichero (ej. mismo día/importe pero concepto reescrito) — eso no se detecta como duplicado (criterio 1 de H1 es coincidencia exacta) y se importa como fila nueva, tal cual hoy.
+- Cualquier forma de "fusionar" o actualizar un movimiento existente con datos ligeramente distintos de una fila del fichero (ej. mismo día/importe pero concepto reescrito) — eso no se detecta como duplicado (criterio 1 de H1 es coincidencia exacta) y se importa como fila nueva, tal cual hoy. **Revisado — ver nota de implementación al final de este documento**: el caso concreto de "mismo movimiento salvo el importe" sí se resuelve ahora actualizando el importe, no importando una fila nueva.
 - Opción de "importar de todos modos" un duplicado detectado — se excluye siempre, no hay forma de forzar su inserción desde la UI (si de verdad se quiere, se podría registrar a mano desde "Registrar movimiento", que no pasa por esta comprobación).
 - Deshacer una importación ya confirmada (no relacionado con esta spec, sigue sin existir).
+
+## 4. Nota de implementación posterior (corrección reportada por Diego)
+
+Diego reportó que reimportar desde Google Sheets tras corregir a mano el importe de un movimiento ya importado (misma fecha, categoría, concepto y — en gastos — comercio/forma de pago) duplicaba el movimiento en vez de actualizarlo, tal como decía §2 que pasaría. Se decidió estrechar ese punto de §2: una fila que coincide con un movimiento existente en **todo salvo el importe** ya no se importa como fila nueva — se actualiza el importe del movimiento existente. El resto de §2 sigue vigente (p. ej. concepto reescrito con el mismo importe sigue sin detectarse como el mismo movimiento).
+
+Implementación (`backend/src/import/import.service.ts`, método `classify`): la misma clave de coincidencia de H1 criterio 1, pero sin el importe, identifica el movimiento existente; si el importe difiere, `importWorkbook` hace un `UPDATE` de ese movimiento en vez de un `INSERT`. La vista previa señala estas filas por separado (`updated`, junto a `duplicates`) y el resultado de confirmar añade `updatedAmountCount` junto a `skippedDuplicateCount`.
 
 ## 3. Decisiones tomadas con Diego antes de escribir esta spec
 

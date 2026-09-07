@@ -251,6 +251,38 @@ describe('Importación desde Google Sheets (e2e) — spec 026', () => {
     expect(config?.lastRunResult).not.toBeNull();
   });
 
+  // Corrección reportada por Diego: si en la hoja ya existía la fila pero
+  // se corrige el importe (p. ej. a mano en Google Sheets), la siguiente
+  // ejecución debe actualizar el importe del movimiento ya importado, no
+  // crear uno duplicado.
+  it('POST /run con el importe de una fila ya importada corregido actualiza el movimiento en vez de duplicarlo', async () => {
+    const user = await createUser('run-importe-corregido@example.com');
+    const token = await login(user.email);
+    await request(app.getHttpServer())
+      .put('/import/google-sheet/config')
+      .set('Authorization', auth(token))
+      .send({ spreadsheetId: 'hoja-importe-corregido' })
+      .expect(200);
+    fakeGoogleSheets.fetchImpl = async () => workbookWithOneIncomeRow('Sueldo enero');
+
+    const first = await request(app.getHttpServer()).post('/import/google-sheet/run').set('Authorization', auth(token)).expect(201);
+    expect(first.body.income.importedCount).toBe(1);
+
+    fakeGoogleSheets.fetchImpl = async () => ({
+      incomeRows: [{ rowNumber: 2, fecha: '2026-01-15', tipo: 'Nómina', concepto: 'Sueldo enero', valor: '2100' }],
+      expenseRows: [],
+    });
+
+    const second = await request(app.getHttpServer()).post('/import/google-sheet/run').set('Authorization', auth(token)).expect(201);
+    expect(second.body.income.importedCount).toBe(0);
+    expect(second.body.income.skippedDuplicateCount).toBe(0);
+    expect(second.body.income.updatedAmountCount).toBe(1);
+
+    const userTransactions = await db.query.transactions.findMany({ where: eq(transactions.userId, user.id) });
+    expect(userTransactions).toHaveLength(1); // no duplica: actualiza el importe del mismo movimiento
+    expect(userTransactions[0].amount).toBe('2100.00');
+  });
+
   it('POST /run con la hoja inaccesible responde 400 y deja constancia del error', async () => {
     const user = await createUser('run-error@example.com');
     const token = await login(user.email);

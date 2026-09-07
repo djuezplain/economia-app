@@ -12,6 +12,8 @@ export interface ImportSideSummary {
   invalid: InvalidImportRow[];
   /** Spec 012 (detección de duplicados): subconjunto de las válidas que ya existen como movimiento — `validCount` no cambia de significado. */
   duplicates: InvalidImportRow[];
+  /** Subconjunto de las válidas que coinciden con un movimiento ya guardado salvo el importe — al confirmar se actualiza ese movimiento en vez de crear uno nuevo. */
+  updated: InvalidImportRow[];
 }
 
 export interface ImportPreviewResult {
@@ -22,8 +24,8 @@ export interface ImportPreviewResult {
 }
 
 export interface ImportConfirmResult {
-  income: { importedCount: number; invalid: InvalidImportRow[]; skippedDuplicateCount: number };
-  expense: { importedCount: number; invalid: InvalidImportRow[]; skippedDuplicateCount: number };
+  income: { importedCount: number; invalid: InvalidImportRow[]; skippedDuplicateCount: number; updatedAmountCount: number };
+  expense: { importedCount: number; invalid: InvalidImportRow[]; skippedDuplicateCount: number; updatedAmountCount: number };
   categoriesCreated: string[];
 }
 
