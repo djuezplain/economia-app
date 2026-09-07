@@ -1,9 +1,11 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Decimal } from 'decimal.js';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
-import { stockPurchases, stocks } from '../db/schema/index.js';
+import { stockPurchases, stockSales, stocks } from '../db/schema/index.js';
 import { StocksService } from './stocks.service.js';
+import { totalShares } from './wealth.calculations.js';
 import type { CreateStockPurchaseDto } from './dto/create-stock-purchase.dto.js';
 import type { UpdateStockPurchaseDto } from './dto/update-stock-purchase.dto.js';
 
@@ -48,7 +50,10 @@ export class StockPurchasesService {
   }
 
   async update(userId: string, id: string, dto: UpdateStockPurchaseDto): Promise<StockPurchase> {
-    await this.findOwnOrThrow(userId, id);
+    const existing = await this.findOwnOrThrow(userId, id);
+    if (dto.shareCount !== undefined) {
+      await this.assertSalesStillCovered(existing.stockId, id, dto.shareCount);
+    }
 
     const [updated] = await this.db
       .update(stockPurchases)
@@ -64,8 +69,32 @@ export class StockPurchasesService {
   }
 
   async remove(userId: string, id: string): Promise<void> {
-    await this.findOwnOrThrow(userId, id);
+    const existing = await this.findOwnOrThrow(userId, id);
+    await this.assertSalesStillCovered(existing.stockId, id, '0');
     await this.db.delete(stockPurchases).where(eq(stockPurchases.id, id));
+  }
+
+  /**
+   * H1 criterio 4 (spec 031): editar (bajando la cantidad) o eliminar una compra no puede dejar
+   * una venta ya registrada sin acciones suficientes que cubrirla. `newShareCount` es la cantidad
+   * que tendría ESTA compra tras el cambio ('0' al eliminarla, equivalente a no contarla).
+   * Salta la comprobación entera si el `stockId` no tiene ninguna venta (plan.md §2, caso común
+   * sin coste extra).
+   */
+  private async assertSalesStillCovered(stockId: string, purchaseId: string, newShareCount: string): Promise<void> {
+    const salesOfStock = await this.db.query.stockSales.findMany({ where: eq(stockSales.stockId, stockId) });
+    if (salesOfStock.length === 0) return;
+
+    const otherPurchases = await this.db.query.stockPurchases.findMany({
+      where: and(eq(stockPurchases.stockId, stockId), ne(stockPurchases.id, purchaseId)),
+    });
+    const purchasedAfterChange = new Decimal(totalShares(otherPurchases)).plus(newShareCount);
+    const sold = new Decimal(totalShares(salesOfStock));
+    if (sold.greaterThan(purchasedAfterChange)) {
+      throw new BadRequestException(
+        `No se puede aplicar este cambio: dejaría ${sold.toFixed(8)} acciones vendidas sin cubrir (solo quedarían ${purchasedAfterChange.toFixed(8)} compradas).`,
+      );
+    }
   }
 
   private async findOwnOrThrow(userId: string, id: string): Promise<StockPurchase> {

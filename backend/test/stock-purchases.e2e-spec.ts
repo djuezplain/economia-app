@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
-import { stockPurchases, stockValuations, stocks, users } from '../src/db/schema/index.js';
+import { stockPurchases, stockSales, stockValuations, stocks, users } from '../src/db/schema/index.js';
 
 describe('Historial de compras de acciones (e2e) — spec 020 H2', () => {
   let app: INestApplication<App>;
@@ -34,6 +34,7 @@ describe('Historial de compras de acciones (e2e) — spec 020 H2', () => {
 
   beforeEach(async () => {
     await db.delete(stockValuations);
+    await db.delete(stockSales);
     await db.delete(stockPurchases);
     await db.delete(stocks);
     await db.delete(users);
@@ -248,6 +249,43 @@ describe('Historial de compras de acciones (e2e) — spec 020 H2', () => {
         .send({ shareCount: '999' })
         .expect(404);
     });
+
+    it('spec 031 H1 criterio 4: bajar la cantidad sin dejar ventas sin cubrir se permite', async () => {
+      const user = await createUser('baja-sin-afectar@example.com');
+      const stock = await createStock(user.id, 'BBVA', 'Inditex');
+      const [purchase] = await db
+        .insert(stockPurchases)
+        .values({ stockId: stock.id, shareCount: '10', purchasePrice: '28.50', date: '2026-08-01' })
+        .returning();
+      await db.insert(stockSales).values({ stockId: stock.id, shareCount: '4', salePrice: '30.00', date: '2026-08-15' });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .patch(`/stock-purchases/${purchase.id}`)
+        .set('Authorization', auth(token))
+        .send({ shareCount: '5' })
+        .expect(200);
+    });
+
+    it('spec 031 H1 criterio 4: bajar la cantidad por debajo de lo ya vendido → 400, sin aplicar el cambio', async () => {
+      const user = await createUser('baja-deja-sin-cubrir@example.com');
+      const stock = await createStock(user.id, 'BBVA', 'Inditex');
+      const [purchase] = await db
+        .insert(stockPurchases)
+        .values({ stockId: stock.id, shareCount: '10', purchasePrice: '28.50', date: '2026-08-01' })
+        .returning();
+      await db.insert(stockSales).values({ stockId: stock.id, shareCount: '4', salePrice: '30.00', date: '2026-08-15' });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .patch(`/stock-purchases/${purchase.id}`)
+        .set('Authorization', auth(token))
+        .send({ shareCount: '3' })
+        .expect(400);
+
+      const stillThere = await db.query.stockPurchases.findFirst({ where: (p, { eq }) => eq(p.id, purchase.id) });
+      expect(stillThere?.shareCount).toBe('10.00000000');
+    });
   });
 
   describe('DELETE /stock-purchases/:id', () => {
@@ -283,6 +321,48 @@ describe('Historial de compras de acciones (e2e) — spec 020 H2', () => {
 
       const stillThere = await db.query.stockPurchases.findFirst({ where: (p, { eq }) => eq(p.id, purchase.id) });
       expect(stillThere).toBeDefined();
+    });
+
+    it('spec 031 H1 criterio 4: borrar una compra sin ventas se permite (caso común, sin comprobación extra)', async () => {
+      const user = await createUser('borra-sin-ventas@example.com');
+      const stock = await createStock(user.id, 'BBVA', 'Inditex');
+      const [purchase] = await db
+        .insert(stockPurchases)
+        .values({ stockId: stock.id, shareCount: '10', purchasePrice: '28.50', date: '2026-08-01' })
+        .returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer()).delete(`/stock-purchases/${purchase.id}`).set('Authorization', auth(token)).expect(204);
+    });
+
+    it('spec 031 H1 criterio 4: borrar una compra cuyas acciones ya se vendieron → 400, sin borrarla', async () => {
+      const user = await createUser('borra-deja-sin-cubrir@example.com');
+      const stock = await createStock(user.id, 'BBVA', 'Inditex');
+      const [purchase] = await db
+        .insert(stockPurchases)
+        .values({ stockId: stock.id, shareCount: '10', purchasePrice: '28.50', date: '2026-08-01' })
+        .returning();
+      await db.insert(stockSales).values({ stockId: stock.id, shareCount: '4', salePrice: '30.00', date: '2026-08-15' });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer()).delete(`/stock-purchases/${purchase.id}`).set('Authorization', auth(token)).expect(400);
+
+      const stillThere = await db.query.stockPurchases.findFirst({ where: (p, { eq }) => eq(p.id, purchase.id) });
+      expect(stillThere).toBeDefined();
+    });
+
+    it('spec 031 H1 criterio 4: borrar una compra con otra compra que sigue cubriendo la venta se permite', async () => {
+      const user = await createUser('borra-cubierta-por-otra@example.com');
+      const stock = await createStock(user.id, 'BBVA', 'Inditex');
+      const [purchaseA] = await db
+        .insert(stockPurchases)
+        .values({ stockId: stock.id, shareCount: '10', purchasePrice: '28.50', date: '2026-08-01' })
+        .returning();
+      await db.insert(stockPurchases).values({ stockId: stock.id, shareCount: '5', purchasePrice: '29.00', date: '2026-08-10' });
+      await db.insert(stockSales).values({ stockId: stock.id, shareCount: '4', salePrice: '30.00', date: '2026-08-15' });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer()).delete(`/stock-purchases/${purchaseA.id}`).set('Authorization', auth(token)).expect(204);
     });
   });
 });
