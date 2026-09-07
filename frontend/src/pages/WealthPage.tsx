@@ -37,6 +37,8 @@ import {
   updateStockPurchase,
 } from '../api/stock-purchases';
 import type { StockPurchase, UpdateStockPurchaseInput } from '../api/stock-purchases';
+import { createStockSale, deleteStockSale, listStockSales, updateStockSale } from '../api/stock-sales';
+import type { StockSale, UpdateStockSaleInput } from '../api/stock-sales';
 import {
   createStockValuation,
   deleteStockValuation,
@@ -170,6 +172,7 @@ const EMPTY_ACCOUNT_FORM: BankAccountInput = { bank: '', accountNumber: '', alia
 const EMPTY_BALANCE_FORM: UpdateBankAccountBalanceInput = { euros: '', date: todayIso() };
 const EMPTY_STOCK_FORM: StockInput = { custodyBank: '', stock: '' };
 const EMPTY_PURCHASE_FORM: UpdateStockPurchaseInput = { shareCount: '', purchasePrice: '', date: todayIso() };
+const EMPTY_STOCK_SALE_FORM: UpdateStockSaleInput = { shareCount: '', salePrice: '', date: todayIso() };
 const EMPTY_VALUATION_FORM: UpdateStockValuationInput = { pricePerShare: '', date: todayIso() };
 // H1 criterio 1 (spec 029): 19% de retención por defecto, precargado en el formulario.
 const EMPTY_STOCK_DIVIDEND_FORM: UpdateStockDividendInput = { netAmount: '', retentionPercent: '19', date: todayIso() };
@@ -243,6 +246,10 @@ function stockFormFromEntity(stock: Stock): StockInput {
 
 function purchaseFormFromEntity(purchase: StockPurchase): UpdateStockPurchaseInput {
   return { shareCount: purchase.shareCount, purchasePrice: purchase.purchasePrice, date: purchase.date };
+}
+
+function stockSaleFormFromEntity(sale: StockSale): UpdateStockSaleInput {
+  return { shareCount: sale.shareCount, salePrice: sale.salePrice, date: sale.date };
 }
 
 function valuationFormFromEntity(valuation: StockValuation): UpdateStockValuationInput {
@@ -358,6 +365,84 @@ function gainLossPercent(currentVal: string, cost: string): number | null {
   return ((value - costNum) / costNum) * 100;
 }
 
+/** H2 criterio 1/2 (spec 031): simula FIFO sobre TODOS los movimientos (compras y ventas) de una
+ *  posición de Acciones, ordenados cronológicamente (fecha; en caso de empate, compras antes que
+ *  ventas — H1 criterio 2, mismo día). Devuelve lo que queda en cartera (cantidad y coste FIFO) y
+ *  la ganancia/pérdida de cada venta individual, indexada por su id — calculado, nunca guardado,
+ *  igual que el resto de esta página. `totalShares`/`totalCost` no se tocan: siguen siendo
+ *  compras-brutas tal cual, para Fondos/Cripto (spec.md §2, "solo Acciones"). */
+function fifoPositionState(
+  purchases: Array<{ id: string; date: string; shareCount: string; purchasePrice: string; createdAt: string }>,
+  sales: Array<{ id: string; date: string; shareCount: string; salePrice: string; createdAt: string }>,
+): { heldShares: string; heldCost: string; realizedGainLossBySaleId: Record<string, string> } {
+  const events = [
+    ...purchases.map((p) => ({
+      type: 'buy' as const,
+      date: p.date,
+      createdAt: p.createdAt,
+      id: p.id,
+      qty: parseFloat(p.shareCount),
+      price: parseFloat(p.purchasePrice),
+    })),
+    ...sales.map((s) => ({
+      type: 'sell' as const,
+      date: s.date,
+      createdAt: s.createdAt,
+      id: s.id,
+      qty: parseFloat(s.shareCount),
+      price: parseFloat(s.salePrice),
+    })),
+  ].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    // Empate de fecha: compras antes que ventas (H1 criterio 2 de spec.md); dentro del mismo tipo,
+    // por `createdAt` (orden real en que se registraron) — NO por el orden del array de entrada:
+    // `purchases`/`sales` llegan ya ordenados por fecha DESCENDENTE (H2 de spec 020, "de la más
+    // reciente a la más antigua", para mostrarlos en la UI), así que usar ese orden tal cual como
+    // desempate de `Array.prototype.sort` (estable) invertía silenciosamente el FIFO en compras del
+    // mismo día — bug real, encontrado probando esta spec manualmente antes de darla por cerrada.
+    if (a.type !== b.type) return a.type === 'buy' ? -1 : 1;
+    return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
+  });
+
+  const lots: Array<{ remaining: number; price: number }> = [];
+  const realizedGainLossBySaleId: Record<string, string> = {};
+
+  for (const event of events) {
+    if (event.type === 'buy') {
+      lots.push({ remaining: event.qty, price: event.price });
+      continue;
+    }
+    let toConsume = event.qty;
+    let costBasis = 0;
+    while (toConsume > 0 && lots.length > 0) {
+      const lot = lots[0];
+      const consumed = Math.min(lot.remaining, toConsume);
+      costBasis += consumed * lot.price;
+      lot.remaining -= consumed;
+      toConsume -= consumed;
+      if (lot.remaining <= 0) lots.shift();
+    }
+    // toConsume > 0 aquí solo puede pasar con datos inconsistentes (p. ej. se borró una compra
+    // después de registrar la venta, sin pasar por la validación del backend) — el coste de lo no
+    // cubierto se trata como 0, degradando con gracia en vez de lanzar un error de renderizado.
+    realizedGainLossBySaleId[event.id] = (event.qty * event.price - costBasis).toFixed(2);
+  }
+
+  return {
+    heldShares: lots.reduce((sum, lot) => sum + lot.remaining, 0).toFixed(8),
+    heldCost: lots.reduce((sum, lot) => sum + lot.remaining * lot.price, 0).toFixed(2),
+    realizedGainLossBySaleId,
+  };
+}
+
+/** H2 criterio 4 (spec 031): total de ganancia/pérdida realizada de una posición — suma de
+ *  `realizedGainLossBySaleId` de su propio `fifoPositionState`. */
+function totalRealizedGainLoss(fifoState: { realizedGainLossBySaleId: Record<string, string> }): string {
+  return Object.values(fifoState.realizedGainLossBySaleId)
+    .reduce((sum, v) => sum + parseFloat(v), 0)
+    .toFixed(2);
+}
+
 /** H2 criterio 4 (spec 022): cantidad total de una posición de cripto, sumando todas sus compras
  *  — calculado, nunca guardado. Mismo patrón que `totalShares`, sobre `quantity` en vez de `shareCount`. */
 function totalCryptoQuantity(purchases: CryptoPurchase[]): string {
@@ -392,13 +477,30 @@ function bankAccountsTotal(accounts: BankAccount[], balances: BankAccountBalance
 /** Resumen (parte superior de la página): sumatorio del valor actual de cada acción — mismo
  *  criterio que `currentValue`. Una acción sin ninguna valoración aún contribuye 0, mismo
  *  criterio que "Sin valoración" en su propia tarjeta. */
-function stocksTotal(stocks: Stock[], purchases: StockPurchase[], valuations: StockValuation[]): string {
+function stocksTotal(stocks: Stock[], purchases: StockPurchase[], sales: StockSale[], valuations: StockValuation[]): string {
   return stocks
     .reduce((sum, stock) => {
       const stockPurchases = purchases.filter((p) => p.stockId === stock.id);
+      const stockSales = sales.filter((s) => s.stockId === stock.id);
       const lastValuation = valuations.find((v) => v.stockId === stock.id); // ya ordenado por fecha descendente
       if (!lastValuation) return sum;
-      return sum + parseFloat(currentValue(lastValuation.pricePerShare, totalShares(stockPurchases)));
+      // spec 031 H3 criterio 5: el valor actual parte de las acciones EN CARTERA (tras ventas), no
+      // del total histórico comprado — `fifoPositionState`, no `totalShares(stockPurchases)`.
+      const { heldShares } = fifoPositionState(stockPurchases, stockSales);
+      return sum + parseFloat(currentValue(lastValuation.pricePerShare, heldShares));
+    }, 0)
+    .toFixed(2);
+}
+
+/** H3 criterio 5 (spec 031): "coste de compra" agregado de Acciones para spec 028 H4/H5 y spec 030
+ *  — suma del `heldCost` (coste FIFO de lo que queda en cartera) de cada posición, sustituyendo a
+ *  `totalCost(purchases)` que sumaba el coste de TODO lo comprado alguna vez. */
+function stocksHeldCost(stocks: Stock[], purchases: StockPurchase[], sales: StockSale[]): string {
+  return stocks
+    .reduce((sum, stock) => {
+      const stockPurchases = purchases.filter((p) => p.stockId === stock.id);
+      const stockSales = sales.filter((s) => s.stockId === stock.id);
+      return sum + parseFloat(fifoPositionState(stockPurchases, stockSales).heldCost);
     }, 0)
     .toFixed(2);
 }
@@ -595,6 +697,18 @@ export function WealthPage() {
   const [isSavingPurchase, setIsSavingPurchase] = useState(false);
   const [pendingDeletePurchaseId, setPendingDeletePurchaseId] = useState<string | null>(null);
   const [purchaseActionError, setPurchaseActionError] = useState<string | null>(null);
+
+  const [stockSaleList, setStockSaleList] = useState<StockSale[] | null>(null);
+  const [stockSalesLoadError, setStockSalesLoadError] = useState<string | null>(null);
+  const [newStockSaleForms, setNewStockSaleForms] = useState<Record<string, UpdateStockSaleInput>>({});
+  const [createStockSaleError, setCreateStockSaleError] = useState<string | null>(null);
+  const [creatingStockSaleForStockId, setCreatingStockSaleForStockId] = useState<string | null>(null);
+  const [editingStockSaleId, setEditingStockSaleId] = useState<string | null>(null);
+  const [editingStockSaleForm, setEditingStockSaleForm] = useState<UpdateStockSaleInput>(EMPTY_STOCK_SALE_FORM);
+  const [editStockSaleError, setEditStockSaleError] = useState<string | null>(null);
+  const [isSavingStockSale, setIsSavingStockSale] = useState(false);
+  const [pendingDeleteStockSaleId, setPendingDeleteStockSaleId] = useState<string | null>(null);
+  const [stockSaleActionError, setStockSaleActionError] = useState<string | null>(null);
 
   const [valuations, setValuations] = useState<StockValuation[] | null>(null);
   const [valuationsLoadError, setValuationsLoadError] = useState<string | null>(null);
@@ -809,6 +923,10 @@ export function WealthPage() {
     setPurchases(await listStockPurchases());
   }
 
+  async function reloadStockSales() {
+    setStockSaleList(await listStockSales());
+  }
+
   async function reloadValuations() {
     setValuations(await listStockValuations());
   }
@@ -926,6 +1044,21 @@ export function WealthPage() {
         await reloadPurchases();
       } catch (err) {
         if (!cancelled) setPurchasesLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de compras.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadStockSales();
+      } catch (err) {
+        if (!cancelled) setStockSalesLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de ventas.');
       }
     })();
     return () => {
@@ -1335,7 +1468,7 @@ export function WealthPage() {
     setPendingDeleteStockId(id);
     try {
       await deleteStock(id);
-      await Promise.all([reloadStocks(), reloadPurchases(), reloadValuations(), reloadStockDividends()]);
+      await Promise.all([reloadStocks(), reloadPurchases(), reloadStockSales(), reloadValuations(), reloadStockDividends()]);
     } catch (err) {
       setStockActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la acción.');
     } finally {
@@ -1404,6 +1537,65 @@ export function WealthPage() {
       setPurchaseActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la compra.');
     } finally {
       setPendingDeletePurchaseId(null);
+    }
+  }
+
+  function getNewStockSaleForm(stockId: string): UpdateStockSaleInput {
+    return newStockSaleForms[stockId] ?? { shareCount: '', salePrice: '', date: todayIso() };
+  }
+
+  function setNewStockSaleForm(stockId: string, form: UpdateStockSaleInput) {
+    setNewStockSaleForms((prev) => ({ ...prev, [stockId]: form }));
+  }
+
+  async function handleCreateStockSale(stockId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateStockSaleError(null);
+    setCreatingStockSaleForStockId(stockId);
+    try {
+      const form = getNewStockSaleForm(stockId);
+      await createStockSale({ stockId, shareCount: form.shareCount ?? '', salePrice: form.salePrice ?? '', date: form.date ?? todayIso() });
+      setNewStockSaleForm(stockId, { shareCount: '', salePrice: '', date: todayIso() });
+      await reloadStockSales();
+    } catch (err) {
+      setCreateStockSaleError(err instanceof ApiError ? err.message : 'No se ha podido añadir la venta.');
+    } finally {
+      setCreatingStockSaleForStockId(null);
+    }
+  }
+
+  function startEditStockSale(sale: StockSale) {
+    setEditStockSaleError(null);
+    setEditingStockSaleId(sale.id);
+    setEditingStockSaleForm(stockSaleFormFromEntity(sale));
+  }
+
+  async function handleEditStockSale(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingStockSaleId) return;
+    setEditStockSaleError(null);
+    setIsSavingStockSale(true);
+    try {
+      await updateStockSale(editingStockSaleId, editingStockSaleForm);
+      setEditingStockSaleId(null);
+      await reloadStockSales();
+    } catch (err) {
+      setEditStockSaleError(err instanceof ApiError ? err.message : 'No se ha podido guardar la venta.');
+    } finally {
+      setIsSavingStockSale(false);
+    }
+  }
+
+  async function handleDeleteStockSale(id: string) {
+    setStockSaleActionError(null);
+    setPendingDeleteStockSaleId(id);
+    try {
+      await deleteStockSale(id);
+      await reloadStockSales();
+    } catch (err) {
+      setStockSaleActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la venta.');
+    } finally {
+      setPendingDeleteStockSaleId(null);
     }
   }
 
@@ -2459,7 +2651,7 @@ export function WealthPage() {
     const row: Record<(typeof WEALTH_CATEGORIES)[number]['key'], number> & { name: string } = {
       name: 'Patrimonio',
       bankAccounts: parseFloat(bankAccountsTotal(accounts ?? [], balances ?? [])),
-      stocks: parseFloat(stocksTotal(stockList ?? [], purchases ?? [], valuations ?? [])),
+      stocks: parseFloat(stocksTotal(stockList ?? [], purchases ?? [], stockSaleList ?? [], valuations ?? [])),
       funds: parseFloat(fundsTotal(fundList ?? [], fundPurchases ?? [], fundValuations ?? [])),
       cryptos: parseFloat(cryptosTotal(cryptoList ?? [], cryptoPurchaseList ?? [], cryptoValuationList ?? [])),
       vehicles: parseFloat(vehiclesTotal(vehicleList ?? [], vehicleValuationList ?? [])),
@@ -2474,6 +2666,7 @@ export function WealthPage() {
     balances,
     stockList,
     purchases,
+    stockSaleList,
     valuations,
     fundList,
     fundPurchases,
@@ -2496,8 +2689,10 @@ export function WealthPage() {
     const rows = [
       {
         category: 'Acciones',
-        aportado: parseFloat(totalCost(purchases ?? [])),
-        valorActual: parseFloat(stocksTotal(stockList ?? [], purchases ?? [], valuations ?? [])),
+        // spec 031 H3 criterio 5: coste de lo que queda en cartera (tras ventas), no de todo lo
+        // comprado alguna vez — `stocksHeldCost`, no `totalCost(purchases)`.
+        aportado: parseFloat(stocksHeldCost(stockList ?? [], purchases ?? [], stockSaleList ?? [])),
+        valorActual: parseFloat(stocksTotal(stockList ?? [], purchases ?? [], stockSaleList ?? [], valuations ?? [])),
       },
       {
         category: 'Fondos Inversión',
@@ -2523,6 +2718,7 @@ export function WealthPage() {
   }, [
     purchases,
     stockList,
+    stockSaleList,
     valuations,
     fundPurchases,
     fundList,
@@ -2566,8 +2762,9 @@ export function WealthPage() {
     pushCategoryRows(
       rows,
       'Acciones',
-      stocksTotal(stockList ?? [], purchases ?? [], valuations ?? []),
-      totalCost(purchases ?? []),
+      stocksTotal(stockList ?? [], purchases ?? [], stockSaleList ?? [], valuations ?? []),
+      // spec 031 H3 criterio 5: coste de lo que queda en cartera, no `totalCost(purchases)` (todo lo comprado).
+      stocksHeldCost(stockList ?? [], purchases ?? [], stockSaleList ?? []),
       stockDividendsTotal(stockList ?? [], stockDividendList ?? []),
       stockGrossDividendsTotal(stockList ?? [], stockDividendList ?? []),
     );
@@ -2607,6 +2804,7 @@ export function WealthPage() {
   }, [
     stockList,
     purchases,
+    stockSaleList,
     valuations,
     stockDividendList,
     fundList,
@@ -2658,6 +2856,7 @@ export function WealthPage() {
     balances !== null &&
     stockList !== null &&
     purchases !== null &&
+    stockSaleList !== null &&
     valuations !== null &&
     fundList !== null &&
     fundPurchases !== null &&
@@ -2688,7 +2887,7 @@ export function WealthPage() {
             {formatCurrency(
               (
                 parseFloat(bankAccountsTotal(accounts, balances)) +
-                parseFloat(stocksTotal(stockList, purchases, valuations)) +
+                parseFloat(stocksTotal(stockList, purchases, stockSaleList, valuations)) +
                 parseFloat(fundsTotal(fundList, fundPurchases, fundValuations)) +
                 parseFloat(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList)) +
                 parseFloat(vehiclesTotal(vehicleList, vehicleValuationList)) +
@@ -2699,7 +2898,7 @@ export function WealthPage() {
           </span>
           <p className="card-meta">
             Cuentas Bancarias: {formatCurrency(bankAccountsTotal(accounts, balances))} · Acciones:{' '}
-            {formatCurrency(stocksTotal(stockList, purchases, valuations))} · Fondos Inversión:{' '}
+            {formatCurrency(stocksTotal(stockList, purchases, stockSaleList, valuations))} · Fondos Inversión:{' '}
             {formatCurrency(fundsTotal(fundList, fundPurchases, fundValuations))} · Cripto:{' '}
             {formatCurrency(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList))} · Vehículos:{' '}
             {formatCurrency(vehiclesTotal(vehicleList, vehicleValuationList))} · Fondo Pensiones:{' '}
@@ -3349,10 +3548,12 @@ export function WealthPage() {
 
         {stocksLoadError && <p role="alert">{stocksLoadError}</p>}
         {purchasesLoadError && <p role="alert">{purchasesLoadError}</p>}
+        {stockSalesLoadError && <p role="alert">{stockSalesLoadError}</p>}
         {valuationsLoadError && <p role="alert">{valuationsLoadError}</p>}
         {stockDividendsLoadError && <p role="alert">{stockDividendsLoadError}</p>}
         {stockActionError && <p role="alert">{stockActionError}</p>}
         {purchaseActionError && <p role="alert">{purchaseActionError}</p>}
+        {stockSaleActionError && <p role="alert">{stockSaleActionError}</p>}
         {valuationActionError && <p role="alert">{valuationActionError}</p>}
         {stockDividendActionError && <p role="alert">{stockDividendActionError}</p>}
 
@@ -3363,29 +3564,35 @@ export function WealthPage() {
             {stockList.map((stock) => {
               const isEditingStock = editingStockId === stock.id;
               const stockPurchases = (purchases ?? []).filter((p) => p.stockId === stock.id);
+              const stockSalesForThisStock = (stockSaleList ?? []).filter((s) => s.stockId === stock.id);
               const stockValuations = (valuations ?? []).filter((v) => v.stockId === stock.id);
               const stockDividendHistory = (stockDividendList ?? []).filter((d) => d.stockId === stock.id);
               const lastValuation = stockValuations[0] ?? null; // `valuations` ya viene ordenado por fecha descendente
               const newPurchaseForm = getNewPurchaseForm(stock.id);
+              const newStockSaleForm = getNewStockSaleForm(stock.id);
               const newValuationForm = getNewValuationForm(stock.id);
               const newStockDividendForm = getNewStockDividendForm(stock.id);
+              // spec 031 H3: "en cartera" (compras − ventas, FIFO), no el total histórico comprado —
+              // sustituye a `totalShares(stockPurchases)`/`totalCost(stockPurchases)` en toda la tarjeta.
+              const fifoState = fifoPositionState(stockPurchases, stockSalesForThisStock);
+              const realizedGainLoss = totalRealizedGainLoss(fifoState);
               const gainLoss = lastValuation
-                ? gainLossPercent(currentValue(lastValuation.pricePerShare, totalShares(stockPurchases)), totalCost(stockPurchases))
+                ? gainLossPercent(currentValue(lastValuation.pricePerShare, fifoState.heldShares), fifoState.heldCost)
                 : null;
               // H1 (spec 030): mismo % que `gainLoss`, sumando los dividendos cobrados (netos/brutos)
               // al valor actual antes de comparar con el coste. `null` si `gainLoss` también lo es
               // (coste 0 o sin valoración) — `gainLossPercentWithDividends` hereda ese mismo criterio.
               const gainLossNet = lastValuation
                 ? gainLossPercentWithDividends(
-                    currentValue(lastValuation.pricePerShare, totalShares(stockPurchases)),
-                    totalCost(stockPurchases),
+                    currentValue(lastValuation.pricePerShare, fifoState.heldShares),
+                    fifoState.heldCost,
                     totalDividends(stockDividendHistory),
                   )
                 : null;
               const gainLossGross = lastValuation
                 ? gainLossPercentWithDividends(
-                    currentValue(lastValuation.pricePerShare, totalShares(stockPurchases)),
-                    totalCost(stockPurchases),
+                    currentValue(lastValuation.pricePerShare, fifoState.heldShares),
+                    fifoState.heldCost,
                     totalGrossDividends(stockDividendHistory),
                   )
                 : null;
@@ -3454,11 +3661,11 @@ export function WealthPage() {
                       )}
                     </span>
                     <span className="card-amount">
-                      {lastValuation ? formatCurrency(currentValue(lastValuation.pricePerShare, totalShares(stockPurchases))) : 'Sin valoración'}
+                      {lastValuation ? formatCurrency(currentValue(lastValuation.pricePerShare, fifoState.heldShares)) : 'Sin valoración'}
                     </span>
                   </div>
                   <p className="card-meta">
-                    {totalShares(stockPurchases)} acciones · Coste total: {formatCurrency(totalCost(stockPurchases))}
+                    {fifoState.heldShares} acciones en cartera · Coste total: {formatCurrency(fifoState.heldCost)}
                     {lastValuation && (
                       <>
                         {' '}
@@ -3467,6 +3674,8 @@ export function WealthPage() {
                     )}
                     {' · Dividendos cobrados: '}
                     {stockDividendHistory.length > 0 ? formatCurrency(totalDividends(stockDividendHistory)) : 'Sin dividendos'}
+                    {' · Ganancia/pérdida realizada: '}
+                    {stockSalesForThisStock.length > 0 ? formatCurrency(realizedGainLoss) : 'Sin ventas'}
                   </p>
                   <div>
                     <button
@@ -3687,9 +3896,7 @@ export function WealthPage() {
                                   </div>
                                   <p className="card-meta">
                                     Valor total:{' '}
-                                    {formatCurrency(
-                                      currentValue(editingValuationForm.pricePerShare ?? '', totalShares(stockPurchases)) || '0.00',
-                                    )}
+                                    {formatCurrency(currentValue(editingValuationForm.pricePerShare ?? '', fifoState.heldShares) || '0.00')}
                                   </p>
                                   {editValuationError && <p role="alert">{editValuationError}</p>}
                                   <button type="submit" className="btn btn-primary" disabled={isSavingValuation}>
@@ -3763,7 +3970,7 @@ export function WealthPage() {
                       </div>
                       <p className="card-meta">
                         Valor total:{' '}
-                        {formatCurrency(currentValue(newValuationForm.pricePerShare ?? '', totalShares(stockPurchases)) || '0.00')}
+                        {formatCurrency(currentValue(newValuationForm.pricePerShare ?? '', fifoState.heldShares) || '0.00')}
                       </p>
                       {createValuationError && <p role="alert">{createValuationError}</p>}
                       <button type="submit" className="btn btn-primary" disabled={creatingValuationForStockId === stock.id}>
@@ -3934,6 +4141,151 @@ export function WealthPage() {
                       {createStockDividendError && <p role="alert">{createStockDividendError}</p>}
                       <button type="submit" className="btn btn-primary" disabled={creatingStockDividendForStockId === stock.id}>
                         {creatingStockDividendForStockId === stock.id ? 'Añadiendo…' : 'Añadir dividendo'}
+                      </button>
+                    </form>
+                  </details>
+
+                  <details>
+                    <summary>Historial de ventas ({stockSalesForThisStock.length})</summary>
+
+                    {stockSalesForThisStock.length === 0 && <p>Todavía no hay ninguna venta registrada en esta acción.</p>}
+
+                    {stockSalesForThisStock.length > 0 && (
+                      <ul aria-label={`Historial de ventas de ${stock.stock} · ${stock.custodyBank}`}>
+                        {stockSalesForThisStock.map((sale) => {
+                          const isEditingSale = editingStockSaleId === sale.id;
+                          const saleLabel = `${sale.date} · ${sale.shareCount} acciones a ${sale.salePrice}€`;
+                          const saleGainLoss = fifoState.realizedGainLossBySaleId[sale.id];
+
+                          if (isEditingSale) {
+                            return (
+                              <li key={sale.id}>
+                                <form onSubmit={handleEditStockSale} aria-label={`Editar venta de ${stock.stock}: ${saleLabel}`} noValidate>
+                                  <div className="field">
+                                    <label htmlFor={`stock-sale-${sale.id}-shareCount`}>Número acciones vendidas</label>
+                                    <input
+                                      id={`stock-sale-${sale.id}-shareCount`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingStockSaleForm.shareCount}
+                                      onChange={(e) => setEditingStockSaleForm({ ...editingStockSaleForm, shareCount: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`stock-sale-${sale.id}-salePrice`}>Precio de venta</label>
+                                    <input
+                                      id={`stock-sale-${sale.id}-salePrice`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingStockSaleForm.salePrice}
+                                      onChange={(e) => setEditingStockSaleForm({ ...editingStockSaleForm, salePrice: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`stock-sale-${sale.id}-date`}>Fecha de venta</label>
+                                    <input
+                                      id={`stock-sale-${sale.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingStockSaleForm.date}
+                                      onChange={(e) => setEditingStockSaleForm({ ...editingStockSaleForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  {editStockSaleError && <p role="alert">{editStockSaleError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingStockSale}>
+                                    {isSavingStockSale ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingStockSale}
+                                    onClick={() => setEditingStockSaleId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={sale.id}>
+                              <span>{sale.date}</span>{' '}
+                              <span>
+                                {sale.shareCount} acciones @ {formatCurrency(sale.salePrice)} ={' '}
+                                {formatCurrency(purchaseValue(sale.salePrice, sale.shareCount))}
+                              </span>{' '}
+                              <span style={{ color: parseFloat(saleGainLoss) >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                                {parseFloat(saleGainLoss) >= 0 ? '+' : ''}
+                                {formatCurrency(saleGainLoss)}
+                              </span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar venta de ${stock.stock}: ${saleLabel}`}
+                                onClick={() => startEditStockSale(sale)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar venta de ${stock.stock}: ${saleLabel}`}
+                                disabled={pendingDeleteStockSaleId === sale.id}
+                                onClick={() => void handleDeleteStockSale(sale.id)}
+                              >
+                                {pendingDeleteStockSaleId === sale.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form onSubmit={(e) => void handleCreateStockSale(stock.id, e)} aria-label={`Añadir venta: ${stock.stock}`} noValidate>
+                      <div className="field">
+                        <label htmlFor={`new-stock-sale-${stock.id}-shareCount`}>Número acciones vendidas</label>
+                        <input
+                          id={`new-stock-sale-${stock.id}-shareCount`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newStockSaleForm.shareCount}
+                          onChange={(e) => setNewStockSaleForm(stock.id, { ...newStockSaleForm, shareCount: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-stock-sale-${stock.id}-salePrice`}>Precio de venta</label>
+                        <input
+                          id={`new-stock-sale-${stock.id}-salePrice`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newStockSaleForm.salePrice}
+                          onChange={(e) => setNewStockSaleForm(stock.id, { ...newStockSaleForm, salePrice: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-stock-sale-${stock.id}-date`}>Fecha de venta</label>
+                        <input
+                          id={`new-stock-sale-${stock.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newStockSaleForm.date}
+                          onChange={(e) => setNewStockSaleForm(stock.id, { ...newStockSaleForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <p className="card-meta">
+                        Valor de venta:{' '}
+                        {formatCurrency(purchaseValue(newStockSaleForm.salePrice ?? '', newStockSaleForm.shareCount ?? '') || '0.00')}
+                      </p>
+                      {createStockSaleError && <p role="alert">{createStockSaleError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingStockSaleForStockId === stock.id}>
+                        {creatingStockSaleForStockId === stock.id ? 'Añadiendo…' : 'Añadir venta'}
                       </button>
                     </form>
                   </details>

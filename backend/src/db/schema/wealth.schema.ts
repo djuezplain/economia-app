@@ -110,6 +110,31 @@ export const stockPurchases = pgTable(
 );
 
 /**
+ * H1 (spec 031): historial de ventas de una acción — mismos campos y
+ * precisión que `stockPurchases` (H1 criterio 1), pero registrando lo
+ * vendido en vez de lo comprado. La validación de "no vender más de lo que
+ * queda en cartera" (plan.md §2) vive en el servicio, no aquí — es una resta
+ * de totales que depende de `stockPurchases`, no algo expresable en una
+ * constraint de columna. Sin `userId` propio, mismo criterio que
+ * `stockPurchases`/`stockDividends`.
+ */
+export const stockSales = pgTable(
+  'stock_sales',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    stockId: uuid('stock_id')
+      .notNull()
+      .references(() => stocks.id, { onDelete: 'cascade' }),
+    shareCount: numeric('share_count', { precision: 18, scale: 8 }).notNull(),
+    salePrice: numeric('sale_price', { precision: 18, scale: 8 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('stock_sales_stock_idx').on(table.stockId), index('stock_sales_stock_date_idx').on(table.stockId, table.date)],
+);
+
+/**
  * H3 (spec 020): historial de valoraciones de una acción — segundo
  * historial independiente del de compras (decisión 1 de spec.md), mismo
  * criterio que `bankAccountBalances` (spec 019) pero para el valor de la
@@ -520,12 +545,17 @@ export const bankAccountBalancesRelations = relations(bankAccountBalances, ({ on
 export const stocksRelations = relations(stocks, ({ one, many }) => ({
   user: one(users, { fields: [stocks.userId], references: [users.id] }),
   purchases: many(stockPurchases),
+  sales: many(stockSales),
   valuations: many(stockValuations),
   dividends: many(stockDividends),
 }));
 
 export const stockPurchasesRelations = relations(stockPurchases, ({ one }) => ({
   stock: one(stocks, { fields: [stockPurchases.stockId], references: [stocks.id] }),
+}));
+
+export const stockSalesRelations = relations(stockSales, ({ one }) => ({
+  stock: one(stocks, { fields: [stockSales.stockId], references: [stocks.id] }),
 }));
 
 export const stockValuationsRelations = relations(stockValuations, ({ one }) => ({

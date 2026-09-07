@@ -10,6 +10,7 @@ import * as bankAccountsApi from '../api/bank-accounts';
 import * as bankAccountBalancesApi from '../api/bank-account-balances';
 import * as stocksApi from '../api/stocks';
 import * as stockPurchasesApi from '../api/stock-purchases';
+import * as stockSalesApi from '../api/stock-sales';
 import * as stockValuationsApi from '../api/stock-valuations';
 import * as stockDividendsApi from '../api/stock-dividends';
 import * as fundsApi from '../api/funds';
@@ -30,6 +31,7 @@ import type { BankAccount } from '../api/bank-accounts';
 import type { BankAccountBalance } from '../api/bank-account-balances';
 import type { Stock } from '../api/stocks';
 import type { StockPurchase } from '../api/stock-purchases';
+import type { StockSale } from '../api/stock-sales';
 import type { StockValuation } from '../api/stock-valuations';
 import type { StockDividend } from '../api/stock-dividends';
 import type { Fund } from '../api/funds';
@@ -85,6 +87,16 @@ const STOCK_PURCHASE: StockPurchase = {
   date: '2026-09-04',
   createdAt: '2026-09-04T00:00:00.000Z',
   updatedAt: '2026-09-04T00:00:00.000Z',
+};
+
+const STOCK_SALE: StockSale = {
+  id: 'sale-1',
+  stockId: 'stock-1',
+  shareCount: '4.0000',
+  salePrice: '32.00',
+  date: '2026-09-05',
+  createdAt: '2026-09-05T00:00:00.000Z',
+  updatedAt: '2026-09-05T00:00:00.000Z',
 };
 
 const STOCK_VALUATION: StockValuation = {
@@ -297,6 +309,7 @@ describe('WealthPage', () => {
     vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
     vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
     vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+    vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
     vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
     vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
     vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -333,6 +346,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
@@ -374,6 +388,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -405,6 +420,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
@@ -437,6 +453,7 @@ describe('WealthPage', () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -667,6 +684,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
 
@@ -679,6 +697,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
 
@@ -688,7 +707,9 @@ describe('WealthPage', () => {
       expect(within(list).getByText(/Inditex · BBVA/)).toBeInTheDocument();
       // 10.0000 acciones × 35,00 €/acción (STOCK_VALUATION) = 350,00 €.
       expect(within(list).getByText('350,00 €')).toBeInTheDocument();
-      expect(within(list).getByText(/10.00000000 acciones · Coste total/)).toHaveTextContent('Precio actual: 35,00 €/acción · Última fecha: 2026-09-04');
+      expect(within(list).getByText(/10.00000000 acciones en cartera · Coste total/)).toHaveTextContent(
+        'Precio actual: 35,00 €/acción · Última fecha: 2026-09-04',
+      );
       // Coste total 300,00 € (10 × 30,00 €), valor actual 350,00 € → +16.67% de ganancia, en verde.
       const gainLossEl = within(list).getByText('+16.67%');
       expect(gainLossEl).toHaveStyle({ color: 'var(--status-green)' });
@@ -705,6 +726,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([{ ...STOCK_VALUATION, pricePerShare: '24.00' }]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
 
@@ -720,6 +742,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
 
@@ -734,6 +757,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
 
@@ -749,6 +773,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
 
@@ -767,6 +792,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       const listStocksSpy = vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       const listPurchasesSpy = vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       const createStockSpy = vi.spyOn(stocksApi, 'createStock').mockResolvedValue(STOCK);
@@ -798,6 +824,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       const updateSpy = vi.spyOn(stocksApi, 'updateStock').mockResolvedValue(STOCK);
@@ -819,6 +846,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       const deleteSpy = vi.spyOn(stocksApi, 'deleteStock').mockResolvedValue(undefined);
@@ -835,6 +863,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
 
@@ -851,6 +880,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       const listPurchasesSpy = vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       const createSpy = vi.spyOn(stockPurchasesApi, 'createStockPurchase').mockResolvedValue(STOCK_PURCHASE);
@@ -872,6 +902,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       const createSpy = vi.spyOn(stockPurchasesApi, 'createStockPurchase').mockResolvedValue(STOCK_PURCHASE);
@@ -897,6 +928,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       const updateSpy = vi.spyOn(stockPurchasesApi, 'updateStockPurchase').mockResolvedValue(STOCK_PURCHASE);
@@ -921,6 +953,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       const deletePurchaseSpy = vi.spyOn(stockPurchasesApi, 'deleteStockPurchase').mockResolvedValue(undefined);
@@ -939,6 +972,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
 
@@ -952,6 +986,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       const listValuationsSpy = vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       const createSpy = vi.spyOn(stockValuationsApi, 'createStockValuation').mockResolvedValue(STOCK_VALUATION);
@@ -972,6 +1007,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
 
@@ -988,6 +1024,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       const updateSpy = vi.spyOn(stockValuationsApi, 'updateStockValuation').mockResolvedValue(STOCK_VALUATION);
@@ -1011,6 +1048,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       const deleteValuationSpy = vi.spyOn(stockValuationsApi, 'deleteStockValuation').mockResolvedValue(undefined);
@@ -1033,6 +1071,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
@@ -1435,6 +1474,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -1452,6 +1492,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([STOCK_DIVIDEND]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -1474,6 +1515,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -1496,6 +1538,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       const listDividendsSpy = vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -1520,6 +1563,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([STOCK_DIVIDEND]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -1548,6 +1592,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([STOCK_DIVIDEND]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -1570,6 +1615,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
@@ -1587,6 +1633,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
@@ -1611,6 +1658,7 @@ describe('WealthPage', () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]); // sin valoración: la acción no aporta nada a "Total"
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([STOCK_DIVIDEND]); // 81,00 €
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
@@ -1655,6 +1703,7 @@ describe('WealthPage', () => {
         mockOtherApis();
         vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
         vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+        vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
         vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
         vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([STOCK_DIVIDEND]);
         vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -1677,6 +1726,7 @@ describe('WealthPage', () => {
         mockOtherApis();
         vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
         vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+        vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
         vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
         vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
         vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -1698,6 +1748,7 @@ describe('WealthPage', () => {
         mockOtherApis();
         vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
         vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+        vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
         vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
         vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
         vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
@@ -1730,6 +1781,7 @@ describe('WealthPage', () => {
         vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
         vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
         vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+        vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
         vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
         vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([STOCK_DIVIDEND]);
         vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
@@ -1778,6 +1830,242 @@ describe('WealthPage', () => {
     });
   });
 
+  describe('Venta de acciones (spec 031)', () => {
+    function mockOtherApis() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
+      vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
+      vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+    }
+
+    // Dos compras a precios distintos: 10 @ 20,00 € (2026-08-01) y 10 @ 30,00 € (2026-08-10) —
+    // coste total 500,00 €, 20 acciones. Vender 15 consume primero el lote de 20,00 € (FIFO).
+    const PURCHASE_LOT_A: StockPurchase = { ...STOCK_PURCHASE, id: 'purchase-a', shareCount: '10', purchasePrice: '20.00', date: '2026-08-01' };
+    const PURCHASE_LOT_B: StockPurchase = { ...STOCK_PURCHASE, id: 'purchase-b', shareCount: '10', purchasePrice: '30.00', date: '2026-08-10' };
+    const PARTIAL_SALE: StockSale = { ...STOCK_SALE, id: 'sale-partial', shareCount: '15', salePrice: '40.00', date: '2026-08-15' };
+
+    it('una venta que cruza dos lotes calcula la ganancia por FIFO y reduce lo que queda en cartera', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([PURCHASE_LOT_A, PURCHASE_LOT_B]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([PARTIAL_SALE]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([{ ...STOCK_VALUATION, pricePerShare: '40.00' }]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      // FIFO: 10 acciones a 20,00 € (200,00 €) + 5 acciones a 30,00 € (150,00 €) = coste 350,00 €.
+      // Venta: 15 × 40,00 € = 600,00 € → ganancia realizada 600 − 350 = 250,00 €.
+      // En cartera: 5 acciones a 30,00 € = 150,00 € de coste; valor actual 5 × 40,00 € = 200,00 €.
+      expect(within(list).getByText(/5.00000000 acciones en cartera · Coste total: 150,00 €/)).toBeInTheDocument();
+      expect(within(list).getByText('200,00 €')).toBeInTheDocument();
+      expect(within(list).getByText(/Ganancia\/pérdida realizada: 250,00 €/)).toBeInTheDocument();
+
+      const salesHistory = within(list).getByRole('list', { name: 'Historial de ventas de Inditex · BBVA' });
+      expect(within(salesHistory).getByText('+250,00 €')).toBeInTheDocument();
+    });
+
+    it('dos compras el mismo día se consumen por orden de alta (createdAt), no por el orden en que llega la lista de la API', async () => {
+      // `listStockPurchases` (H2, spec 020) devuelve las compras ordenadas por fecha DESCENDENTE y,
+      // a igualdad de fecha, por `createdAt` también descendente (la más reciente primero, para la
+      // UI) — aquí ambas compras son del mismo día, así que la API las sirve en orden [MÁS RECIENTE,
+      // MÁS ANTIGUA]. El FIFO real debe consumir la MÁS ANTIGUA (`createdAt` más bajo) primero,
+      // aunque llegue segunda en el array — regresión del bug encontrado probando esta spec a mano.
+      const purchaseOlder: StockPurchase = {
+        ...STOCK_PURCHASE,
+        id: 'purchase-older',
+        shareCount: '10',
+        purchasePrice: '20.00',
+        date: '2026-08-01',
+        createdAt: '2026-08-01T09:00:00.000Z',
+      };
+      const purchaseNewer: StockPurchase = {
+        ...STOCK_PURCHASE,
+        id: 'purchase-newer',
+        shareCount: '10',
+        purchasePrice: '30.00',
+        date: '2026-08-01',
+        createdAt: '2026-08-01T10:00:00.000Z',
+      };
+      const sale: StockSale = { ...STOCK_SALE, shareCount: '10', salePrice: '40.00', date: '2026-08-02' };
+
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      // Orden [más reciente, más antigua] a propósito — el mismo que sirve la API real.
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([purchaseNewer, purchaseOlder]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([sale]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([{ ...STOCK_VALUATION, pricePerShare: '40.00' }]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      // FIFO correcto: se vende toda la compra más antigua (10 @ 20,00 € = 200,00 €), no la más
+      // reciente. Ganancia realizada: 10 × 40,00 € − 200,00 € = 200,00 €. Queda en cartera la compra
+      // de 30,00 €: coste 300,00 €.
+      expect(within(list).getByText(/10.00000000 acciones en cartera · Coste total: 300,00 €/)).toBeInTheDocument();
+      expect(within(list).getByText(/Ganancia\/pérdida realizada: 200,00 €/)).toBeInTheDocument();
+    });
+
+    it('sin ninguna venta, muestra "Sin ventas" en la ganancia/pérdida realizada', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      expect(within(list).getByText(/Ganancia\/pérdida realizada: Sin ventas/)).toBeInTheDocument();
+    });
+
+    it('vender toda la posición deja el coste y el valor actual a 0, sin % de ganancia/pérdida no realizada', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([{ ...STOCK_SALE, shareCount: '10', salePrice: '35.00' }]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      expect(within(list).getByText(/0.00000000 acciones en cartera · Coste total: 0,00 €/)).toBeInTheDocument();
+      expect(within(list).queryByText(/^[+-]\d+\.\d{2}%$/)).not.toBeInTheDocument();
+    });
+
+    it('el formulario de venta trae la fecha de hoy por defecto y calcula el valor de venta', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir venta: Inditex' });
+
+      expect(within(form).getByLabelText('Fecha de venta')).toHaveValue(todayIso());
+
+      await userEvent.type(within(form).getByLabelText('Número acciones vendidas'), '4');
+      await userEvent.type(within(form).getByLabelText('Precio de venta'), '32.00');
+
+      expect(within(form).getByText(/Valor de venta:/)).toHaveTextContent('128,00');
+    });
+
+    it('añade una venta a una acción existente', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      const listSalesSpy = vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      const createSpy = vi.spyOn(stockSalesApi, 'createStockSale').mockResolvedValue(STOCK_SALE);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir venta: Inditex' });
+
+      await userEvent.type(within(form).getByLabelText('Número acciones vendidas'), '4');
+      await userEvent.type(within(form).getByLabelText('Precio de venta'), '32.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir venta' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({ stockId: STOCK.id, shareCount: '4', salePrice: '32.00', date: todayIso() }),
+      );
+      await waitFor(() => expect(listSalesSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('vender más de lo disponible muestra el error del servidor', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'createStockSale').mockRejectedValue(
+        new ApiError(400, 'No puedes vender 999 acciones: solo quedan 10.00000000 en cartera.'),
+      );
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir venta: Inditex' });
+
+      await userEvent.type(within(form).getByLabelText('Número acciones vendidas'), '999');
+      await userEvent.type(within(form).getByLabelText('Precio de venta'), '32.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir venta' }));
+
+      expect(await within(form).findByRole('alert')).toHaveTextContent('solo quedan 10.00000000 en cartera');
+    });
+
+    it('edita una venta del historial', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([STOCK_SALE]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      const updateSpy = vi.spyOn(stockSalesApi, 'updateStockSale').mockResolvedValue(STOCK_SALE);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus acciones' });
+
+      const saleLabel = 'Editar venta de Inditex: 2026-09-05 · 4.0000 acciones a 32.00€';
+      await userEvent.click(screen.getByRole('button', { name: saleLabel }));
+      const editForm = screen.getByRole('form', { name: saleLabel });
+      const shareCountInput = within(editForm).getByLabelText('Número acciones vendidas');
+      await userEvent.clear(shareCountInput);
+      await userEvent.type(shareCountInput, '3');
+      await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() => expect(updateSpy).toHaveBeenCalledWith(STOCK_SALE.id, { shareCount: '3', salePrice: '32.00', date: '2026-09-05' }));
+    });
+
+    it('elimina una venta del historial, sin borrar la acción', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([STOCK_SALE]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      const deleteSaleSpy = vi.spyOn(stockSalesApi, 'deleteStockSale').mockResolvedValue(undefined);
+      const deleteStockSpy = vi.spyOn(stocksApi, 'deleteStock');
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus acciones' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Eliminar venta de Inditex: 2026-09-05 · 4.0000 acciones a 32.00€' }));
+
+      await waitFor(() => expect(deleteSaleSpy).toHaveBeenCalledWith(STOCK_SALE.id));
+      expect(deleteStockSpy).not.toHaveBeenCalled();
+    });
+
+    it('la tarjeta "Total" y "Rentabilidad por categoría" reflejan lo que queda en cartera tras una venta', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([PURCHASE_LOT_A, PURCHASE_LOT_B]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([PARTIAL_SALE]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([{ ...STOCK_VALUATION, pricePerShare: '40.00' }]);
+
+      renderPage();
+
+      // Valor actual en cartera: 5 acciones × 40,00 € = 200,00 € (no 20 × 40 = 800,00 €, el total histórico).
+      await waitFor(() => expect(document.getElementById('wealth-total-summary')).toBeInTheDocument());
+      const totalCard = within(document.getElementById('wealth-total-summary')!);
+      expect(totalCard.getByText('200,00 €')).toBeInTheDocument();
+
+      const table = await screen.findByRole('table', { name: 'Rentabilidad por categoría (tabla)' });
+      // Coste en cartera 150,00 €, valor actual 200,00 € → (200−150)/150×100 = +33.3 %.
+      expect(within(table).getByText('Acciones').closest('tr')).toHaveTextContent('+33.3 %');
+    });
+  });
+
   describe('Cripto (spec 022)', () => {
     function mockOtherApis() {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
@@ -1785,6 +2073,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -2243,6 +2532,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -2508,6 +2798,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -2866,6 +3157,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -3057,6 +3349,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -3161,6 +3454,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
@@ -3185,6 +3479,7 @@ describe('WealthPage', () => {
       vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([BANK_BALANCE]);
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
       vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
       vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
       vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
@@ -3295,6 +3590,7 @@ describe('WealthPage', () => {
         mockAllApisEmpty();
         vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
         vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([STOCK_PURCHASE]);
+        vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
         vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([STOCK_VALUATION]);
         vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
 

@@ -8,6 +8,8 @@ import { StocksController } from './stocks.controller.js';
 import { StocksService } from './stocks.service.js';
 import { StockPurchasesController } from './stock-purchases.controller.js';
 import { StockPurchasesService } from './stock-purchases.service.js';
+import { StockSalesController } from './stock-sales.controller.js';
+import { StockSalesService } from './stock-sales.service.js';
 import { StockValuationsController } from './stock-valuations.controller.js';
 import { StockValuationsService } from './stock-valuations.service.js';
 import { StockDividendsController } from './stock-dividends.controller.js';
@@ -71,6 +73,7 @@ import { CashBalancesService } from './cash-balances.service.js';
     BankAccountBalancesController,
     StocksController,
     StockPurchasesController,
+    StockSalesController,
     StockValuationsController,
     StockDividendsController,
     FundsController,
@@ -93,6 +96,7 @@ import { CashBalancesService } from './cash-balances.service.js';
     BankAccountBalancesService,
     StocksService,
     StockPurchasesService,
+    StockSalesService,
     StockValuationsService,
     StockDividendsService,
     FundsService,
