@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
+import { useOpenSectionFromHash } from '../hooks/useOpenSectionFromHash';
 import { listCategories } from '../api/categories';
 import type { Category } from '../api/categories';
 import { getCategoryComparison, getComparison, getMonthSummary, getSeasonal, getYearSummary } from '../api/dashboard';
@@ -183,6 +184,7 @@ function seasonalSummaryText(summary: SeasonalSummary): string {
 export function DashboardPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const isOnline = useConnectivity();
+  useOpenSectionFromHash(!isAuthLoading && isAuthenticated && isOnline);
 
   const [categories, setCategories] = useState<Category[] | null>(null);
 
@@ -384,7 +386,7 @@ export function DashboardPage() {
     <main>
       <h1>Dashboard</h1>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="dashboard-comparativa-temporal">
         <summary>
           <h2>⚖️ Comparativa temporal</h2>
         </summary>
@@ -469,7 +471,7 @@ export function DashboardPage() {
         )}
       </details>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="dashboard-categorias-periodo">
         <summary>
           <h2>🗂️ Categorías por periodo</h2>
         </summary>
@@ -552,7 +554,7 @@ export function DashboardPage() {
         )}
       </details>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="dashboard-analisis-estacional">
         <summary>
           <h2>🌦️ Análisis estacional</h2>
         </summary>
@@ -663,7 +665,7 @@ export function DashboardPage() {
         )}
       </details>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="dashboard-resumen-mes">
         <summary>
           <h2>🗓️ Resumen del mes</h2>
         </summary>
@@ -740,7 +742,7 @@ export function DashboardPage() {
         )}
       </details>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="dashboard-vista-anual">
         <summary>
           <h2>📈 Vista anual</h2>
         </summary>

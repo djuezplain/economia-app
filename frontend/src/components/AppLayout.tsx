@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useSyncQueue } from '../hooks/useSyncQueue';
 import { SyncStatusPanel } from './SyncStatusPanel';
@@ -10,18 +10,90 @@ import { SyncStatusPanel } from './SyncStatusPanel';
 // del enlace sigue siendo `label` (el texto visible, o `aria-label` con el
 // menú plegado). `end` solo hace falta en "Inicio" (mismo motivo que
 // `AppLayout` original: sin él, "/" quedaría activo en cualquier ruta).
+// Subsecciones de cada entrada (petición de Diego): para "Ingresos y
+// gastos" son las 3 sub-rutas propias de spec 006 (`MovementsLayout`); para
+// "Dashboard" y "Resumen Patrimonio" no hay sub-rutas (sus secciones son
+// `<details>` plegables dentro de la misma página, spec 016/018) — el
+// enlace lleva un hash al `id` de cada `<details>`, y `useOpenSectionFromHash`
+// (en cada página) lo abre y hace scroll hasta él al navegar.
 const NAV_ITEMS = [
   { to: '/', end: true, label: 'Inicio' },
   { to: '/categories', end: false, label: 'Categorías' },
-  { to: '/movements', end: false, label: 'Ingresos y gastos' },
-  { to: '/dashboard', end: false, label: 'Dashboard' },
-  { to: '/patrimonio', end: false, label: 'Resumen Patrimonio' },
+  {
+    to: '/movements',
+    end: false,
+    label: 'Ingresos y gastos',
+    children: [
+      { to: '/movements', end: true, label: 'Movimientos' },
+      { to: '/movements/summary', end: false, label: 'Resumen' },
+      { to: '/movements/register', end: false, label: 'Registrar' },
+    ],
+  },
+  {
+    to: '/dashboard',
+    end: false,
+    label: 'Dashboard',
+    children: [
+      { to: '/dashboard#dashboard-comparativa-temporal', end: false, label: 'Comparativa temporal' },
+      { to: '/dashboard#dashboard-categorias-periodo', end: false, label: 'Categorías por periodo' },
+      { to: '/dashboard#dashboard-analisis-estacional', end: false, label: 'Análisis estacional' },
+      { to: '/dashboard#dashboard-resumen-mes', end: false, label: 'Resumen del mes' },
+      { to: '/dashboard#dashboard-vista-anual', end: false, label: 'Vista anual' },
+    ],
+  },
+  {
+    to: '/patrimonio',
+    end: false,
+    label: 'Resumen Patrimonio',
+    children: [
+      { to: '/patrimonio#wealth-cuentas-bancarias', end: false, label: 'Cuentas Bancarias' },
+      { to: '/patrimonio#wealth-acciones', end: false, label: 'Acciones' },
+      { to: '/patrimonio#wealth-fondos-inversion', end: false, label: 'Fondos Inversión' },
+      { to: '/patrimonio#wealth-cripto', end: false, label: 'Cripto' },
+      { to: '/patrimonio#wealth-vehiculos', end: false, label: 'Vehículos' },
+      { to: '/patrimonio#wealth-fondo-pensiones', end: false, label: 'Fondo Pensiones' },
+      { to: '/patrimonio#wealth-efectivo', end: false, label: 'Efectivo' },
+    ],
+  },
   { to: '/import', end: false, label: 'Importar Excel' },
   { to: '/goals', end: false, label: 'Objetivos y presupuestos' },
   { to: '/backup', end: false, label: 'Copia de seguridad' },
   { to: '/profile', end: false, label: 'Tu perfil' },
   { to: '/sessions', end: false, label: 'Dispositivos y sesiones' },
 ] as const;
+
+/**
+ * Enlace de subsección del menú lateral. A diferencia de `NavLink`, calcula
+ * el "activo" a mano porque algunos de estos enlaces llevan un hash
+ * (`/dashboard#...`) que `NavLink` no distingue (solo compara la ruta, no el
+ * hash) — sin esto, las 5 subsecciones de "Dashboard" aparecerían todas
+ * activas a la vez con solo estar en `/dashboard`.
+ */
+function SidebarSubLink({
+  to,
+  end,
+  label,
+  onNavigate,
+}: {
+  to: string;
+  end: boolean;
+  label: string;
+  onNavigate: () => void;
+}) {
+  const location = useLocation();
+  const [path, hash] = to.split('#');
+  const isActive = hash
+    ? location.pathname === path && location.hash === `#${hash}`
+    : end
+      ? location.pathname === path
+      : location.pathname === path || location.pathname.startsWith(`${path}/`);
+
+  return (
+    <Link to={to} className="nav-sublink" aria-current={isActive ? 'page' : undefined} onClick={onNavigate}>
+      {label}
+    </Link>
+  );
+}
 
 // Barra de navegación inferior de móvil (ver index.css, #app-bottom-nav):
 // solo los 3 destinos más usados, no las 8 secciones — el menú lateral
@@ -173,13 +245,26 @@ export function AppLayout() {
             {isCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
           </button>
           <ul>
-            {NAV_ITEMS.map(({ to, end, label }) => (
-              <li key={to}>
-                <NavLink to={to} end={end} className="nav-link" onClick={closeMobileMenu} {...collapsedLabel(label)}>
-                  <span className="dot" aria-hidden="true" /> <span className={isCollapsed ? 'sr-only' : undefined}>{label}</span>
-                </NavLink>
-              </li>
-            ))}
+            {NAV_ITEMS.map((item) => {
+              const { to, end, label } = item;
+              const children = 'children' in item ? item.children : undefined;
+              return (
+                <li key={to}>
+                  <NavLink to={to} end={end} className="nav-link" onClick={closeMobileMenu} {...collapsedLabel(label)}>
+                    <span className="dot" aria-hidden="true" /> <span className={isCollapsed ? 'sr-only' : undefined}>{label}</span>
+                  </NavLink>
+                  {!isCollapsed && children && (
+                    <ul className="nav-sublist">
+                      {children.map((child) => (
+                        <li key={child.to}>
+                          <SidebarSubLink to={child.to} end={child.end} label={child.label} onNavigate={closeMobileMenu} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
             <li>
               <button type="button" className="btn btn-secondary" onClick={handleLogoutClick} {...collapsedLabel('Cerrar sesión')}>
                 <span className="dot" aria-hidden="true" />{' '}

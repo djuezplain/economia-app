@@ -19,6 +19,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
+import { useOpenSectionFromHash } from '../hooks/useOpenSectionFromHash';
 import { createBankAccount, deleteBankAccount, listBankAccounts, updateBankAccount } from '../api/bank-accounts';
 import type { BankAccount, BankAccountInput } from '../api/bank-accounts';
 import {
@@ -649,6 +650,7 @@ const PLACEHOLDER_SECTIONS: Array<{ icon: string; label: string }> = [];
 export function WealthPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const isOnline = useConnectivity();
+  useOpenSectionFromHash(!isAuthLoading && isAuthenticated && isOnline);
 
   const [accounts, setAccounts] = useState<BankAccount[] | null>(null);
   const [accountsLoadError, setAccountsLoadError] = useState<string | null>(null);
@@ -3273,7 +3275,7 @@ export function WealthPage() {
         </div>
       )}
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="wealth-cuentas-bancarias">
         <summary>
           <h2>🏦 Cuentas Bancarias</h2>
         </summary>
@@ -3541,7 +3543,7 @@ export function WealthPage() {
         </details>
       </details>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="wealth-acciones">
         <summary>
           <h2>📈 Acciones</h2>
         </summary>
@@ -4364,7 +4366,7 @@ export function WealthPage() {
         </details>
       </details>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="wealth-fondos-inversion">
         <summary>
           <h2>💹 Fondos Inversión</h2>
         </summary>
@@ -5044,7 +5046,7 @@ export function WealthPage() {
         </details>
       </details>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="wealth-cripto">
         <summary>
           <h2>🪙 Cripto</h2>
         </summary>
@@ -5532,7 +5534,7 @@ export function WealthPage() {
         </details>
       </details>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="wealth-vehiculos">
         <summary>
           <h2>🚗 Vehículos</h2>
         </summary>
@@ -5842,7 +5844,7 @@ export function WealthPage() {
         </details>
       </details>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="wealth-fondo-pensiones">
         <summary>
           <h2>👴 Fondo Pensiones</h2>
         </summary>
@@ -6272,7 +6274,7 @@ export function WealthPage() {
         </details>
       </details>
 
-      <details className="dashboard-section">
+      <details className="dashboard-section" id="wealth-efectivo">
         <summary>
           <h2>💵 Efectivo</h2>
         </summary>

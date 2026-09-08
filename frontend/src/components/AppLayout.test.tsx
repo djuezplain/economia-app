@@ -118,6 +118,38 @@ describe('AppLayout', () => {
     expect(logoutButton.querySelector('.dot')).toBeInTheDocument();
   });
 
+  it('muestra las subsecciones de "Ingresos y gastos", "Dashboard" y "Resumen Patrimonio" (petición de Diego)', async () => {
+    mockLoggedIn();
+    renderLayout();
+
+    await screen.findByRole('link', { name: 'Inicio' });
+
+    for (const [label, href] of [
+      ['Movimientos', '/movements'],
+      ['Resumen', '/movements/summary'],
+      ['Registrar', '/movements/register'],
+      ['Comparativa temporal', '/dashboard#dashboard-comparativa-temporal'],
+      ['Vista anual', '/dashboard#dashboard-vista-anual'],
+      ['Cuentas Bancarias', '/patrimonio#wealth-cuentas-bancarias'],
+      ['Efectivo', '/patrimonio#wealth-efectivo'],
+    ] as const) {
+      expect(screen.getByRole('link', { name: label })).toHaveAttribute('href', href);
+    }
+  });
+
+  it('oculta las subsecciones con el menú plegado', async () => {
+    mockLoggedIn();
+    const user = userEvent.setup();
+    renderLayout();
+
+    await screen.findByRole('link', { name: 'Movimientos' });
+
+    await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
+
+    expect(screen.queryByRole('link', { name: 'Movimientos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Comparativa temporal' })).not.toBeInTheDocument();
+  });
+
   it('marca como activo solo el enlace de la ruta actual, incluido "Inicio" solo en la home', async () => {
     mockLoggedIn();
     renderLayout('/categories');
