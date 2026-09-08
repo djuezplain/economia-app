@@ -401,11 +401,17 @@ p {
 /* Subsecciones de cada entrada del menú lateral (petición de Diego): lista
    anidada bajo el `.nav-link` de su padre, indentada y en un tamaño menor —
    el color de "activo" ya lo cubre `#app-sidebar a[aria-current='page']` de
-   arriba, sin necesidad de repetirlo aquí. */
-.nav-sublist {
+   arriba, sin necesidad de repetirlo aquí. 34px para que el texto de la
+   subsección quede claramente a la derecha del icono del padre (`.nav-icon`,
+   20px de ancho) y no justo debajo de él. Selector `#app-sidebar .nav-sublist`
+   (no solo `.nav-sublist`): corrección pedida por Diego — con solo la clase,
+   `#app-sidebar ul` (arriba, un ID + elemento, más específico que una sola
+   clase) ganaba y el `padding-left` nunca llegaba a aplicarse, dejando las
+   subsecciones a la misma indentación que la entrada principal. */
+#app-sidebar .nav-sublist {
   list-style: none;
   margin: 2px 0 6px;
-  padding: 0 0 0 22px;
+  padding: 0 0 0 34px;
 }
 .nav-sublist li {
   margin: 1px 0;
