@@ -57,6 +57,7 @@ const NAV_ITEMS = [
     children: [
       { to: '/patrimonio#wealth-cuentas-bancarias', end: false, label: 'Cuentas Bancarias', icon: '🏦' },
       { to: '/patrimonio#wealth-acciones', end: false, label: 'Acciones', icon: '📈' },
+      { to: '/patrimonio#wealth-acciones-impuestos', end: false, label: 'Cálculo de impuestos', icon: '🧮' },
       { to: '/patrimonio#wealth-fondos-inversion', end: false, label: 'Fondos Inversión', icon: '💹' },
       { to: '/patrimonio#wealth-cripto', end: false, label: 'Cripto', icon: '🪙' },
       { to: '/patrimonio#wealth-vehiculos', end: false, label: 'Vehículos', icon: '🚗' },
