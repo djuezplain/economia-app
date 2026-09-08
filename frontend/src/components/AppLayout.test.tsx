@@ -49,6 +49,13 @@ describe('AppLayout', () => {
                 }
               />
               <Route path="/categories" element={<h1>Contenido de categorías</h1>} />
+              {/* Comodín: las pruebas de las subsecciones del menú navegan a
+                  destinos reales (/movements, /dashboard, /patrimonio...)
+                  para probar el clic en la entrada principal — sin esta
+                  ruta, React Router no encontraría ninguna coincidencia y
+                  desmontaría `AppLayout` entero (spec.md, no solo el
+                  `Outlet`). */}
+              <Route path="*" element={null} />
             </Route>
           </Routes>
         </MemoryRouter>
@@ -110,19 +117,29 @@ describe('AppLayout', () => {
     ]) {
       const link = screen.getByRole('link', { name });
       expect(link).toBeInTheDocument();
-      expect(link.querySelector('.dot')).toBeInTheDocument();
+      expect(link.querySelector('.nav-icon')).toBeInTheDocument();
     }
     expect(nav).toBeInTheDocument();
     const logoutButton = screen.getByRole('button', { name: 'Cerrar sesión' });
     expect(logoutButton).toBeInTheDocument();
-    expect(logoutButton.querySelector('.dot')).toBeInTheDocument();
+    expect(logoutButton.querySelector('.nav-icon')).toBeInTheDocument();
   });
 
-  it('muestra las subsecciones de "Ingresos y gastos", "Dashboard" y "Resumen Patrimonio" (petición de Diego)', async () => {
+  it('las subsecciones de "Ingresos y gastos", "Dashboard" y "Resumen Patrimonio" solo se muestran al hacer clic en la entrada principal (petición de Diego)', async () => {
     mockLoggedIn();
+    const user = userEvent.setup();
     renderLayout();
 
     await screen.findByRole('link', { name: 'Inicio' });
+
+    // Antes de hacer clic en ninguna entrada, no se ve ninguna subsección.
+    expect(screen.queryByRole('link', { name: 'Movimientos' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Comparativa temporal' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Cuentas Bancarias' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: 'Ingresos y gastos' }));
+    await user.click(screen.getByRole('link', { name: 'Dashboard' }));
+    await user.click(screen.getByRole('link', { name: 'Resumen Patrimonio' }));
 
     for (const [label, href] of [
       ['Movimientos', '/movements'],
@@ -137,11 +154,40 @@ describe('AppLayout', () => {
     }
   });
 
-  it('oculta las subsecciones con el menú plegado', async () => {
+  it('un segundo clic en la entrada principal vuelve a ocultar sus subsecciones', async () => {
     mockLoggedIn();
     const user = userEvent.setup();
     renderLayout();
 
+    const link = await screen.findByRole('link', { name: 'Ingresos y gastos' });
+    expect(link).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(link);
+    expect(await screen.findByRole('link', { name: 'Movimientos' })).toBeInTheDocument();
+    expect(link).toHaveAttribute('aria-expanded', 'true');
+
+    await user.click(link);
+    expect(screen.queryByRole('link', { name: 'Movimientos' })).not.toBeInTheDocument();
+    expect(link).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('al cargar una página que pertenece a una entrada con subsecciones, esa entrada empieza ya desplegada', async () => {
+    mockLoggedIn();
+    renderLayout('/movements');
+
+    expect(await screen.findByRole('link', { name: 'Movimientos' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ingresos y gastos' })).toHaveAttribute('aria-expanded', 'true');
+    // Las otras entradas con subsecciones no se ven afectadas.
+    expect(screen.queryByRole('link', { name: 'Comparativa temporal' })).not.toBeInTheDocument();
+  });
+
+  it('oculta las subsecciones con el menú plegado, aunque estuvieran desplegadas', async () => {
+    mockLoggedIn();
+    const user = userEvent.setup();
+    renderLayout();
+
+    await user.click(await screen.findByRole('link', { name: 'Ingresos y gastos' }));
+    await user.click(screen.getByRole('link', { name: 'Dashboard' }));
     await screen.findByRole('link', { name: 'Movimientos' });
 
     await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
@@ -168,7 +214,7 @@ describe('AppLayout', () => {
     // Antes de plegar: sin `aria-label` (el nombre accesible viene del
     // texto visible) y sin la clase `sr-only` en el texto.
     expect(inicioLink).not.toHaveAttribute('aria-label');
-    expect(inicioLink.querySelector('span:not(.dot)')).not.toHaveClass('sr-only');
+    expect(inicioLink.querySelector('span:not(.nav-icon)')).not.toHaveClass('sr-only');
 
     await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
 
@@ -177,19 +223,19 @@ describe('AppLayout', () => {
     // ya no desaparece del todo, a diferencia del comportamiento anterior
     // de spec 005.
     const collapsedInicioLink = screen.getByRole('link', { name: 'Inicio' });
-    expect(collapsedInicioLink.querySelector('span:not(.dot)')).toHaveClass('sr-only');
-    expect(collapsedInicioLink.querySelector('.dot')).toBeInTheDocument();
+    expect(collapsedInicioLink.querySelector('span:not(.nav-icon)')).toHaveClass('sr-only');
+    expect(collapsedInicioLink.querySelector('.nav-icon')).toBeInTheDocument();
 
     const logoutButton = screen.getByRole('button', { name: 'Cerrar sesión' });
-    expect(logoutButton.querySelector('span:not(.dot)')).toHaveClass('sr-only');
-    expect(logoutButton.querySelector('.dot')).toBeInTheDocument();
+    expect(logoutButton.querySelector('span:not(.nav-icon)')).toHaveClass('sr-only');
+    expect(logoutButton.querySelector('.nav-icon')).toBeInTheDocument();
 
     const toggle = screen.getByRole('button', { name: 'Mostrar menú' });
     await user.click(toggle);
 
     const expandedInicioLink = await screen.findByRole('link', { name: 'Inicio' });
     expect(expandedInicioLink).not.toHaveAttribute('aria-label');
-    expect(expandedInicioLink.querySelector('span:not(.dot)')).not.toHaveClass('sr-only');
+    expect(expandedInicioLink.querySelector('span:not(.nav-icon)')).not.toHaveClass('sr-only');
   });
 
   it('conserva el estado plegado al navegar entre rutas hijas (AppLayout no se desmonta)', async () => {
@@ -208,7 +254,7 @@ describe('AppLayout', () => {
 
     expect(await screen.findByText('Contenido de categorías')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mostrar menú' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Categorías' }).querySelector('span:not(.dot)')).toHaveClass('sr-only');
+    expect(screen.getByRole('link', { name: 'Categorías' }).querySelector('span:not(.nav-icon)')).toHaveClass('sr-only');
   });
 
   it('pulsar "Cerrar sesión" llama a logout', async () => {

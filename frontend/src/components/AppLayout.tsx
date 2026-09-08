@@ -4,63 +4,90 @@ import { useAuth } from '../auth/auth-context';
 import { useSyncQueue } from '../hooks/useSyncQueue';
 import { SyncStatusPanel } from './SyncStatusPanel';
 
-// Spec 008 (rediseño Broadsheet), plan.md §5. Sustituye a los iconos de
-// `lucide-react` de spec 007 H5 (retirados en T7) por un punto de color
-// (`.dot`, ver el `<span>` de más abajo) — decorativo, el nombre accesible
-// del enlace sigue siendo `label` (el texto visible, o `aria-label` con el
-// menú plegado). `end` solo hace falta en "Inicio" (mismo motivo que
+// Spec 008 (rediseño Broadsheet), plan.md §5, y petición de Diego (icono
+// por entrada): sustituye al punto de color decorativo por un emoji —
+// mismo criterio ya usado en los encabezados de sección de Dashboard/
+// WealthPage (`icon` reutiliza exactamente esos mismos emojis en las
+// subsecciones de "Dashboard"/"Resumen Patrimonio", para que el icono del
+// submenú coincida con el de la sección a la que lleva). El nombre
+// accesible del enlace sigue siendo `label` (el texto visible, o
+// `aria-label` con el menú plegado) — el icono es decorativo
+// (`aria-hidden`). `end` solo hace falta en "Inicio" (mismo motivo que
 // `AppLayout` original: sin él, "/" quedaría activo en cualquier ruta).
-// Subsecciones de cada entrada (petición de Diego): para "Ingresos y
-// gastos" son las 3 sub-rutas propias de spec 006 (`MovementsLayout`); para
-// "Dashboard" y "Resumen Patrimonio" no hay sub-rutas (sus secciones son
-// `<details>` plegables dentro de la misma página, spec 016/018) — el
-// enlace lleva un hash al `id` de cada `<details>`, y `useOpenSectionFromHash`
-// (en cada página) lo abre y hace scroll hasta él al navegar.
+// Subsecciones de cada entrada: para "Ingresos y gastos" son las 3
+// sub-rutas propias de spec 006 (`MovementsLayout`); para "Dashboard" y
+// "Resumen Patrimonio" no hay sub-rutas (sus secciones son `<details>`
+// plegables dentro de la misma página, spec 016/018) — el enlace lleva un
+// hash al `id` de cada `<details>`, y `useOpenSectionFromHash` (en cada
+// página) lo abre y hace scroll hasta él al navegar. Solo se muestran al
+// hacer clic en la entrada principal (petición de Diego, ver `expandedItems`
+// más abajo).
 const NAV_ITEMS = [
-  { to: '/', end: true, label: 'Inicio' },
-  { to: '/categories', end: false, label: 'Categorías' },
+  { to: '/', end: true, label: 'Inicio', icon: '🏠' },
+  { to: '/categories', end: false, label: 'Categorías', icon: '🏷️' },
   {
     to: '/movements',
     end: false,
     label: 'Ingresos y gastos',
+    icon: '💳',
     children: [
-      { to: '/movements', end: true, label: 'Movimientos' },
-      { to: '/movements/summary', end: false, label: 'Resumen' },
-      { to: '/movements/register', end: false, label: 'Registrar' },
+      { to: '/movements', end: true, label: 'Movimientos', icon: '📋' },
+      { to: '/movements/summary', end: false, label: 'Resumen', icon: '📈' },
+      { to: '/movements/register', end: false, label: 'Registrar', icon: '➕' },
     ],
   },
   {
     to: '/dashboard',
     end: false,
     label: 'Dashboard',
+    icon: '📊',
     children: [
-      { to: '/dashboard#dashboard-comparativa-temporal', end: false, label: 'Comparativa temporal' },
-      { to: '/dashboard#dashboard-categorias-periodo', end: false, label: 'Categorías por periodo' },
-      { to: '/dashboard#dashboard-analisis-estacional', end: false, label: 'Análisis estacional' },
-      { to: '/dashboard#dashboard-resumen-mes', end: false, label: 'Resumen del mes' },
-      { to: '/dashboard#dashboard-vista-anual', end: false, label: 'Vista anual' },
+      { to: '/dashboard#dashboard-comparativa-temporal', end: false, label: 'Comparativa temporal', icon: '⚖️' },
+      { to: '/dashboard#dashboard-categorias-periodo', end: false, label: 'Categorías por periodo', icon: '🗂️' },
+      { to: '/dashboard#dashboard-analisis-estacional', end: false, label: 'Análisis estacional', icon: '🌦️' },
+      { to: '/dashboard#dashboard-resumen-mes', end: false, label: 'Resumen del mes', icon: '🗓️' },
+      { to: '/dashboard#dashboard-vista-anual', end: false, label: 'Vista anual', icon: '📈' },
     ],
   },
   {
     to: '/patrimonio',
     end: false,
     label: 'Resumen Patrimonio',
+    icon: '💰',
     children: [
-      { to: '/patrimonio#wealth-cuentas-bancarias', end: false, label: 'Cuentas Bancarias' },
-      { to: '/patrimonio#wealth-acciones', end: false, label: 'Acciones' },
-      { to: '/patrimonio#wealth-fondos-inversion', end: false, label: 'Fondos Inversión' },
-      { to: '/patrimonio#wealth-cripto', end: false, label: 'Cripto' },
-      { to: '/patrimonio#wealth-vehiculos', end: false, label: 'Vehículos' },
-      { to: '/patrimonio#wealth-fondo-pensiones', end: false, label: 'Fondo Pensiones' },
-      { to: '/patrimonio#wealth-efectivo', end: false, label: 'Efectivo' },
+      { to: '/patrimonio#wealth-cuentas-bancarias', end: false, label: 'Cuentas Bancarias', icon: '🏦' },
+      { to: '/patrimonio#wealth-acciones', end: false, label: 'Acciones', icon: '📈' },
+      { to: '/patrimonio#wealth-fondos-inversion', end: false, label: 'Fondos Inversión', icon: '💹' },
+      { to: '/patrimonio#wealth-cripto', end: false, label: 'Cripto', icon: '🪙' },
+      { to: '/patrimonio#wealth-vehiculos', end: false, label: 'Vehículos', icon: '🚗' },
+      { to: '/patrimonio#wealth-fondo-pensiones', end: false, label: 'Fondo Pensiones', icon: '👴' },
+      { to: '/patrimonio#wealth-efectivo', end: false, label: 'Efectivo', icon: '💵' },
     ],
   },
-  { to: '/import', end: false, label: 'Importar Excel' },
-  { to: '/goals', end: false, label: 'Objetivos y presupuestos' },
-  { to: '/backup', end: false, label: 'Copia de seguridad' },
-  { to: '/profile', end: false, label: 'Tu perfil' },
-  { to: '/sessions', end: false, label: 'Dispositivos y sesiones' },
+  { to: '/import', end: false, label: 'Importar Excel', icon: '📥' },
+  { to: '/goals', end: false, label: 'Objetivos y presupuestos', icon: '🎯' },
+  { to: '/backup', end: false, label: 'Copia de seguridad', icon: '🗄️' },
+  { to: '/profile', end: false, label: 'Tu perfil', icon: '👤' },
+  { to: '/sessions', end: false, label: 'Dispositivos y sesiones', icon: '🔐' },
 ] as const;
+
+/**
+ * Petición de Diego: las subsecciones ya no se muestran siempre, solo al
+ * hacer clic en la entrada principal a la que pertenecen (antes de esto,
+ * el estado no existía y `children` se pintaba entero sin más condición
+ * que `!isCollapsed`). Independiente por entrada (no acordeón): abrir una
+ * no cierra las demás, para no sorprender al usuario cerrando algo que ya
+ * tenía abierto. Arranca con la sección de la ruta actual ya abierta (si
+ * la hay) para no perder ese contexto nada más cargar la página.
+ */
+function initialExpandedItems(pathname: string): Set<string> {
+  const expanded = new Set<string>();
+  for (const item of NAV_ITEMS) {
+    if (!('children' in item)) continue;
+    if (pathname === item.to || pathname.startsWith(`${item.to}/`)) expanded.add(item.to);
+  }
+  return expanded;
+}
 
 /**
  * Enlace de subsección del menú lateral. A diferencia de `NavLink`, calcula
@@ -73,11 +100,13 @@ function SidebarSubLink({
   to,
   end,
   label,
+  icon,
   onNavigate,
 }: {
   to: string;
   end: boolean;
   label: string;
+  icon: string;
   onNavigate: () => void;
 }) {
   const location = useLocation();
@@ -90,6 +119,9 @@ function SidebarSubLink({
 
   return (
     <Link to={to} className="nav-sublink" aria-current={isActive ? 'page' : undefined} onClick={onNavigate}>
+      <span className="nav-icon" aria-hidden="true">
+        {icon}
+      </span>{' '}
       {label}
     </Link>
   );
@@ -118,7 +150,18 @@ const BOTTOM_NAV_ITEMS = [
  */
 export function AppLayout() {
   const { isAuthenticated, isLoading, isOffline, logout } = useAuth();
+  const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [expandedItems, setExpandedItems] = useState(() => initialExpandedItems(location.pathname));
+
+  function toggleExpanded(to: string) {
+    setExpandedItems((current) => {
+      const next = new Set(current);
+      if (next.has(to)) next.delete(to);
+      else next.add(to);
+      return next;
+    });
+  }
   // Spec 009 (adaptación a móvil), plan.md §1. Estado independiente de
   // `isCollapsed`: en escritorio el menú se pliega a una franja estrecha
   // pero sigue presente; en móvil (por debajo de 768px, CSS) está oculto
@@ -246,18 +289,44 @@ export function AppLayout() {
           </button>
           <ul>
             {NAV_ITEMS.map((item) => {
-              const { to, end, label } = item;
+              const { to, end, label, icon } = item;
               const children = 'children' in item ? item.children : undefined;
+              const isExpanded = expandedItems.has(to);
+              const sublistId = `nav-sublist-${to}`;
               return (
                 <li key={to}>
-                  <NavLink to={to} end={end} className="nav-link" onClick={closeMobileMenu} {...collapsedLabel(label)}>
-                    <span className="dot" aria-hidden="true" /> <span className={isCollapsed ? 'sr-only' : undefined}>{label}</span>
+                  <NavLink
+                    to={to}
+                    end={end}
+                    className="nav-link"
+                    onClick={() => {
+                      closeMobileMenu();
+                      if (children) toggleExpanded(to);
+                    }}
+                    {...(children ? { 'aria-expanded': isExpanded, 'aria-controls': sublistId } : {})}
+                    {...collapsedLabel(label)}
+                  >
+                    <span className="nav-icon" aria-hidden="true">
+                      {icon}
+                    </span>{' '}
+                    <span className={isCollapsed ? 'sr-only' : undefined}>{label}</span>
+                    {!isCollapsed && children && (
+                      <span className="nav-chevron" aria-hidden="true" data-expanded={isExpanded}>
+                        ›
+                      </span>
+                    )}
                   </NavLink>
-                  {!isCollapsed && children && (
-                    <ul className="nav-sublist">
+                  {!isCollapsed && children && isExpanded && (
+                    <ul className="nav-sublist" id={sublistId}>
                       {children.map((child) => (
                         <li key={child.to}>
-                          <SidebarSubLink to={child.to} end={child.end} label={child.label} onNavigate={closeMobileMenu} />
+                          <SidebarSubLink
+                            to={child.to}
+                            end={child.end}
+                            label={child.label}
+                            icon={child.icon}
+                            onNavigate={closeMobileMenu}
+                          />
                         </li>
                       ))}
                     </ul>
@@ -267,7 +336,9 @@ export function AppLayout() {
             })}
             <li>
               <button type="button" className="btn btn-secondary" onClick={handleLogoutClick} {...collapsedLabel('Cerrar sesión')}>
-                <span className="dot" aria-hidden="true" />{' '}
+                <span className="nav-icon" aria-hidden="true">
+                  🚪
+                </span>{' '}
                 <span className={isCollapsed ? 'sr-only' : undefined}>Cerrar sesión</span>
               </button>
               {confirmLogout && (

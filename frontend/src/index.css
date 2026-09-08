@@ -354,14 +354,12 @@ p {
   font-weight: 600;
 }
 
-/* Spec 008 (rediseño Broadsheet), plan.md §5 (H5). Tercera y cuarta
-   excepción a "sin className" del proyecto (junto a `.progress-bar` y
-   `.sr-only` de spec 007): elemento reutilizable instanciado varias veces
-   por página (una vez por enlace del menú, y de nuevo en la lista de
-   Inicio, `#home-recent-list`) — mismo motivo exacto que `ProgressBar`.
-   El color de "activo" lo decide el CSS por descendencia de
-   `a[aria-current='page']` (mismo patrón que el texto en negrita de arriba),
-   no una prop de React nueva. */
+/* Spec 008 (rediseño Broadsheet), plan.md §5 (H5). Excepción a "sin
+   className" del proyecto (junto a `.progress-bar` y `.sr-only` de spec
+   007): elemento reutilizable instanciado varias veces por página (en la
+   lista de Inicio, `#home-recent-list`). El color de "activo" en el menú
+   lateral ya no depende de esta clase (spec del icono por entrada, petición
+   de Diego): ver `.nav-icon`/`a[aria-current='page']` más abajo. */
 .dot {
   display: inline-block;
   width: 8px;
@@ -369,9 +367,35 @@ p {
   border-radius: 50%;
   background: var(--border);
 }
-.dot-accent,
-#app-sidebar a[aria-current='page'] .dot {
+.dot-accent {
   background: var(--accent);
+}
+
+/* Icono de cada entrada del menú lateral (petición de Diego), en vez del
+   punto de color anterior — mismo emoji que el encabezado de la sección a
+   la que lleva cuando existe (p. ej. "📈 Acciones" en `WealthPage`, mismo
+   📈 aquí). Ancho fijo: con el menú plegado es el único contenido visible
+   del enlace (el texto pasa a `.sr-only`) y necesita quedar centrado, no
+   pegado al borde izquierdo. */
+.nav-icon {
+  display: inline-flex;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+/* Flecha de plegar/desplegar subsecciones (petición de Diego: ya no se
+   muestran siempre, solo al hacer clic en la entrada principal — ver
+   `expandedItems` en `AppLayout.tsx`). `margin-inline-start: auto` la
+   empuja al borde derecho del `.nav-link` (que es `flex`); rota 90° al
+   expandirse en vez de cambiar de glifo, para que la transición sea un giro
+   suave y no un parpadeo de caracteres distintos. */
+.nav-chevron {
+  margin-inline-start: auto;
+  transition: transform 0.15s ease;
+}
+.nav-chevron[data-expanded='true'] {
+  transform: rotate(90deg);
 }
 
 /* Subsecciones de cada entrada del menú lateral (petición de Diego): lista
@@ -387,11 +411,16 @@ p {
   margin: 1px 0;
 }
 .nav-sublink {
-  display: block;
+  display: flex;
+  align-items: center;
   padding: 4px 6px;
   border-radius: var(--radius-md);
   font-size: 13px;
   white-space: nowrap;
+}
+.nav-sublink .nav-icon {
+  width: 18px;
+  font-size: 12px;
 }
 .nav-sublink:hover {
   background: color-mix(in srgb, var(--text) 6%, transparent);
