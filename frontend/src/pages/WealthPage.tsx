@@ -436,6 +436,13 @@ function fifoPositionState(
   };
 }
 
+/** Una posición de Acciones está "cerrada" cuando se ha comprado alguna vez y, tras aplicar FIFO a
+ *  compras y ventas, no queda ninguna acción en cartera (se ha vendido todo). Sin ninguna compra
+ *  todavía no cuenta como cerrada — es simplemente una posición sin abrir. */
+function isStockPositionClosed(purchases: StockPurchase[], sales: StockSale[]): boolean {
+  return purchases.length > 0 && parseFloat(fifoPositionState(purchases, sales).heldShares) === 0;
+}
+
 /** H2 criterio 4 (spec 031): total de ganancia/pérdida realizada de una posición — suma de
  *  `realizedGainLossBySaleId` de su propio `fifoPositionState`. */
 function totalRealizedGainLoss(fifoState: { realizedGainLossBySaleId: Record<string, string> }): string {
@@ -3561,9 +3568,26 @@ export function WealthPage() {
 
         {stockList && stockList.length === 0 && <p>Todavía no tienes ninguna acción.</p>}
 
-        {stockList && stockList.length > 0 && (
-          <ul id="wealth-stock-list" aria-label="Tus acciones">
-            {stockList.map((stock) => {
+        {stockList &&
+          stockList.length > 0 &&
+          (() => {
+            // Distingue las posiciones abiertas (todavía con acciones en cartera) de las cerradas
+            // (se compró y ya se vendió todo) — ver `isStockPositionClosed`.
+            const openStockList = stockList.filter(
+              (stock) =>
+                !isStockPositionClosed(
+                  (purchases ?? []).filter((p) => p.stockId === stock.id),
+                  (stockSaleList ?? []).filter((s) => s.stockId === stock.id),
+                ),
+            );
+            const closedStockList = stockList.filter((stock) =>
+              isStockPositionClosed(
+                (purchases ?? []).filter((p) => p.stockId === stock.id),
+                (stockSaleList ?? []).filter((s) => s.stockId === stock.id),
+              ),
+            );
+
+            const renderStockCard = (stock: Stock) => {
               const isEditingStock = editingStockId === stock.id;
               const stockPurchases = (purchases ?? []).filter((p) => p.stockId === stock.id);
               const stockSalesForThisStock = (stockSaleList ?? []).filter((s) => s.stockId === stock.id);
@@ -4293,9 +4317,27 @@ export function WealthPage() {
                   </details>
                 </li>
               );
-            })}
-          </ul>
-        )}
+            };
+
+            return (
+              <>
+                {openStockList.length === 0 && <p>No tienes ninguna posición abierta.</p>}
+
+                {openStockList.length > 0 && (
+                  <ul id="wealth-stock-list" aria-label="Tus acciones abiertas">
+                    {openStockList.map(renderStockCard)}
+                  </ul>
+                )}
+
+                {closedStockList.length > 0 && (
+                  <details>
+                    <summary>Posiciones cerradas ({closedStockList.length})</summary>
+                    <ul aria-label="Tus acciones cerradas">{closedStockList.map(renderStockCard)}</ul>
+                  </details>
+                )}
+              </>
+            );
+          })()}
 
         <details className="dashboard-section">
           <summary>
