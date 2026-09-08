@@ -2067,6 +2067,103 @@ describe('WealthPage', () => {
     });
   });
 
+  describe('Cálculo de impuestos por venta de acciones', () => {
+    function mockOtherApis() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
+      vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
+      vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+    }
+
+    it('reparte la ganancia realizada del año seleccionado entre los tramos de la normativa 2026', async () => {
+      // Compra sin coste (0,00 €) y venta de 10.000,00 € → ganancia realizada 10.000,00 €: cruza el
+      // primer tramo (hasta 6.000 € al 19%) y entra en el segundo (hasta 50.000 € al 21%).
+      // Cuota: 6.000 × 19% = 1.140,00 € + 4.000 × 21% = 840,00 € → total 1.980,00 €.
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([
+        { ...STOCK_PURCHASE, shareCount: '1.0000', purchasePrice: '0.00', date: '2026-01-01' },
+      ]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([
+        { ...STOCK_SALE, shareCount: '1.0000', salePrice: '10000.00', date: '2026-06-01' },
+      ]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      const yearSelect = await screen.findByLabelText('Año');
+      await userEvent.selectOptions(yearSelect, '2026');
+
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial realizada en 2026: 10.000,00 €/)).toBeInTheDocument();
+      const table = await screen.findByRole('table', { name: 'Desglose por tramos' });
+      const rows = within(table).getAllByRole('row');
+      expect(rows[1]).toHaveTextContent('19 %');
+      expect(rows[1]).toHaveTextContent('1140,00 €');
+      expect(rows[2]).toHaveTextContent('21 %');
+      expect(rows[2]).toHaveTextContent('840,00 €');
+      expect(screen.getByText(/Total a pagar: 1980,00 €/)).toBeInTheDocument();
+    });
+
+    it('una pérdida neta en el año no genera ningún impuesto a pagar', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([
+        { ...STOCK_PURCHASE, shareCount: '10.0000', purchasePrice: '30.00', date: '2026-01-01' },
+      ]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([
+        { ...STOCK_SALE, shareCount: '10.0000', salePrice: '20.00', date: '2026-06-01' },
+      ]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      const yearSelect = await screen.findByLabelText('Año');
+      await userEvent.selectOptions(yearSelect, '2026');
+
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial realizada en 2026: -100,00 €/)).toBeInTheDocument();
+      expect(screen.getByText('No hay ganancia patrimonial sujeta a impuesto en este ejercicio.')).toBeInTheDocument();
+      expect(screen.queryByRole('table', { name: 'Desglose por tramos' })).not.toBeInTheDocument();
+    });
+
+    it('el selector de año solo cuenta las ventas del ejercicio elegido, ignorando las de otros años', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([
+        { ...STOCK_PURCHASE, id: 'purchase-2025', shareCount: '1.0000', purchasePrice: '0.00', date: '2025-01-01' },
+        { ...STOCK_PURCHASE, id: 'purchase-2026', shareCount: '1.0000', purchasePrice: '0.00', date: '2026-01-01' },
+      ]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([
+        { ...STOCK_SALE, id: 'sale-2025', shareCount: '1.0000', salePrice: '1000.00', date: '2025-06-01' },
+        { ...STOCK_SALE, id: 'sale-2026', shareCount: '1.0000', salePrice: '2000.00', date: '2026-06-01' },
+      ]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      const yearSelect = await screen.findByLabelText('Año');
+      await waitFor(() => expect(within(yearSelect).getAllByRole('option')).toHaveLength(2));
+      await userEvent.selectOptions(yearSelect, '2025');
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial realizada en 2025: 1000,00 €/)).toBeInTheDocument();
+
+      await userEvent.selectOptions(yearSelect, '2026');
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial realizada en 2026: 2000,00 €/)).toBeInTheDocument();
+    });
+  });
+
   describe('Cripto (spec 022)', () => {
     function mockOtherApis() {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });

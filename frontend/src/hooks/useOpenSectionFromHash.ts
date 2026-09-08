@@ -21,6 +21,12 @@ export function useOpenSectionFromHash(ready: boolean) {
     const element = document.getElementById(hash.slice(1));
     if (!element) return;
     if (element instanceof HTMLDetailsElement) element.open = true;
+    // "Cálculo de impuestos" (spec de la sección de impuestos) es un `<details>` anidado DENTRO de
+    // "Acciones", no uno de los `<details>` de nivel superior de la página — sin esto, `element.open`
+    // no sirve de nada porque el `<details>` padre sigue cerrado y su contenido no se ve.
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+    }
     element.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [ready, hash]);
 }

@@ -451,6 +451,65 @@ function totalRealizedGainLoss(fifoState: { realizedGainLossBySaleId: Record<str
     .toFixed(2);
 }
 
+/** Años (más reciente primero) en los que hay al menos una venta de acciones registrada —
+ *  opciones del selector de "Cálculo de impuestos". */
+function stockSaleYears(sales: StockSale[]): string[] {
+  const years = new Set(sales.map((sale) => sale.date.slice(0, 4)));
+  return Array.from(years).sort((a, b) => (a < b ? 1 : -1));
+}
+
+/** Ganancia/pérdida patrimonial realizada por venta de acciones en un año natural concreto, sumando
+ *  (por cada posición, vía su propio `fifoPositionState`) el resultado FIFO de las ventas de ese año
+ *  — mismo criterio de cálculo que `totalRealizedGainLoss`, pero acotado a `year` y agregado sobre
+ *  todas las posiciones (necesario para la declaración de la renta, que es por ejercicio fiscal). */
+function realizedGainLossForYear(stocks: Stock[], purchases: StockPurchase[], sales: StockSale[], year: string): string {
+  return stocks
+    .reduce((sum, stock) => {
+      const stockPurchases = purchases.filter((p) => p.stockId === stock.id);
+      const stockSales = sales.filter((s) => s.stockId === stock.id);
+      const { realizedGainLossBySaleId } = fifoPositionState(stockPurchases, stockSales);
+      const yearSales = stockSales.filter((s) => s.date.slice(0, 4) === year);
+      return sum + yearSales.reduce((acc, sale) => acc + parseFloat(realizedGainLossBySaleId[sale.id] ?? '0'), 0);
+    }, 0)
+    .toFixed(2);
+}
+
+/** Tramos de tributación de las ganancias patrimoniales (venta de acciones) según la normativa
+ *  vigente en el ejercicio 2026: hasta 6.000 € al 19%, de 6.000,01 a 50.000 € al 21%, de 50.000,01 a
+ *  200.000 € al 23% y el resto al 26%. `upTo` es el límite superior de cada tramo (acumulado, no el
+ *  tamaño del tramo). */
+const STOCK_CAPITAL_GAINS_TAX_BRACKETS = [
+  { upTo: 6000, rate: 0.19 },
+  { upTo: 50000, rate: 0.21 },
+  { upTo: 200000, rate: 0.23 },
+  { upTo: Infinity, rate: 0.26 },
+];
+
+/** Aplica los tramos progresivos de `STOCK_CAPITAL_GAINS_TAX_BRACKETS` a la ganancia patrimonial total
+ *  de un ejercicio, repartiéndola tramo a tramo (cada € tributa solo al tipo de su propio tramo, no al
+ *  tipo marginal aplicado a todo el importe). Una ganancia de 0 o negativa (pérdida neta) no genera
+ *  impuesto — no se calcula la compensación con pérdidas de otros ejercicios, fuera del alcance de
+ *  este cálculo. */
+function calculateStockCapitalGainsTax(totalGain: number): {
+  breakdown: Array<{ from: number; to: number; rate: number; taxableAmount: number; tax: number }>;
+  totalTax: number;
+} {
+  const breakdown: Array<{ from: number; to: number; rate: number; taxableAmount: number; tax: number }> = [];
+  if (totalGain <= 0) return { breakdown, totalTax: 0 };
+
+  let remaining = totalGain;
+  let previousLimit = 0;
+  for (const bracket of STOCK_CAPITAL_GAINS_TAX_BRACKETS) {
+    if (remaining <= 0) break;
+    const taxableAmount = Math.min(remaining, bracket.upTo - previousLimit);
+    breakdown.push({ from: previousLimit, to: bracket.upTo, rate: bracket.rate, taxableAmount, tax: taxableAmount * bracket.rate });
+    remaining -= taxableAmount;
+    previousLimit = bracket.upTo;
+  }
+
+  return { breakdown, totalTax: breakdown.reduce((sum, tramo) => sum + tramo.tax, 0) };
+}
+
 /** H2 criterio 4 (spec 022): cantidad total de una posición de cripto, sumando todas sus compras
  *  — calculado, nunca guardado. Mismo patrón que `totalShares`, sobre `quantity` en vez de `shareCount`. */
 function totalCryptoQuantity(purchases: CryptoPurchase[]): string {
@@ -718,6 +777,10 @@ export function WealthPage() {
   const [isSavingStockSale, setIsSavingStockSale] = useState(false);
   const [pendingDeleteStockSaleId, setPendingDeleteStockSaleId] = useState<string | null>(null);
   const [stockSaleActionError, setStockSaleActionError] = useState<string | null>(null);
+
+  // Año seleccionado en "Cálculo de impuestos" — arranca en el año actual; si no hay ventas ese año,
+  // el propio bloque de la sección lo sustituye por el año más reciente con ventas disponible.
+  const [taxYear, setTaxYear] = useState<string>(() => String(new Date().getFullYear()));
 
   const [valuations, setValuations] = useState<StockValuation[] | null>(null);
   const [valuationsLoadError, setValuationsLoadError] = useState<string | null>(null);
@@ -4405,6 +4468,78 @@ export function WealthPage() {
               {isCreatingStock ? 'Creando…' : 'Añadir acción'}
             </button>
           </form>
+        </details>
+
+        <details className="dashboard-section" id="wealth-acciones-impuestos">
+          <summary>
+            <h3>🧮 Cálculo de impuestos</h3>
+          </summary>
+          {(() => {
+            const years = stockSaleYears(stockSaleList ?? []);
+            const selectedYear = years.includes(taxYear) ? taxYear : (years[0] ?? taxYear);
+            const totalGain = parseFloat(
+              realizedGainLossForYear(stockList ?? [], purchases ?? [], stockSaleList ?? [], selectedYear),
+            );
+            const { breakdown, totalTax } = calculateStockCapitalGainsTax(totalGain);
+
+            return (
+              <>
+                <p className="card-meta">
+                  Impuesto estimado en la declaración de la renta sobre la ganancia patrimonial realizada por venta de
+                  acciones (FIFO), según los tramos vigentes en la normativa del ejercicio 2026. Una pérdida neta no
+                  genera impuesto a pagar; este cálculo no tiene en cuenta la compensación con pérdidas de otros
+                  ejercicios.
+                </p>
+
+                <div className="field">
+                  <label htmlFor="tax-calc-year">Año</label>
+                  <select id="tax-calc-year" className="input" value={selectedYear} onChange={(e) => setTaxYear(e.target.value)}>
+                    {(years.length > 0 ? years : [selectedYear]).map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <p className="card-meta">
+                  Ganancia/pérdida patrimonial realizada en {selectedYear}: {formatCurrency(totalGain.toFixed(2))}
+                </p>
+
+                {totalGain <= 0 ? (
+                  <p>No hay ganancia patrimonial sujeta a impuesto en este ejercicio.</p>
+                ) : (
+                  <>
+                    <table className="table">
+                      <caption>Desglose por tramos</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Tramo</th>
+                          <th scope="col">Tipo</th>
+                          <th scope="col">Base</th>
+                          <th scope="col">Cuota</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {breakdown.map((tramo) => (
+                          <tr key={tramo.from}>
+                            <td data-label="Tramo">
+                              {formatCurrency(tramo.from.toFixed(2))} –{' '}
+                              {tramo.to === Infinity ? 'en adelante' : formatCurrency(tramo.to.toFixed(2))}
+                            </td>
+                            <td data-label="Tipo">{(tramo.rate * 100).toFixed(0)} %</td>
+                            <td data-label="Base">{formatCurrency(tramo.taxableAmount.toFixed(2))}</td>
+                            <td data-label="Cuota">{formatCurrency(tramo.tax.toFixed(2))}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="card-title">Total a pagar: {formatCurrency(totalTax.toFixed(2))}</p>
+                  </>
+                )}
+              </>
+            );
+          })()}
         </details>
       </details>
 
