@@ -272,14 +272,31 @@ p {
 /* Spec 010 (rediseño editorial), plan.md §3: ancho 236px/68px (antes fijo
    220px, spec 008) con transición — antes `isCollapsed` solo ocultaba el
    texto sin cambiar el ancho real; ahora el panel se estrecha de verdad,
-   como en el handoff. `overflow: hidden` evita que el texto oculto
-   (`.sr-only`) provoque scroll horizontal durante la animación. */
+   como en el handoff. `overflow-x: hidden` evita que el texto oculto
+   (`.sr-only`) provoque scroll horizontal durante la animación.
+
+   `position: sticky` (petición de Diego): sin esto, al añadirse las
+   subsecciones el menú pasó a ser más alto que el contenido corto de
+   algunas páginas y, siendo un elemento normal del flujo dentro de
+   `#app-shell` (flex `align-items: stretch`, que lo estira tanto como su
+   hermano `#app-content`), se desplazaba fuera de la vista al hacer scroll
+   en vez de quedarse fijo. `align-self: flex-start` anula ese estirado (si
+   no, `max-height` no tendría efecto, ya estaría estirado a la altura del
+   contenido) y `overflow-y: auto` permite que el propio menú haga scroll
+   interno si sus enlaces no caben en una pantalla. Solo aplica en
+   escritorio: en móvil el menú ya usa `position: fixed` (ver media query
+   más abajo), que sustituye a este `sticky`. */
 #app-sidebar {
   flex-shrink: 0;
   width: 236px;
   padding: var(--space-4) var(--space-3);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   transition: width 0.18s ease;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100vh;
 }
 #app-sidebar[data-collapsed='true'] {
   width: 68px;
