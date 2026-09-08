@@ -357,6 +357,29 @@ p {
   background: var(--accent);
 }
 
+/* Subsecciones de cada entrada del menú lateral (petición de Diego): lista
+   anidada bajo el `.nav-link` de su padre, indentada y en un tamaño menor —
+   el color de "activo" ya lo cubre `#app-sidebar a[aria-current='page']` de
+   arriba, sin necesidad de repetirlo aquí. */
+.nav-sublist {
+  list-style: none;
+  margin: 2px 0 6px;
+  padding: 0 0 0 22px;
+}
+.nav-sublist li {
+  margin: 1px 0;
+}
+.nav-sublink {
+  display: block;
+  padding: 4px 6px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.nav-sublink:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
 /* Insignia circular con el emoji de una categoría (CategoriesPage) — mismo
    criterio de excepción a "sin className" que `.dot`: se repite una vez por
    tarjeta de categoría. `.category-icon-accent` distingue ingresos de
