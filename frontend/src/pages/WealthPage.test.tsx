@@ -703,7 +703,7 @@ describe('WealthPage', () => {
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
       expect(within(list).getByText(/Inditex · BBVA/)).toBeInTheDocument();
       // 10.0000 acciones × 35,00 €/acción (STOCK_VALUATION) = 350,00 €.
       expect(within(list).getByText('350,00 €')).toBeInTheDocument();
@@ -732,7 +732,7 @@ describe('WealthPage', () => {
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
       // Coste total 300,00 € (10 × 30,00 €), valor actual 240,00 € (10 × 24,00 €) → -20.00%, en rojo.
       const gainLossEl = within(list).getByText('-20.00%');
       expect(gainLossEl).toHaveStyle({ color: 'var(--status-red)' });
@@ -748,7 +748,7 @@ describe('WealthPage', () => {
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
       await within(list).findByText(/Inditex · BBVA/);
       expect(within(list).queryByText(/%$/)).not.toBeInTheDocument();
     });
@@ -763,7 +763,7 @@ describe('WealthPage', () => {
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
       expect(within(list).getByText('Sin valoración')).toBeInTheDocument();
       expect(within(list).getByText('Todavía no hay ninguna compra registrada en esta acción.')).toBeInTheDocument();
       expect(within(list).getByText('Todavía no hay ninguna valoración registrada en esta acción.')).toBeInTheDocument();
@@ -830,7 +830,7 @@ describe('WealthPage', () => {
       const updateSpy = vi.spyOn(stocksApi, 'updateStock').mockResolvedValue(STOCK);
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByRole('list', { name: 'Tus acciones abiertas' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Editar acción: Inditex · BBVA' }));
       const editForm = screen.getByRole('form', { name: 'Editar acción: Inditex' });
@@ -852,7 +852,7 @@ describe('WealthPage', () => {
       const deleteSpy = vi.spyOn(stocksApi, 'deleteStock').mockResolvedValue(undefined);
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByRole('list', { name: 'Tus acciones abiertas' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Eliminar acción: Inditex · BBVA' }));
 
@@ -934,7 +934,7 @@ describe('WealthPage', () => {
       const updateSpy = vi.spyOn(stockPurchasesApi, 'updateStockPurchase').mockResolvedValue(STOCK_PURCHASE);
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByRole('list', { name: 'Tus acciones abiertas' });
 
       const purchaseLabel = 'Editar compra de Inditex: 2026-09-04 · 10.0000 acciones a 30.00€';
       await userEvent.click(screen.getByRole('button', { name: purchaseLabel }));
@@ -960,7 +960,7 @@ describe('WealthPage', () => {
       const deleteStockSpy = vi.spyOn(stocksApi, 'deleteStock');
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByRole('list', { name: 'Tus acciones abiertas' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Eliminar compra de Inditex: 2026-09-04 · 10.0000 acciones a 30.00€' }));
 
@@ -1030,7 +1030,7 @@ describe('WealthPage', () => {
       const updateSpy = vi.spyOn(stockValuationsApi, 'updateStockValuation').mockResolvedValue(STOCK_VALUATION);
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByRole('list', { name: 'Tus acciones abiertas' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Editar valoración de Inditex del 2026-09-04' }));
       const editForm = screen.getByRole('form', { name: 'Editar valoración de Inditex del 2026-09-04' });
@@ -1055,7 +1055,7 @@ describe('WealthPage', () => {
       const deleteStockSpy = vi.spyOn(stocksApi, 'deleteStock');
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByRole('list', { name: 'Tus acciones abiertas' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Eliminar valoración de Inditex del 2026-09-04' }));
 
@@ -1484,7 +1484,7 @@ describe('WealthPage', () => {
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
       expect(within(list).getByText(/Dividendos cobrados: Sin dividendos/)).toBeInTheDocument();
     });
 
@@ -1502,7 +1502,7 @@ describe('WealthPage', () => {
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
       expect(within(list).getByText(/Dividendos cobrados: 81,00 €/)).toBeInTheDocument();
 
       const history = within(list).getByRole('list', { name: 'Historial de dividendos de Inditex · BBVA' });
@@ -1573,7 +1573,7 @@ describe('WealthPage', () => {
       const updateSpy = vi.spyOn(stockDividendsApi, 'updateStockDividend').mockResolvedValue(STOCK_DIVIDEND);
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByRole('list', { name: 'Tus acciones abiertas' });
 
       const dividendLabel = 'Editar dividendo de Inditex: 2026-09-04 · 81.00€ netos';
       await userEvent.click(screen.getByRole('button', { name: dividendLabel }));
@@ -1603,7 +1603,7 @@ describe('WealthPage', () => {
       const deleteStockSpy = vi.spyOn(stocksApi, 'deleteStock');
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByRole('list', { name: 'Tus acciones abiertas' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Eliminar dividendo de Inditex: 2026-09-04 · 81.00€ netos' }));
 
@@ -1713,7 +1713,7 @@ describe('WealthPage', () => {
 
         renderPage();
 
-        const list = await screen.findByRole('list', { name: 'Tus acciones' });
+        const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
         // Coste 300,00 € (10 × 30,00 €), valor actual 350,00 € (10 × 35,00 €), dividendo 81,00 € netos / 100,00 € brutos.
         // Sin dividendos: (350−300)/300×100 = +16.67 %. Con netos: (350+81−300)/300×100 = +43.67 %.
         // Con brutos: (350+100−300)/300×100 = +50.00 %.
@@ -1736,7 +1736,7 @@ describe('WealthPage', () => {
 
         renderPage();
 
-        const list = await screen.findByRole('list', { name: 'Tus acciones' });
+        const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
         expect(within(list).getByText('+16.67%')).toBeInTheDocument();
         // Acotado a "· neto"/"· bruto" (no solo "neto"/"bruto"): el formulario "Añadir dividendo"
         // de la misma tarjeta tiene un campo con la etiqueta "Importe neto".
@@ -1867,7 +1867,7 @@ describe('WealthPage', () => {
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
       // FIFO: 10 acciones a 20,00 € (200,00 €) + 5 acciones a 30,00 € (150,00 €) = coste 350,00 €.
       // Venta: 15 × 40,00 € = 600,00 € → ganancia realizada 600 − 350 = 250,00 €.
       // En cartera: 5 acciones a 30,00 € = 150,00 € de coste; valor actual 5 × 40,00 € = 200,00 €.
@@ -1912,7 +1912,7 @@ describe('WealthPage', () => {
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
       // FIFO correcto: se vende toda la compra más antigua (10 @ 20,00 € = 200,00 €), no la más
       // reciente. Ganancia realizada: 10 × 40,00 € − 200,00 € = 200,00 €. Queda en cartera la compra
       // de 30,00 €: coste 300,00 €.
@@ -1929,7 +1929,7 @@ describe('WealthPage', () => {
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      const list = await screen.findByRole('list', { name: 'Tus acciones abiertas' });
       expect(within(list).getByText(/Ganancia\/pérdida realizada: Sin ventas/)).toBeInTheDocument();
     });
 
@@ -1942,7 +1942,8 @@ describe('WealthPage', () => {
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByText('No tienes ninguna posición abierta.');
+      const list = await screen.findByRole('list', { name: 'Tus acciones cerradas' });
       expect(within(list).getByText(/0.00000000 acciones en cartera · Coste total: 0,00 €/)).toBeInTheDocument();
       expect(within(list).queryByText(/^[+-]\d+\.\d{2}%$/)).not.toBeInTheDocument();
     });
@@ -2015,7 +2016,7 @@ describe('WealthPage', () => {
       const updateSpy = vi.spyOn(stockSalesApi, 'updateStockSale').mockResolvedValue(STOCK_SALE);
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByRole('list', { name: 'Tus acciones abiertas' });
 
       const saleLabel = 'Editar venta de Inditex: 2026-09-05 · 4.0000 acciones a 32.00€';
       await userEvent.click(screen.getByRole('button', { name: saleLabel }));
@@ -2038,7 +2039,7 @@ describe('WealthPage', () => {
       const deleteStockSpy = vi.spyOn(stocksApi, 'deleteStock');
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus acciones' });
+      await screen.findByRole('list', { name: 'Tus acciones abiertas' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Eliminar venta de Inditex: 2026-09-05 · 4.0000 acciones a 32.00€' }));
 
