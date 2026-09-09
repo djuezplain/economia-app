@@ -1,6 +1,6 @@
 # Plan — Spec 032 (Exportación e importación de todos los datos)
 
-**Fase:** 2 de 4
+**Fase:** 4 de 4. H4 (Google Drive) implementada — ver §9 y tasks.md Grupos 5-9.
 
 ## 1. Forma del fichero JSON
 
@@ -188,3 +188,170 @@ export function confirmDataImport(file: File): Promise<DataImportSummary> {
 
 - Igual que spec.md §2: sin modo "reemplazar todo", sin fusión por clave de negocio (solo por `id`), sin tocar perfil/autenticación, sin CSV/Excel.
 - No se añade paginación/streaming al export ni al import — el volumen de datos de un usuario de esta app (registros manuales, no un histórico bancario masivo) no lo justifica; si en el futuro hiciera falta, es un cambio localizado a `mergeTable`/las consultas de `exportData()`, no al formato del fichero.
+
+## 9. H4 — Exportar a Google Drive
+
+### 9.1 Credenciales y variables de entorno nuevas
+
+Mismo proyecto de Google Cloud que ya usa el login (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `auth/google/google.strategy.ts`) — H4 solo necesita que Diego habilite la **Google Drive API** en ese proyecto (Google Cloud Console → APIs & Services → Library) y registre una segunda Redirect URI (distinta de la del login, ver §9.3). No hace falta un proyecto ni unas credenciales nuevas.
+
+```
+# backend/.env.example — nuevas
+GOOGLE_DRIVE_CALLBACK_URL="http://localhost:3000/auth/drive/callback"
+DRIVE_TOKEN_ENCRYPTION_KEY=""   # 32 bytes en base64 — `openssl rand -base64 32`
+```
+
+`env.validation.ts`: `GOOGLE_DRIVE_CALLBACK_URL: Joi.string().uri().default('http://localhost:3000/auth/drive/callback')`, `DRIVE_TOKEN_ENCRYPTION_KEY: Joi.string().allow('').default('')` (igual criterio que `GOOGLE_CLIENT_ID` — opcional a nivel de arranque, bloqueado a nivel de ruta por un guard, mismo patrón que `GoogleConfiguredGuard` — ver §9.4).
+
+### 9.2 Tabla nueva `google_drive_connections`
+
+```ts
+// backend/src/db/schema/google-drive.schema.ts
+export const googleDriveConnections = pgTable('google_drive_connections', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+  refreshTokenEncrypted: text('refresh_token_encrypted').notNull(),
+  // Se rellena en el primer export correcto (lazy, no en el momento de conectar — así
+  // si el usuario borra la carpeta a mano en Drive entre dos exports, el siguiente
+  // export la recrea sola en vez de fallar apuntando a un id que ya no existe).
+  folderId: varchar('folder_id', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+Una fila por usuario (`unique` en `userId`) — conectar de nuevo tras desconectar hace `ON CONFLICT (user_id) DO UPDATE` (mismo refresh token/folder nuevos, sin duplicar fila). `onDelete: 'cascade'` — igual criterio que el resto de tablas colgadas de `users` (borrar cuenta se lleva también esto, sin dato huérfano). Nunca se guarda el access token (vive solo en memoria de la petición, se pide uno nuevo a Google en cada export con el refresh token — évita otra columna con expiración que gestionar).
+
+No se guarda el `id`/nombre de la carpeta como "dato económico" del export de H1 — es infraestructura de la conexión, no pertenece a `AccountExportFile`.
+
+### 9.3 Cifrado del refresh token en reposo
+
+`backend/src/common/secret-encryption.util.ts` — AES-256-GCM con Node `crypto` nativo (sin dependencia nueva):
+
+```ts
+export function encryptSecret(plaintext: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', keyFromEnv(), iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  return [iv, cipher.getAuthTag(), ciphertext].map((b) => b.toString('base64')).join('.');
+}
+export function decryptSecret(stored: string): string {
+  const [iv, tag, ciphertext] = stored.split('.').map((s) => Buffer.from(s, 'base64'));
+  const decipher = createDecipheriv('aes-256-gcm', keyFromEnv(), iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+}
+```
+
+`keyFromEnv()` lee `DRIVE_TOKEN_ENCRYPTION_KEY` (base64 → 32 bytes) una vez; si no está configurada, `GoogleDriveConfiguredGuard` (§9.4) ya ha bloqueado la ruta antes de llegar aquí, así que esta función puede asumir que existe. Utilidad genérica (no acoplada a "Drive") por si en el futuro otro secreto de terceros la necesita — no es una abstracción prematura: el propio H4 ya tiene dos usos (cifrar al guardar, descifrar en cada export).
+
+### 9.4 Guard de disponibilidad
+
+```ts
+// backend/src/google-drive/google-drive-configured.guard.ts
+```
+
+Mismo patrón que `GoogleConfiguredGuard` (`auth/google/`): comprueba `GOOGLE_CLIENT_ID`/`SECRET` (compartidas con el login) y `DRIVE_TOKEN_ENCRYPTION_KEY`; si falta cualquiera, `ServiceUnavailableException` con mensaje claro en vez de fallar de forma confusa contra Google o al cifrar. Se aplica en las 4 rutas de §9.6.
+
+### 9.5 Conectar Drive — flujo OAuth propio, sin exponer el access token en la URL
+
+Problema a resolver: `GET /auth/drive/connect` lo dispara una navegación completa del navegador (`window.location.href`, no un `fetch`) porque el paso siguiente es redirigir a Google — igual que el propio login con Google (constitution.md, nota T4.1-T4.2). Pero, a diferencia del login, aquí el usuario **ya tiene sesión iniciada** y hace falta saber quién es *antes* de generar la URL de Google, sin poder mandar el `Authorization: Bearer` (una navegación de navegador no lleva headers custom).
+
+**Decisión: se identifica al usuario con la cookie de refresh token ya existente**, en vez de pasar el access token por query string (que sí sería un patrón nuevo, y uno peor que el ya aceptado en constitution.md para el sentido contrario). La cookie (`REFRESH_COOKIE_NAME`, `session-cookie.ts`) tiene `path: '/auth'` a propósito — con las rutas nuevas bajo `/auth/drive/...`, el navegador la adjunta sola en la navegación, sin cambiar nada de la cookie ni de su alcance.
+
+`SessionsService` añade un método de solo lectura, sin rotar nada (rotar emitiría una sesión nueva innecesaria para una acción que no es "refrescar sesión"):
+
+```ts
+async verifyActive(refreshTokenPlaintext: string): Promise<{ userId: string }> {
+  const hash = hashOpaqueToken(refreshTokenPlaintext);
+  const session = await this.db.query.sessions.findFirst({ where: eq(sessions.refreshTokenHash, hash) });
+  if (!session || session.revokedAt || session.expiresAt.getTime() < Date.now()) {
+    throw new UnauthorizedException('Sesión no válida.');
+  }
+  return { userId: session.userId };
+}
+```
+
+Flujo completo:
+
+1. **`GET /auth/drive/connect`** (guard: `GoogleDriveConfiguredGuard`, sin `AuthGuard` — no hay header Bearer en una navegación):
+   - Lee la cookie de refresh token; si falta o `verifyActive()` lanza → `res.redirect('${FRONTEND_URL}/login')` (mismo criterio que cualquier acción que exige sesión y no la encuentra).
+   - `state` = JWT de corta vida firmado con el mismo `JwtService` ya inyectado en el resto de la app (`jwt.signAsync({ sub: userId }, { expiresIn: '5m' })`) — evita meter una tabla o cookie nueva solo para este único valor de ida y vuelta (mismo criterio que constitution.md ya documentó para el login: "sin `state` anti-CSRF con sesión de servidor", aquí el JWT firmado cumple el mismo papel de "no falsificable" sin introducir `express-session`).
+   - `res.redirect(oauth2Client.generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: [DRIVE_FILE_SCOPE], state }))` — `prompt: 'consent'` fuerza que Google **siempre** devuelva `refresh_token`, incluso en una reconexión (por defecto, Google solo lo manda la primerísima vez que un usuario autoriza esa combinación app+cuenta; sin esto, desconectar y reconectar criterio 6 podría quedarse sin refresh token nuevo).
+
+2. **`GET /auth/drive/callback`** (guard: `GoogleDriveConfiguredGuard`, tampoco `AuthGuard` — lo visita Google, no la SPA):
+   - `jwt.verifyAsync(state)` → `userId` (JWT inválido/caducado → redirige a `${FRONTEND_URL}/backup?driveConnected=0&error=state`).
+   - `oauth2Client.getToken(code)` → si Google no devuelve `refresh_token` (edge case ya cubierto por `prompt=consent`, pero se comprueba igual) → redirige con `?driveConnected=0&error=no_refresh_token`.
+   - `encryptSecret(refresh_token)`, `INSERT ... ON CONFLICT (user_id) DO UPDATE SET refresh_token_encrypted = ..., folder_id = NULL, updated_at = now()` (una reconexión resetea `folderId` a propósito — la próxima export la reencuentra o recrea, criterio 4/6).
+   - Redirige a `${FRONTEND_URL}/backup?driveConnected=1`.
+
+`DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'` (spec H4 criterio 3 — scope más restrictivo, la app solo ve lo que ella misma crea).
+
+### 9.6 Endpoints
+
+```
+GET    /auth/drive/connect    → 302 a Google (cookie de refresh, sin AuthGuard — §9.5)
+GET    /auth/drive/callback   → 302 a /backup (sin AuthGuard — §9.5)
+GET    /drive/connection      → { connected: boolean }             (AuthGuard normal, Bearer)
+POST   /drive/export          → { fileId: string; webViewLink: string }  (AuthGuard normal, Bearer)
+DELETE /drive/connection      → 204                                  (AuthGuard normal, Bearer)
+```
+
+Las dos últimas filas usan el guard estándar del resto de la app (`AuthGuard`, `RequireActiveUserGuard`, `GoogleDriveConfiguredGuard`) porque las dispara siempre un `fetch` normal de la SPA (ya autenticada con Bearer), no una navegación — no tienen el problema de §9.5.
+
+### 9.7 `POST /drive/export` — subida real
+
+```ts
+async exportToDrive(userId: string): Promise<{ fileId: string; webViewLink: string }> {
+  const connection = await this.getConnection(userId); // 404 con mensaje "Conecta Google Drive primero" si no existe
+  const oauth2Client = this.buildClient(decryptSecret(connection.refreshTokenEncrypted));
+  const folderId = await this.ensureFolder(oauth2Client, connection); // §9.7.1
+  const file = await this.usersService.exportData(userId); // MISMO método que ya usa GET /users/me/export — no se duplica lógica
+  const filename = `economia-app-datos-${new Date().toISOString().slice(0, 10)}.json`;
+  return this.uploadJson(oauth2Client, folderId, filename, file); // §9.7.2
+}
+```
+
+- **Reutiliza `UsersService.exportData()` directamente (llamada a método, no HTTP a sí mismo)** — el mismo `AccountExportFile` que ya arma H1, sin recomponer nada. Evita que H1 y H4 puedan divergir en qué incluyen.
+- **9.7.1 `ensureFolder`**: si `connection.folderId` existe, `GET https://www.googleapis.com/drive/v3/files/{id}?fields=id,trashed` — si 404 o `trashed: true` (usuario la borró/papelera a mano en Drive), se trata como "no existe". Si no existe, busca por nombre exacto (`files.list` con `q="name='Economía App' and mimeType='application/vnd.google-apps.folder' and trashed=false"`, con `drive.file` esto solo puede encontrar una carpeta que la propia app ya haya creado antes, coherente con el scope) y si tampoco aparece, la crea (`files.create`, `mimeType: 'application/vnd.google-apps.folder'`). Guarda el `id` resultante en `connection.folderId` (`UPDATE`) para la próxima vez.
+- **9.7.2 `uploadJson`**: `POST https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink`, cuerpo `multipart/related` con la parte de metadata (`{ name, parents: [folderId] }`, `Content-Type: application/json`) y la parte de contenido (`JSON.stringify(file)`, `Content-Type: application/json`) — mismo criterio de llamada cruda con `JWT`/`OAuth2Client.request()` de `google-auth-library` que ya usa `GoogleSheetsService` (`import/google-sheets.service.ts` §"request<T>"), no se añade la librería `googleapis` completa solo para dos llamadas.
+- **Errores**: mismo patrón que `GoogleSheetsService.request()` — captura `gaxios.GaxiosError`; si el status es 401 o el cuerpo trae `invalid_grant` (token revocado desde fuera de la app, p. ej. el usuario quitó el permiso en myaccount.google.com/permissions), `BadRequestException('El acceso a Google Drive ha caducado o ha sido revocado. Desconecta y vuelve a conectar Google Drive.')` — no se borra la conexión sola (criterio 6 deja el borrado como acción explícita del usuario, no automática); cualquier otro fallo (cuota, 5xx de Google) → `BadRequestException('No se ha podido guardar el fichero en Google Drive. Inténtalo de nuevo más tarde.')`.
+
+### 9.8 Módulo backend
+
+```ts
+// backend/src/google-drive/google-drive.module.ts
+@Module({
+  imports: [AuthGuardModule, UsersModule], // UsersModule: reutiliza UsersService.exportData() (§9.7)
+  controllers: [GoogleDriveOAuthController, GoogleDriveController],
+  providers: [GoogleDriveService],
+})
+export class GoogleDriveModule {}
+```
+
+`app.module.ts` añade `GoogleDriveModule`. `UsersModule` debe exportar `UsersService` si no lo hace ya (comprobar al implementar; si no lo exporta, se añade a sus `exports`, sin más cambios — ya lo consume igual `ProfileController` hoy).
+
+### 9.9 Frontend
+
+- **`frontend/src/api/google-drive.ts`**: `getDriveConnectionStatus()` (`GET /drive/connection`), `disconnectDrive()` (`DELETE /drive/connection`), `exportToDrive()` (`POST /drive/export`, mismo `api.post` con Bearer que el resto de `api/*.ts`) y `driveConnectUrl()` que simplemente construye `${API_BASE_URL}/auth/drive/connect` (no es una llamada `fetch` — se usa como `window.location.href`, §9.5).
+- **`BackupPage.tsx`**: nueva sub-sección dentro de "Exportar todos tus datos". Al montar, `getDriveConnectionStatus()`. Si `connected: false`: botón "Conectar Google Drive" → `window.location.href = driveConnectUrl()`. Si `connected: true`: botón "Guardar en Google Drive" (`exportToDrive()`, muestra enlace `webViewLink` al terminar, criterio 5) y enlace "Desconectar" (`disconnectDrive()`, confirmación simple tipo `window.confirm`, criterio 6). Al volver de Google, la página lee `?driveConnected=1|0&error=...` de la URL (`useSearchParams`) para mostrar la confirmación/error y vuelve a pedir el estado — mismo criterio que `OAuthCallbackPage` ya usa para leer query params tras un redirect de Google.
+
+### 9.10 Decisiones de este plan (H4)
+
+1. **Identificación del usuario en `/auth/drive/connect` vía cookie de refresh, no vía access token en query string.** Ver razonamiento completo en §9.5 — reutiliza una cookie y un alcance (`path: '/auth'`) que ya existen, sin inventar un mecanismo nuevo ni exponer un token más sensible (access token válido para toda la API) en una URL/historial del navegador.
+2. **`state` firmado con JWT de 5 minutos, sin `express-session`** — mismo criterio ya aceptado en constitution.md para el login con Google, aplicado aquí también.
+3. **`folderId` se resuelve de forma perezosa (lazy) en cada export, no solo al conectar** — tolera que el usuario manipule la carpeta a mano en Drive entre dos exports (criterio 4), sin dejar la conexión en un estado roto.
+4. **`prompt: 'consent'` siempre en el `connect`** — sin esto, una desconexión+reconexión (criterio 6) se quedaría sin `refresh_token` nuevo (Google solo lo emite la primera vez por defecto), dejando la reconexión rota de una forma no evidente hasta el primer export.
+5. **Sin librería `googleapis`** — se reutiliza `google-auth-library` (ya en el proyecto, usada por `GoogleSheetsService`) con llamadas REST crudas, mismo patrón ya establecido, en vez de añadir una dependencia grande para dos endpoints de Drive.
+6. **Revocación en Google no es responsabilidad de "desconectar"** — `DELETE /drive/connection` solo borra la fila local; no se llama al endpoint de revocación de Google (`oauth2.revoke`). Simplifica el caso feliz (el usuario puede reconectar sin ir a Google) y evita un fallo de red en el borrado local por un problema al revocar; si Diego prefiere revocar también en Google, es un cambio pequeño y aislado a esa única ruta.
+
+### 9.11 Tests (H4)
+
+- Backend: `google-drive.e2e-spec.ts` — conectar (mock de `oauth2Client.getToken`) guarda la fila cifrada; reconectar hace upsert sin duplicar; `export` sin conexión previa → 404/mensaje claro; `export` con conexión pero token revocado (mock 401) → error claro, conexión no se borra sola; `ensureFolder` crea la carpeta si `folderId` es `null` y la reutiliza en el segundo export (mock de `files.get`/`files.list`/`files.create`); aislamiento — la conexión de un usuario nunca se usa para otro. Unit test de `secret-encryption.util.ts` (round-trip cifra/descifra, y que un texto cifrado con una key no descifra con otra).
+- Frontend: `BackupPage.test.tsx` se amplía con los tres estados (no conectado / conectado / tras volver de Google con `driveConnected=1` y con `=0&error=...`).
+
+## 10. Fuera de este plan (H4)
+
+- Igual que spec.md §2 (Fuera de alcance de H4): sin importar desde Drive, sin selector de carpeta (Google Picker), sin copias periódicas/automáticas.
+- Sin revocar el token en Google al desconectar (§9.10 decisión 6) — solo se borra la conexión local.
+- Sin refrescar/cachear el access token entre peticiones — cada `POST /drive/export` pide uno nuevo a Google con el refresh token (una operación manual, poco frecuente; no compensa la complejidad de cachear un token de 1h de vida para este volumen de uso).

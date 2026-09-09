@@ -16,6 +16,8 @@ export const envValidationSchema = Joi.object({
   GOOGLE_CALLBACK_URL: Joi.string().uri().default('http://localhost:3000/auth/google/callback'),
   GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL: Joi.string().allow('').default(''),
   GOOGLE_SHEETS_SERVICE_ACCOUNT_PRIVATE_KEY: Joi.string().allow('').default(''),
+  GOOGLE_DRIVE_CALLBACK_URL: Joi.string().uri().default('http://localhost:3000/auth/drive/callback'),
+  DRIVE_TOKEN_ENCRYPTION_KEY: Joi.string().allow('').default(''),
   MAIL_FROM: Joi.string().email().required(),
   FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
 });

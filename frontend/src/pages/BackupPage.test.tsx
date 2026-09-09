@@ -8,6 +8,7 @@ import * as authApi from '../api/auth';
 import * as usersApi from '../api/users';
 import * as dataImportApi from '../api/data-import';
 import type { DataImportSummary } from '../api/data-import';
+import * as googleDriveApi from '../api/google-drive';
 import { ApiError } from '../api/client';
 
 const PROFILE: usersApi.UserProfile = {
@@ -37,12 +38,16 @@ describe('BackupPage', () => {
     vi.restoreAllMocks();
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+    // Por defecto, no conectado — cada test de Google Drive (H4) lo sustituye
+    // según lo que necesite. Evita que el resto de tests (export/import) se
+    // vean afectados por la comprobación de conexión que se hace al montar.
+    vi.spyOn(googleDriveApi, 'getDriveConnectionStatus').mockResolvedValue({ connected: false });
   });
 
-  function renderPage() {
+  function renderPage(initialEntries: string[] = ['/backup']) {
     return render(
       <AuthProvider>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={initialEntries}>
           <BackupPage />
         </MemoryRouter>
       </AuthProvider>,
@@ -161,6 +166,71 @@ describe('BackupPage', () => {
 
       expect(await screen.findByRole('alert')).toHaveTextContent('Error de servidor.');
       expect(screen.getByRole('heading', { name: 'Vista previa' })).toBeInTheDocument();
+    });
+  });
+
+  describe('Google Drive (H4)', () => {
+    it('no conectado, muestra "Conectar Google Drive" y no ofrece exportar a Drive', async () => {
+      renderPage();
+
+      expect(await screen.findByRole('button', { name: 'Conectar Google Drive' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Guardar en Google Drive' })).not.toBeInTheDocument();
+    });
+
+    it('conectado, exporta a Drive y muestra el enlace al fichero', async () => {
+      vi.spyOn(googleDriveApi, 'getDriveConnectionStatus').mockResolvedValue({ connected: true });
+      const exportSpy = vi
+        .spyOn(googleDriveApi, 'exportToDrive')
+        .mockResolvedValue({ fileId: 'file-1', webViewLink: 'https://drive.google.com/file/d/file-1/view' });
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Guardar en Google Drive' }));
+
+      expect(exportSpy).toHaveBeenCalled();
+      expect(await screen.findByRole('link', { name: 'Ver fichero' })).toHaveAttribute(
+        'href',
+        'https://drive.google.com/file/d/file-1/view',
+      );
+    });
+
+    it('conectado, si falla el export a Drive muestra el error sin romper el resto de la página', async () => {
+      vi.spyOn(googleDriveApi, 'getDriveConnectionStatus').mockResolvedValue({ connected: true });
+      vi.spyOn(googleDriveApi, 'exportToDrive').mockRejectedValue(
+        new ApiError(400, 'El acceso a Google Drive ha caducado o ha sido revocado. Desconecta y vuelve a conectar Google Drive.'),
+      );
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Guardar en Google Drive' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('ha caducado o ha sido revocado');
+      // El resto de la página (export local) sigue disponible.
+      expect(screen.getByRole('button', { name: 'Exportar mis datos' })).toBeInTheDocument();
+    });
+
+    it('conectado, desconectar vuelve a mostrar "Conectar Google Drive"', async () => {
+      vi.spyOn(googleDriveApi, 'getDriveConnectionStatus').mockResolvedValue({ connected: true });
+      const disconnectSpy = vi.spyOn(googleDriveApi, 'disconnectDrive').mockResolvedValue(undefined);
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Desconectar' }));
+
+      expect(disconnectSpy).toHaveBeenCalled();
+      expect(await screen.findByRole('button', { name: 'Conectar Google Drive' })).toBeInTheDocument();
+    });
+
+    it('retorno de Google con éxito (?driveConnected=1), muestra el aviso de conexión', async () => {
+      vi.spyOn(googleDriveApi, 'getDriveConnectionStatus').mockResolvedValue({ connected: true });
+
+      renderPage(['/backup?driveConnected=1']);
+
+      expect(await screen.findByText('Google Drive conectado correctamente.')).toBeInTheDocument();
+    });
+
+    it('retorno de Google cancelado (?driveConnected=0&error=access_denied), muestra el motivo', async () => {
+      renderPage(['/backup?driveConnected=0&error=access_denied']);
+
+      expect(await screen.findByText('Has cancelado la conexión con Google Drive.')).toBeInTheDocument();
     });
   });
 });
