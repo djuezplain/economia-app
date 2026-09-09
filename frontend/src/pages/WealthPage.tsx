@@ -474,6 +474,29 @@ function realizedGainLossForYear(stocks: Stock[], purchases: StockPurchase[], sa
     .toFixed(2);
 }
 
+/** Detalle, venta a venta, de la ganancia/pérdida realizada en un año concreto (todas las posiciones)
+ *  — a diferencia de `realizedGainLossForYear`, que solo da el neto del año, esto expone cada aporte
+ *  individual (una venta con pérdida dentro de un año con ganancia neta, por ejemplo) para poder
+ *  mostrarlo como línea propia en el desglose, ordenado por fecha. */
+function stockSalesRealizedGainLossForYear(
+  stocks: Stock[],
+  purchases: StockPurchase[],
+  sales: StockSale[],
+  year: string,
+): Array<{ id: string; stock: string; date: string; amount: number }> {
+  const rows: Array<{ id: string; stock: string; date: string; amount: number }> = [];
+  for (const stock of stocks) {
+    const stockPurchases = purchases.filter((p) => p.stockId === stock.id);
+    const stockSales = sales.filter((s) => s.stockId === stock.id);
+    const { realizedGainLossBySaleId } = fifoPositionState(stockPurchases, stockSales);
+    for (const sale of stockSales) {
+      if (sale.date.slice(0, 4) !== year) continue;
+      rows.push({ id: sale.id, stock: stock.stock, date: sale.date, amount: parseFloat(realizedGainLossBySaleId[sale.id] ?? '0') });
+    }
+  }
+  return rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
 /** Tramos de tributación de las ganancias patrimoniales (venta de acciones) según la normativa
  *  vigente en el ejercicio 2026: hasta 6.000 € al 19%, de 6.000,01 a 50.000 € al 21%, de 50.000,01 a
  *  200.000 € al 23% y el resto al 26%. `upTo` es el límite superior de cada tramo (acumulado, no el
@@ -4553,6 +4576,12 @@ export function WealthPage() {
             }));
             const compensation = simulateLossCompensationForYear(yearlyGainLoss, selectedYear);
             const { breakdown, totalTax } = calculateStockCapitalGainsTax(compensation.netTaxableAmount);
+            const saleRows = stockSalesRealizedGainLossForYear(
+              stockList ?? [],
+              purchases ?? [],
+              stockSaleList ?? [],
+              selectedYear,
+            );
 
             return (
               <>
@@ -4588,7 +4617,7 @@ export function WealthPage() {
                   </p>
                 )}
 
-                {compensation.grossAmount !== 0 ? (
+                {saleRows.length > 0 ? (
                   <>
                     <table className="table">
                       <caption>Desglose</caption>
@@ -4601,12 +4630,24 @@ export function WealthPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td data-label="Concepto">Ganancia/pérdida patrimonial bruta</td>
-                          <td data-label="Tipo">—</td>
-                          <td data-label="Base">{formatCurrency(compensation.grossAmount.toFixed(2))}</td>
-                          <td data-label="Cuota">—</td>
-                        </tr>
+                        {saleRows.map((row) => (
+                          <tr key={row.id}>
+                            <td data-label="Concepto">
+                              Venta de {row.stock} ({row.date})
+                            </td>
+                            <td data-label="Tipo">—</td>
+                            <td data-label="Base">{formatCurrency(row.amount.toFixed(2))}</td>
+                            <td data-label="Cuota">—</td>
+                          </tr>
+                        ))}
+                        {saleRows.length > 1 && (
+                          <tr>
+                            <td data-label="Concepto">Ganancia/pérdida patrimonial bruta</td>
+                            <td data-label="Tipo">—</td>
+                            <td data-label="Base">{formatCurrency(compensation.grossAmount.toFixed(2))}</td>
+                            <td data-label="Cuota">—</td>
+                          </tr>
+                        )}
                         {compensation.compensatedLosses.map((loss) => (
                           <tr key={loss.year}>
                             <td data-label="Concepto">Pérdida compensada de {loss.year}</td>
@@ -4643,11 +4684,13 @@ export function WealthPage() {
                       </p>
                     ) : compensation.netTaxableAmount > 0 ? (
                       <p className="card-title">Total a pagar: {formatCurrency(totalTax.toFixed(2))}</p>
-                    ) : (
+                    ) : compensation.compensatedLosses.length > 0 ? (
                       <p>
                         La ganancia se ha compensado en su totalidad con pérdidas de ejercicios anteriores; no hay
                         impuesto a pagar.
                       </p>
+                    ) : (
+                      <p>No hay ganancia patrimonial sujeta a impuesto en este ejercicio.</p>
                     )}
                   </>
                 ) : (
