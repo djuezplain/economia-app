@@ -2109,12 +2109,14 @@ describe('WealthPage', () => {
       await userEvent.selectOptions(yearSelect, '2026');
 
       expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2026: 10.000,00 €/)).toBeInTheDocument();
-      const table = await screen.findByRole('table', { name: 'Desglose por tramos' });
+      const table = await screen.findByRole('table', { name: 'Desglose' });
       const rows = within(table).getAllByRole('row');
-      expect(rows[1]).toHaveTextContent('19 %');
-      expect(rows[1]).toHaveTextContent('1140,00 €');
-      expect(rows[2]).toHaveTextContent('21 %');
-      expect(rows[2]).toHaveTextContent('840,00 €');
+      expect(rows[1]).toHaveTextContent('Ganancia patrimonial bruta');
+      expect(rows[1]).toHaveTextContent('10.000,00 €');
+      expect(rows[2]).toHaveTextContent('19 %');
+      expect(rows[2]).toHaveTextContent('1140,00 €');
+      expect(rows[3]).toHaveTextContent('21 %');
+      expect(rows[3]).toHaveTextContent('840,00 €');
       expect(screen.getByText(/Total a pagar: 1980,00 €/)).toBeInTheDocument();
     });
 
@@ -2138,7 +2140,7 @@ describe('WealthPage', () => {
       expect(
         screen.getByText(/No hay impuesto a pagar\. Esta pérdida se podrá compensar con ganancias de los próximos 4 ejercicios \(hasta 2030\)\./),
       ).toBeInTheDocument();
-      expect(screen.queryByRole('table', { name: 'Desglose por tramos' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('table', { name: 'Desglose' })).not.toBeInTheDocument();
       expect(screen.getByText(/Pérdidas pendientes de compensar en ejercicios futuros:/)).toBeInTheDocument();
       expect(screen.getByText(/2026: 100,00 € \(caduca tras 2030\)/)).toBeInTheDocument();
     });
@@ -2190,15 +2192,20 @@ describe('WealthPage', () => {
       await userEvent.selectOptions(yearSelect, '2026');
 
       expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2026: 10.000,00 €/)).toBeInTheDocument();
-      expect(screen.getByText('Compensada con pérdidas de ejercicios anteriores:')).toBeInTheDocument();
-      expect(screen.getByText('2025: 4000,00 €')).toBeInTheDocument();
-      expect(screen.getByText(/Base imponible tras compensar: 6000,00 €/)).toBeInTheDocument();
 
-      const table = await screen.findByRole('table', { name: 'Desglose por tramos' });
+      const table = await screen.findByRole('table', { name: 'Desglose' });
       const rows = within(table).getAllByRole('row');
-      expect(rows).toHaveLength(2); // cabecera + un único tramo (toda la base cabe en el primero)
-      expect(rows[1]).toHaveTextContent('19 %');
-      expect(rows[1]).toHaveTextContent('6000,00 €');
+      // Cabecera + ganancia bruta + pérdida compensada de 2025 + base imponible + un único tramo
+      // (toda la base cabe en el primero, 19%).
+      expect(rows).toHaveLength(5);
+      expect(rows[1]).toHaveTextContent('Ganancia patrimonial bruta');
+      expect(rows[1]).toHaveTextContent('10.000,00 €');
+      expect(rows[2]).toHaveTextContent('Pérdida compensada de 2025');
+      expect(rows[2]).toHaveTextContent('−4000,00 €');
+      expect(rows[3]).toHaveTextContent('Base imponible');
+      expect(rows[3]).toHaveTextContent('6000,00 €');
+      expect(rows[4]).toHaveTextContent('19 %');
+      expect(rows[4]).toHaveTextContent('6000,00 €');
       expect(screen.getByText(/Total a pagar: 1140,00 €/)).toBeInTheDocument();
     });
 
@@ -2225,7 +2232,10 @@ describe('WealthPage', () => {
 
       expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2025: 500,00 €/)).toBeInTheDocument();
       expect(screen.getByText(/Han caducado sin compensar \(más de 4 ejercicios sin ganancias suficientes\): 2020: 1000,00 €\./)).toBeInTheDocument();
-      expect(screen.queryByText('Compensada con pérdidas de ejercicios anteriores:')).not.toBeInTheDocument();
+
+      const table = await screen.findByRole('table', { name: 'Desglose' });
+      expect(within(table).queryByText(/Pérdida compensada/)).not.toBeInTheDocument();
+      expect(within(table).queryByText('Base imponible')).not.toBeInTheDocument();
       expect(screen.getByText(/Total a pagar: 95,00 €/)).toBeInTheDocument(); // 500 × 19%
     });
   });

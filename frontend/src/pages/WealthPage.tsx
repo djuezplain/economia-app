@@ -4579,22 +4579,6 @@ export function WealthPage() {
                   {formatCurrency(compensation.grossAmount.toFixed(2))}
                 </p>
 
-                {compensation.compensatedLosses.length > 0 && (
-                  <>
-                    <p className="card-meta">Compensada con pérdidas de ejercicios anteriores:</p>
-                    <ul>
-                      {compensation.compensatedLosses.map((loss) => (
-                        <li key={loss.year}>
-                          {loss.year}: {formatCurrency(loss.amount.toFixed(2))}
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="card-meta">
-                      Base imponible tras compensar: {formatCurrency(compensation.netTaxableAmount.toFixed(2))}
-                    </p>
-                  </>
-                )}
-
                 {compensation.expiredLosses.length > 0 && (
                   <p role="alert">
                     Han caducado sin compensar (más de 4 ejercicios sin ganancias suficientes):{' '}
@@ -4604,22 +4588,44 @@ export function WealthPage() {
                   </p>
                 )}
 
-                {compensation.netTaxableAmount > 0 ? (
+                {compensation.grossAmount > 0 ? (
                   <>
                     <table className="table">
-                      <caption>Desglose por tramos</caption>
+                      <caption>Desglose</caption>
                       <thead>
                         <tr>
-                          <th scope="col">Tramo</th>
+                          <th scope="col">Concepto</th>
                           <th scope="col">Tipo</th>
                           <th scope="col">Base</th>
                           <th scope="col">Cuota</th>
                         </tr>
                       </thead>
                       <tbody>
+                        <tr>
+                          <td data-label="Concepto">Ganancia patrimonial bruta</td>
+                          <td data-label="Tipo">—</td>
+                          <td data-label="Base">{formatCurrency(compensation.grossAmount.toFixed(2))}</td>
+                          <td data-label="Cuota">—</td>
+                        </tr>
+                        {compensation.compensatedLosses.map((loss) => (
+                          <tr key={loss.year}>
+                            <td data-label="Concepto">Pérdida compensada de {loss.year}</td>
+                            <td data-label="Tipo">—</td>
+                            <td data-label="Base">−{formatCurrency(loss.amount.toFixed(2))}</td>
+                            <td data-label="Cuota">—</td>
+                          </tr>
+                        ))}
+                        {compensation.compensatedLosses.length > 0 && (
+                          <tr>
+                            <td data-label="Concepto">Base imponible</td>
+                            <td data-label="Tipo">—</td>
+                            <td data-label="Base">{formatCurrency(compensation.netTaxableAmount.toFixed(2))}</td>
+                            <td data-label="Cuota">—</td>
+                          </tr>
+                        )}
                         {breakdown.map((tramo) => (
                           <tr key={tramo.from}>
-                            <td data-label="Tramo">
+                            <td data-label="Concepto">
                               {formatCurrency(tramo.from.toFixed(2))} –{' '}
                               {tramo.to === Infinity ? 'en adelante' : formatCurrency(tramo.to.toFixed(2))}
                             </td>
@@ -4630,17 +4636,19 @@ export function WealthPage() {
                         ))}
                       </tbody>
                     </table>
-                    <p className="card-title">Total a pagar: {formatCurrency(totalTax.toFixed(2))}</p>
+                    {compensation.netTaxableAmount > 0 ? (
+                      <p className="card-title">Total a pagar: {formatCurrency(totalTax.toFixed(2))}</p>
+                    ) : (
+                      <p>
+                        La ganancia se ha compensado en su totalidad con pérdidas de ejercicios anteriores; no hay
+                        impuesto a pagar.
+                      </p>
+                    )}
                   </>
                 ) : compensation.grossAmount < 0 ? (
                   <p>
                     No hay impuesto a pagar. Esta pérdida se podrá compensar con ganancias de los próximos 4
                     ejercicios (hasta {String(parseInt(selectedYear, 10) + 4)}).
-                  </p>
-                ) : compensation.compensatedLosses.length > 0 ? (
-                  <p>
-                    La ganancia se ha compensado en su totalidad con pérdidas de ejercicios anteriores; no hay
-                    impuesto a pagar.
                   </p>
                 ) : (
                   <p>No hay ganancia patrimonial sujeta a impuesto en este ejercicio.</p>
