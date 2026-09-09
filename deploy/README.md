@@ -212,3 +212,60 @@ Necesitas un dominio propio (cualquier registrador vale, el más barato sirve) a
    ```
 
 Para quitarlo más adelante: deja `CLOUDFLARE_TUNNEL_TOKEN` vacío, borra el túnel en el dashboard de Cloudflare, y vuelve a arrancar sin `--profile tunnel` (`docker compose up -d`) — el resto del despliegue sigue funcionando igual, solo en LAN.
+
+## 10. Exportar a Google Drive (opcional)
+
+Opcional (spec 032, H4). Además de descargar el export como fichero, la app puede guardarlo directamente en una carpeta ("Economía App") dentro de tu propio Google Drive. Usa las mismas credenciales OAuth (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`) que el login con Google, así que si ya lo tienes configurado, es solo añadir una Redirect URI más y una clave de cifrado nueva.
+
+### 10.1 Google Cloud Console
+
+1. Entra en [Google Cloud Console](https://console.cloud.google.com/) con la cuenta de Google con la que quieras exportar. Si ya tienes un proyecto (p. ej. porque ya usas login con Google), reutilízalo — si no, crea uno nuevo (**Select a project → New Project**, cualquier nombre).
+2. **Habilita la Google Drive API**: menú ☰ → **APIs & Services → Library**, busca "Google Drive API" y pulsa **Enable**.
+3. **Pantalla de consentimiento OAuth** (**APIs & Services → OAuth consent screen**), si no la tienes ya configurada:
+   - Tipo de usuario: **External** (no tienes Google Workspace).
+   - Nombre de la app, tu email de soporte y de contacto — lo que quieras, solo la ves tú.
+   - En **Scopes**, no hace falta añadir nada a mano aquí (la app lo pide directamente al conectar).
+   - En **Test users**, añade tu propia cuenta de Google. Importante: como la app no está verificada por Google (no hace falta para uso personal), al conectar verás un aviso de "Google no ha verificado esta app" — solo tu cuenta, añadida como test user, puede pasar ese aviso (**Advanced → Go to (nombre de tu app), unsafe**). Sin este paso, la conexión falla con un error de acceso.
+4. **Credenciales** (**APIs & Services → Credentials**):
+   - Si ya tienes un **OAuth 2.0 Client ID** de tipo "Web application" (del login), ábrelo y en **Authorized redirect URIs** añade una segunda línea (sin quitar la del login):
+     ```
+     http://<ip-o-hostname-de-la-pi>:3000/auth/drive/callback
+     ```
+     (o `https://api.tudominio.com/auth/drive/callback` si usas Cloudflare Tunnel, §9 — mismo dominio que ya usas para `GOOGLE_CALLBACK_URL`/`VITE_API_BASE_URL`, cambiando solo la ruta final).
+   - Si no tienes ninguno todavía, créalo: **Create Credentials → OAuth client ID → Web application**, y en **Authorized redirect URIs** pon la URL de arriba (añade también la de login, `.../auth/google/callback`, si vas a usar esa función también).
+   - Copia el **Client ID** y el **Client Secret**.
+
+### 10.2 En la Raspberry Pi
+
+En el `.env` de la Pi (`~/economia-app/.env`):
+
+```bash
+GOOGLE_CLIENT_ID=<el-client-id-del-paso-anterior>
+GOOGLE_CLIENT_SECRET=<el-client-secret-del-paso-anterior>
+GOOGLE_DRIVE_CALLBACK_URL=http://<ip-o-hostname-de-la-pi>:3000/auth/drive/callback
+DRIVE_TOKEN_ENCRYPTION_KEY=<genera-con-openssl-rand--base64-32>
+```
+
+Genera la clave de cifrado igual que los otros secretos:
+
+```bash
+openssl rand -base64 32
+```
+
+`GOOGLE_DRIVE_CALLBACK_URL` tiene que coincidir **exactamente** (protocolo, dominio y ruta) con la Redirect URI que has añadido en Google Cloud Console — un desajuste da un error de Google, no del backend.
+
+Aplica los cambios reconstruyendo el backend (no hace falta `--build` del frontend, esto no toca su bundle):
+
+```bash
+docker compose up -d --build backend
+```
+
+Comprueba que ha arrancado bien y que Drive ya no da 503:
+
+```bash
+docker compose logs backend | tail -20
+```
+
+Desde la app (**Copia de seguridad**), pulsa **Conectar Google Drive**, acepta el aviso de "app no verificada" del paso 10.1, y confirma el permiso. Prueba **Guardar en Google Drive** y comprueba que aparece el fichero en tu Drive, dentro de la carpeta "Economía App".
+
+Para quitarlo más adelante: deja `DRIVE_TOKEN_ENCRYPTION_KEY` vacío y reconstruye (`docker compose up -d --build backend`) — vuelve a responder 503 de forma controlada, sin afectar al resto de la app.
