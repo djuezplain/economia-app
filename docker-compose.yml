@@ -50,6 +50,13 @@ services:
       # que ser sintácticamente válida. Mismo valor por defecto que el
       # propio esquema de validación.
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3000/auth/google/callback}
+      # Exportar a Google Drive (spec 032 H4, deploy/README.md §10) —
+      # opcional, mismo criterio que el resto de Google: vacío/sin rellenar
+      # y el backend responde 503 de forma controlada en esas rutas.
+      # GOOGLE_DRIVE_CALLBACK_URL tiene la misma exigencia de formato que
+      # GOOGLE_CALLBACK_URL (URL sintácticamente válida aunque no se use).
+      GOOGLE_DRIVE_CALLBACK_URL: ${GOOGLE_DRIVE_CALLBACK_URL:-http://localhost:3000/auth/drive/callback}
+      DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:-}
       # `.email()` de Joi valida el dominio contra una lista de TLD reales
       # — un dominio `.local`/`.internal` lo rechaza aunque el formato sea
       # correcto. `.dev` sí es un TLD real (mismo valor que
