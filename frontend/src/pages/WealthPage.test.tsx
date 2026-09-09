@@ -2108,7 +2108,7 @@ describe('WealthPage', () => {
       const yearSelect = await screen.findByLabelText('Año');
       await userEvent.selectOptions(yearSelect, '2026');
 
-      expect(screen.getByText(/Ganancia\/pérdida patrimonial realizada en 2026: 10.000,00 €/)).toBeInTheDocument();
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2026: 10.000,00 €/)).toBeInTheDocument();
       const table = await screen.findByRole('table', { name: 'Desglose por tramos' });
       const rows = within(table).getAllByRole('row');
       expect(rows[1]).toHaveTextContent('19 %');
@@ -2118,7 +2118,7 @@ describe('WealthPage', () => {
       expect(screen.getByText(/Total a pagar: 1980,00 €/)).toBeInTheDocument();
     });
 
-    it('una pérdida neta en el año no genera ningún impuesto a pagar', async () => {
+    it('una pérdida neta en el año no genera ningún impuesto a pagar, y queda disponible para compensar en el futuro', async () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
       vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([
@@ -2134,9 +2134,13 @@ describe('WealthPage', () => {
       const yearSelect = await screen.findByLabelText('Año');
       await userEvent.selectOptions(yearSelect, '2026');
 
-      expect(screen.getByText(/Ganancia\/pérdida patrimonial realizada en 2026: -100,00 €/)).toBeInTheDocument();
-      expect(screen.getByText('No hay ganancia patrimonial sujeta a impuesto en este ejercicio.')).toBeInTheDocument();
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2026: -100,00 €/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/No hay impuesto a pagar\. Esta pérdida se podrá compensar con ganancias de los próximos 4 ejercicios \(hasta 2030\)\./),
+      ).toBeInTheDocument();
       expect(screen.queryByRole('table', { name: 'Desglose por tramos' })).not.toBeInTheDocument();
+      expect(screen.getByText(/Pérdidas pendientes de compensar en ejercicios futuros:/)).toBeInTheDocument();
+      expect(screen.getByText(/2026: 100,00 € \(caduca tras 2030\)/)).toBeInTheDocument();
     });
 
     it('el selector de año solo cuenta las ventas del ejercicio elegido, ignorando las de otros años', async () => {
@@ -2157,10 +2161,72 @@ describe('WealthPage', () => {
       const yearSelect = await screen.findByLabelText('Año');
       await waitFor(() => expect(within(yearSelect).getAllByRole('option')).toHaveLength(2));
       await userEvent.selectOptions(yearSelect, '2025');
-      expect(screen.getByText(/Ganancia\/pérdida patrimonial realizada en 2025: 1000,00 €/)).toBeInTheDocument();
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2025: 1000,00 €/)).toBeInTheDocument();
 
       await userEvent.selectOptions(yearSelect, '2026');
-      expect(screen.getByText(/Ganancia\/pérdida patrimonial realizada en 2026: 2000,00 €/)).toBeInTheDocument();
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2026: 2000,00 €/)).toBeInTheDocument();
+    });
+
+    it('compensa la ganancia del año con la pérdida de un ejercicio anterior antes de calcular el impuesto', async () => {
+      // 2025: pérdida de 4.000,00 €. 2026: ganancia de 10.000,00 € → se compensa con los 4.000,00 € de
+      // pérdida de 2025, quedando una base imponible de 6.000,00 € (tributa entera al primer tramo,
+      // 19%: cuota 1.140,00 €).
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([
+        { ...STOCK_PURCHASE, id: 'purchase-2025', shareCount: '10.0000', purchasePrice: '1000.00', date: '2025-01-01' },
+        { ...STOCK_PURCHASE, id: 'purchase-2026', shareCount: '1.0000', purchasePrice: '0.00', date: '2026-01-01' },
+      ]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([
+        { ...STOCK_SALE, id: 'sale-2025', shareCount: '10.0000', salePrice: '600.00', date: '2025-06-01' },
+        { ...STOCK_SALE, id: 'sale-2026', shareCount: '1.0000', salePrice: '10000.00', date: '2026-06-01' },
+      ]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      const yearSelect = await screen.findByLabelText('Año');
+      await waitFor(() => expect(within(yearSelect).getAllByRole('option')).toHaveLength(2));
+      await userEvent.selectOptions(yearSelect, '2026');
+
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2026: 10.000,00 €/)).toBeInTheDocument();
+      expect(screen.getByText('Compensada con pérdidas de ejercicios anteriores:')).toBeInTheDocument();
+      expect(screen.getByText('2025: 4000,00 €')).toBeInTheDocument();
+      expect(screen.getByText(/Base imponible tras compensar: 6000,00 €/)).toBeInTheDocument();
+
+      const table = await screen.findByRole('table', { name: 'Desglose por tramos' });
+      const rows = within(table).getAllByRole('row');
+      expect(rows).toHaveLength(2); // cabecera + un único tramo (toda la base cabe en el primero)
+      expect(rows[1]).toHaveTextContent('19 %');
+      expect(rows[1]).toHaveTextContent('6000,00 €');
+      expect(screen.getByText(/Total a pagar: 1140,00 €/)).toBeInTheDocument();
+    });
+
+    it('una pérdida con más de 4 ejercicios sin ganancias suficientes caduca sin compensar', async () => {
+      // Pérdida de 1.000,00 € en 2020 (compensable hasta 2024 incluido); ganancia de 500,00 € en 2025
+      // (fuera de plazo) no la compensa — la pérdida aparece como caducada y la ganancia tributa entera.
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([
+        { ...STOCK_PURCHASE, id: 'purchase-2020', shareCount: '10.0000', purchasePrice: '200.00', date: '2020-01-01' },
+        { ...STOCK_PURCHASE, id: 'purchase-2025', shareCount: '1.0000', purchasePrice: '0.00', date: '2025-01-01' },
+      ]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([
+        { ...STOCK_SALE, id: 'sale-2020', shareCount: '10.0000', salePrice: '100.00', date: '2020-06-01' },
+        { ...STOCK_SALE, id: 'sale-2025', shareCount: '1.0000', salePrice: '500.00', date: '2025-06-01' },
+      ]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      const yearSelect = await screen.findByLabelText('Año');
+      await waitFor(() => expect(within(yearSelect).getAllByRole('option')).toHaveLength(2));
+      await userEvent.selectOptions(yearSelect, '2025');
+
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2025: 500,00 €/)).toBeInTheDocument();
+      expect(screen.getByText(/Han caducado sin compensar \(más de 4 ejercicios sin ganancias suficientes\): 2020: 1000,00 €\./)).toBeInTheDocument();
+      expect(screen.queryByText('Compensada con pérdidas de ejercicios anteriores:')).not.toBeInTheDocument();
+      expect(screen.getByText(/Total a pagar: 95,00 €/)).toBeInTheDocument(); // 500 × 19%
     });
   });
 

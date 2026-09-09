@@ -485,19 +485,18 @@ const STOCK_CAPITAL_GAINS_TAX_BRACKETS = [
   { upTo: Infinity, rate: 0.26 },
 ];
 
-/** Aplica los tramos progresivos de `STOCK_CAPITAL_GAINS_TAX_BRACKETS` a la ganancia patrimonial total
- *  de un ejercicio, repartiéndola tramo a tramo (cada € tributa solo al tipo de su propio tramo, no al
- *  tipo marginal aplicado a todo el importe). Una ganancia de 0 o negativa (pérdida neta) no genera
- *  impuesto — no se calcula la compensación con pérdidas de otros ejercicios, fuera del alcance de
- *  este cálculo. */
-function calculateStockCapitalGainsTax(totalGain: number): {
+/** Aplica los tramos progresivos de `STOCK_CAPITAL_GAINS_TAX_BRACKETS` a una base imponible ya neta
+ *  (tras compensar pérdidas de otros ejercicios, ver `simulateLossCompensationForYear`), repartiéndola
+ *  tramo a tramo (cada € tributa solo al tipo de su propio tramo, no al tipo marginal aplicado a todo
+ *  el importe). Una base de 0 o negativa no genera impuesto. */
+function calculateStockCapitalGainsTax(netTaxableAmount: number): {
   breakdown: Array<{ from: number; to: number; rate: number; taxableAmount: number; tax: number }>;
   totalTax: number;
 } {
   const breakdown: Array<{ from: number; to: number; rate: number; taxableAmount: number; tax: number }> = [];
-  if (totalGain <= 0) return { breakdown, totalTax: 0 };
+  if (netTaxableAmount <= 0) return { breakdown, totalTax: 0 };
 
-  let remaining = totalGain;
+  let remaining = netTaxableAmount;
   let previousLimit = 0;
   for (const bracket of STOCK_CAPITAL_GAINS_TAX_BRACKETS) {
     if (remaining <= 0) break;
@@ -508,6 +507,77 @@ function calculateStockCapitalGainsTax(totalGain: number): {
   }
 
   return { breakdown, totalTax: breakdown.reduce((sum, tramo) => sum + tramo.tax, 0) };
+}
+
+/** Compensación de pérdidas patrimoniales (art. 49 LIRPF): la pérdida de un ejercicio que no se
+ *  compensa con ganancias del mismo año puede compensarse con ganancias de los 4 ejercicios
+ *  SIGUIENTES; pasado ese plazo, la parte no usada caduca. Simula año a año, en orden cronológico
+ *  desde el primero con ventas hasta `targetYear` (incluido), un "pool" de pérdidas pendientes por
+ *  año de origen — cada año con ganancia consume primero las pérdidas más antiguas del pool (las que
+ *  antes caducan), nunca pérdidas de años posteriores. Devuelve el detalle de `targetYear`: su
+ *  ganancia/pérdida bruta, qué pérdidas de qué años se han usado para compensarla, la base imponible
+ *  resultante (nunca negativa), las pérdidas que hayan caducado justo al llegar a este año sin
+ *  haberse podido usar, y las que quedan pendientes de compensar en ejercicios futuros. */
+function simulateLossCompensationForYear(
+  yearlyGainLoss: Array<{ year: string; amount: number }>,
+  targetYear: string,
+): {
+  grossAmount: number;
+  compensatedLosses: Array<{ year: string; amount: number }>;
+  netTaxableAmount: number;
+  expiredLosses: Array<{ year: string; amount: number }>;
+  pendingLossCarryforward: Array<{ year: string; amount: number; expiresAfterYear: string }>;
+} {
+  const yearsUpToTarget = yearlyGainLoss.filter((y) => y.year <= targetYear);
+  // Defensivo: si el año pedido no tiene ventas (fuera del rango normal de uso, el selector de la UI
+  // solo ofrece años con ventas), se procesa igualmente con ganancia/pérdida bruta 0 en vez de heredar
+  // por error el resultado del último año anterior con ventas.
+  if (!yearsUpToTarget.some((y) => y.year === targetYear)) yearsUpToTarget.push({ year: targetYear, amount: 0 });
+  yearsUpToTarget.sort((a, b) => (a.year < b.year ? -1 : a.year > b.year ? 1 : 0));
+
+  const pool: Array<{ year: string; remaining: number }> = [];
+  let grossAmount = 0;
+  let compensatedLosses: Array<{ year: string; amount: number }> = [];
+  let netTaxableAmount = 0;
+  let expiredLosses: Array<{ year: string; amount: number }> = [];
+
+  for (const { year, amount } of yearsUpToTarget) {
+    expiredLosses = [];
+    for (let i = pool.length - 1; i >= 0; i--) {
+      if (parseInt(year, 10) - parseInt(pool[i].year, 10) > 4) {
+        expiredLosses.unshift({ year: pool[i].year, amount: pool[i].remaining });
+        pool.splice(i, 1);
+      }
+    }
+
+    grossAmount = amount;
+    compensatedLosses = [];
+    netTaxableAmount = 0;
+    if (amount > 0) {
+      let remainingGain = amount;
+      for (const lot of pool) {
+        if (remainingGain <= 0) break;
+        const used = Math.min(lot.remaining, remainingGain);
+        lot.remaining -= used;
+        remainingGain -= used;
+        compensatedLosses.push({ year: lot.year, amount: used });
+      }
+      for (let i = pool.length - 1; i >= 0; i--) {
+        if (pool[i].remaining <= 0) pool.splice(i, 1);
+      }
+      netTaxableAmount = remainingGain;
+    } else if (amount < 0) {
+      pool.push({ year, remaining: -amount });
+    }
+  }
+
+  const pendingLossCarryforward = pool.map((lot) => ({
+    year: lot.year,
+    amount: lot.remaining,
+    expiresAfterYear: String(parseInt(lot.year, 10) + 4),
+  }));
+
+  return { grossAmount, compensatedLosses, netTaxableAmount, expiredLosses, pendingLossCarryforward };
 }
 
 /** H2 criterio 4 (spec 022): cantidad total de una posición de cripto, sumando todas sus compras
@@ -4477,18 +4547,20 @@ export function WealthPage() {
           {(() => {
             const years = stockSaleYears(stockSaleList ?? []);
             const selectedYear = years.includes(taxYear) ? taxYear : (years[0] ?? taxYear);
-            const totalGain = parseFloat(
-              realizedGainLossForYear(stockList ?? [], purchases ?? [], stockSaleList ?? [], selectedYear),
-            );
-            const { breakdown, totalTax } = calculateStockCapitalGainsTax(totalGain);
+            const yearlyGainLoss = years.map((year) => ({
+              year,
+              amount: parseFloat(realizedGainLossForYear(stockList ?? [], purchases ?? [], stockSaleList ?? [], year)),
+            }));
+            const compensation = simulateLossCompensationForYear(yearlyGainLoss, selectedYear);
+            const { breakdown, totalTax } = calculateStockCapitalGainsTax(compensation.netTaxableAmount);
 
             return (
               <>
                 <p className="card-meta">
                   Impuesto estimado en la declaración de la renta sobre la ganancia patrimonial realizada por venta de
-                  acciones (FIFO), según los tramos vigentes en la normativa del ejercicio 2026. Una pérdida neta no
-                  genera impuesto a pagar; este cálculo no tiene en cuenta la compensación con pérdidas de otros
-                  ejercicios.
+                  acciones (FIFO), según los tramos vigentes en la normativa del ejercicio 2026. Las pérdidas se
+                  compensan con ganancias de los 4 ejercicios siguientes (art. 49 LIRPF); pasado ese plazo, la parte
+                  no usada caduca.
                 </p>
 
                 <div className="field">
@@ -4503,12 +4575,36 @@ export function WealthPage() {
                 </div>
 
                 <p className="card-meta">
-                  Ganancia/pérdida patrimonial realizada en {selectedYear}: {formatCurrency(totalGain.toFixed(2))}
+                  Ganancia/pérdida patrimonial bruta realizada en {selectedYear}:{' '}
+                  {formatCurrency(compensation.grossAmount.toFixed(2))}
                 </p>
 
-                {totalGain <= 0 ? (
-                  <p>No hay ganancia patrimonial sujeta a impuesto en este ejercicio.</p>
-                ) : (
+                {compensation.compensatedLosses.length > 0 && (
+                  <>
+                    <p className="card-meta">Compensada con pérdidas de ejercicios anteriores:</p>
+                    <ul>
+                      {compensation.compensatedLosses.map((loss) => (
+                        <li key={loss.year}>
+                          {loss.year}: {formatCurrency(loss.amount.toFixed(2))}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="card-meta">
+                      Base imponible tras compensar: {formatCurrency(compensation.netTaxableAmount.toFixed(2))}
+                    </p>
+                  </>
+                )}
+
+                {compensation.expiredLosses.length > 0 && (
+                  <p role="alert">
+                    Han caducado sin compensar (más de 4 ejercicios sin ganancias suficientes):{' '}
+                    {`${compensation.expiredLosses
+                      .map((loss) => `${loss.year}: ${formatCurrency(loss.amount.toFixed(2))}`)
+                      .join(', ')}.`}
+                  </p>
+                )}
+
+                {compensation.netTaxableAmount > 0 ? (
                   <>
                     <table className="table">
                       <caption>Desglose por tramos</caption>
@@ -4535,6 +4631,31 @@ export function WealthPage() {
                       </tbody>
                     </table>
                     <p className="card-title">Total a pagar: {formatCurrency(totalTax.toFixed(2))}</p>
+                  </>
+                ) : compensation.grossAmount < 0 ? (
+                  <p>
+                    No hay impuesto a pagar. Esta pérdida se podrá compensar con ganancias de los próximos 4
+                    ejercicios (hasta {String(parseInt(selectedYear, 10) + 4)}).
+                  </p>
+                ) : compensation.compensatedLosses.length > 0 ? (
+                  <p>
+                    La ganancia se ha compensado en su totalidad con pérdidas de ejercicios anteriores; no hay
+                    impuesto a pagar.
+                  </p>
+                ) : (
+                  <p>No hay ganancia patrimonial sujeta a impuesto en este ejercicio.</p>
+                )}
+
+                {compensation.pendingLossCarryforward.length > 0 && (
+                  <>
+                    <p className="card-meta">Pérdidas pendientes de compensar en ejercicios futuros:</p>
+                    <ul>
+                      {compensation.pendingLossCarryforward.map((loss) => (
+                        <li key={loss.year}>
+                          {loss.year}: {formatCurrency(loss.amount.toFixed(2))} (caduca tras {loss.expiresAfterYear})
+                        </li>
+                      ))}
+                    </ul>
                   </>
                 )}
               </>
