@@ -67,7 +67,7 @@ export class AuthController {
   @RateLimit({ limit: 20, windowMs: 15 * 60 * 1000 })
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const { accessToken, refreshToken, user } = await this.authService.login(dto, deviceInfoFrom(req));
-    res.cookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions());
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions(req));
     return { accessToken, user };
   }
 
@@ -83,7 +83,7 @@ export class AuthController {
       refreshToken,
       deviceInfoFrom(req),
     );
-    res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, refreshCookieOptions());
+    res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, refreshCookieOptions(req));
     return { accessToken };
   }
 
@@ -117,7 +117,7 @@ export class AuthController {
       req.user,
       deviceInfoFrom(req),
     );
-    res.cookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions());
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions(req));
 
     // Esta ruta la visita el navegador con una navegación completa (Google
     // redirige aquí directamente, no es una llamada fetch del frontend), así
@@ -139,7 +139,7 @@ export class AuthController {
     if (refreshToken) {
       await this.sessions.revokeByRefreshToken(refreshToken, req.user.id);
     }
-    res.clearCookie(REFRESH_COOKIE_NAME, refreshCookieOptions());
+    res.clearCookie(REFRESH_COOKIE_NAME, refreshCookieOptions(req));
     return { message: 'Sesión cerrada.' };
   }
 }
