@@ -4588,7 +4588,7 @@ export function WealthPage() {
                   </p>
                 )}
 
-                {compensation.grossAmount > 0 ? (
+                {compensation.grossAmount !== 0 ? (
                   <>
                     <table className="table">
                       <caption>Desglose</caption>
@@ -4602,7 +4602,7 @@ export function WealthPage() {
                       </thead>
                       <tbody>
                         <tr>
-                          <td data-label="Concepto">Ganancia patrimonial bruta</td>
+                          <td data-label="Concepto">Ganancia/pérdida patrimonial bruta</td>
                           <td data-label="Tipo">—</td>
                           <td data-label="Base">{formatCurrency(compensation.grossAmount.toFixed(2))}</td>
                           <td data-label="Cuota">—</td>
@@ -4636,7 +4636,12 @@ export function WealthPage() {
                         ))}
                       </tbody>
                     </table>
-                    {compensation.netTaxableAmount > 0 ? (
+                    {compensation.grossAmount < 0 ? (
+                      <p>
+                        No hay impuesto a pagar. Esta pérdida se podrá compensar con ganancias de los próximos 4
+                        ejercicios (hasta {String(parseInt(selectedYear, 10) + 4)}).
+                      </p>
+                    ) : compensation.netTaxableAmount > 0 ? (
                       <p className="card-title">Total a pagar: {formatCurrency(totalTax.toFixed(2))}</p>
                     ) : (
                       <p>
@@ -4645,11 +4650,6 @@ export function WealthPage() {
                       </p>
                     )}
                   </>
-                ) : compensation.grossAmount < 0 ? (
-                  <p>
-                    No hay impuesto a pagar. Esta pérdida se podrá compensar con ganancias de los próximos 4
-                    ejercicios (hasta {String(parseInt(selectedYear, 10) + 4)}).
-                  </p>
                 ) : (
                   <p>No hay ganancia patrimonial sujeta a impuesto en este ejercicio.</p>
                 )}

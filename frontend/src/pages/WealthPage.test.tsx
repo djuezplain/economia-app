@@ -2111,7 +2111,7 @@ describe('WealthPage', () => {
       expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2026: 10.000,00 €/)).toBeInTheDocument();
       const table = await screen.findByRole('table', { name: 'Desglose' });
       const rows = within(table).getAllByRole('row');
-      expect(rows[1]).toHaveTextContent('Ganancia patrimonial bruta');
+      expect(rows[1]).toHaveTextContent('Ganancia/pérdida patrimonial bruta');
       expect(rows[1]).toHaveTextContent('10.000,00 €');
       expect(rows[2]).toHaveTextContent('19 %');
       expect(rows[2]).toHaveTextContent('1140,00 €');
@@ -2140,7 +2140,13 @@ describe('WealthPage', () => {
       expect(
         screen.getByText(/No hay impuesto a pagar\. Esta pérdida se podrá compensar con ganancias de los próximos 4 ejercicios \(hasta 2030\)\./),
       ).toBeInTheDocument();
-      expect(screen.queryByRole('table', { name: 'Desglose' })).not.toBeInTheDocument();
+
+      const table = await screen.findByRole('table', { name: 'Desglose' });
+      const rows = within(table).getAllByRole('row');
+      expect(rows).toHaveLength(2); // cabecera + la propia pérdida bruta del año, sin tramos ni compensación
+      expect(rows[1]).toHaveTextContent('Ganancia/pérdida patrimonial bruta');
+      expect(rows[1]).toHaveTextContent('-100,00 €');
+
       expect(screen.getByText(/Pérdidas pendientes de compensar en ejercicios futuros:/)).toBeInTheDocument();
       expect(screen.getByText(/2026: 100,00 € \(caduca tras 2030\)/)).toBeInTheDocument();
     });
@@ -2198,7 +2204,7 @@ describe('WealthPage', () => {
       // Cabecera + ganancia bruta + pérdida compensada de 2025 + base imponible + un único tramo
       // (toda la base cabe en el primero, 19%).
       expect(rows).toHaveLength(5);
-      expect(rows[1]).toHaveTextContent('Ganancia patrimonial bruta');
+      expect(rows[1]).toHaveTextContent('Ganancia/pérdida patrimonial bruta');
       expect(rows[1]).toHaveTextContent('10.000,00 €');
       expect(rows[2]).toHaveTextContent('Pérdida compensada de 2025');
       expect(rows[2]).toHaveTextContent('−4000,00 €');
