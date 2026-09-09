@@ -2111,7 +2111,9 @@ describe('WealthPage', () => {
       expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2026: 10.000,00 €/)).toBeInTheDocument();
       const table = await screen.findByRole('table', { name: 'Desglose' });
       const rows = within(table).getAllByRole('row');
-      expect(rows[1]).toHaveTextContent('Ganancia/pérdida patrimonial bruta');
+      // Una única venta ese año: se muestra como su propia línea, sin fila de subtotal aparte
+      // (sería idéntica a la de la venta).
+      expect(rows[1]).toHaveTextContent('Venta de Inditex (2026-06-01)');
       expect(rows[1]).toHaveTextContent('10.000,00 €');
       expect(rows[2]).toHaveTextContent('19 %');
       expect(rows[2]).toHaveTextContent('1140,00 €');
@@ -2143,8 +2145,8 @@ describe('WealthPage', () => {
 
       const table = await screen.findByRole('table', { name: 'Desglose' });
       const rows = within(table).getAllByRole('row');
-      expect(rows).toHaveLength(2); // cabecera + la propia pérdida bruta del año, sin tramos ni compensación
-      expect(rows[1]).toHaveTextContent('Ganancia/pérdida patrimonial bruta');
+      expect(rows).toHaveLength(2); // cabecera + la propia venta con pérdida, sin tramos ni compensación
+      expect(rows[1]).toHaveTextContent('Venta de Inditex (2026-06-01)');
       expect(rows[1]).toHaveTextContent('-100,00 €');
 
       expect(screen.getByText(/Pérdidas pendientes de compensar en ejercicios futuros:/)).toBeInTheDocument();
@@ -2201,10 +2203,10 @@ describe('WealthPage', () => {
 
       const table = await screen.findByRole('table', { name: 'Desglose' });
       const rows = within(table).getAllByRole('row');
-      // Cabecera + ganancia bruta + pérdida compensada de 2025 + base imponible + un único tramo
-      // (toda la base cabe en el primero, 19%).
+      // Cabecera + la venta de 2026 (única ese año) + pérdida compensada de 2025 + base imponible +
+      // un único tramo (toda la base cabe en el primero, 19%).
       expect(rows).toHaveLength(5);
-      expect(rows[1]).toHaveTextContent('Ganancia/pérdida patrimonial bruta');
+      expect(rows[1]).toHaveTextContent('Venta de Inditex (2026-06-01)');
       expect(rows[1]).toHaveTextContent('10.000,00 €');
       expect(rows[2]).toHaveTextContent('Pérdida compensada de 2025');
       expect(rows[2]).toHaveTextContent('−4000,00 €');
@@ -2243,6 +2245,45 @@ describe('WealthPage', () => {
       expect(within(table).queryByText(/Pérdida compensada/)).not.toBeInTheDocument();
       expect(within(table).queryByText('Base imponible')).not.toBeInTheDocument();
       expect(screen.getByText(/Total a pagar: 95,00 €/)).toBeInTheDocument(); // 500 × 19%
+    });
+
+    it('una venta con pérdida dentro de un año con ganancia neta se muestra como línea propia, no solo en el neto', async () => {
+      // Dos ventas en el mismo 2026: la primera consume el lote de 100,00 €/acción con pérdida (300 −
+      // 1.000 = −700,00 €); la segunda consume el lote de 500,00 €/acción con ganancia (12.000 − 5.000 =
+      // 7.000,00 €). Neto del año: 6.300,00 € — pero cada venta debe verse como su propia línea, no solo
+      // el neto ya sumado.
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([
+        { ...STOCK_PURCHASE, id: 'purchase-a', shareCount: '10.0000', purchasePrice: '100.00', date: '2026-01-01' },
+        { ...STOCK_PURCHASE, id: 'purchase-b', shareCount: '10.0000', purchasePrice: '500.00', date: '2026-02-01' },
+      ]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([
+        { ...STOCK_SALE, id: 'sale-loss', shareCount: '10.0000', salePrice: '30.00', date: '2026-03-01' },
+        { ...STOCK_SALE, id: 'sale-gain', shareCount: '10.0000', salePrice: '1200.00', date: '2026-04-01' },
+      ]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+
+      renderPage();
+
+      const yearSelect = await screen.findByLabelText('Año');
+      await userEvent.selectOptions(yearSelect, '2026');
+
+      expect(screen.getByText(/Ganancia\/pérdida patrimonial bruta realizada en 2026: 6300,00 €/)).toBeInTheDocument();
+
+      const table = await screen.findByRole('table', { name: 'Desglose' });
+      const rows = within(table).getAllByRole('row');
+      // Cabecera + venta con pérdida + venta con ganancia + subtotal neto + 2 tramos.
+      expect(rows).toHaveLength(6);
+      expect(rows[1]).toHaveTextContent('Venta de Inditex (2026-03-01)');
+      expect(rows[1]).toHaveTextContent('-700,00 €');
+      expect(rows[2]).toHaveTextContent('Venta de Inditex (2026-04-01)');
+      expect(rows[2]).toHaveTextContent('7000,00 €');
+      expect(rows[3]).toHaveTextContent('Ganancia/pérdida patrimonial bruta');
+      expect(rows[3]).toHaveTextContent('6300,00 €');
+      expect(rows[4]).toHaveTextContent('19 %');
+      expect(rows[5]).toHaveTextContent('21 %');
+      expect(screen.getByText(/Total a pagar: 1203,00 €/)).toBeInTheDocument(); // 6.000×19% + 300×21%
     });
   });
 
