@@ -1,7 +1,7 @@
 # Spec 032 — Exportación e importación de todos los datos (copia de seguridad)
 
-**Estado:** Implementada
-**Fase:** 4 de 4 (Spec → Plan → Tasks → Implementación)
+**Estado:** H1-H4 implementadas. H4 (Google Drive) pendiente solo de que Diego configure credenciales reales de Google (ver tasks.md, Grupo 9) para la verificación end-to-end final.
+**Fase:** 4 de 4 (Spec → Plan → Tasks → Implementación).
 
 ## 0. Qué cambia
 
@@ -11,6 +11,7 @@ Esta spec:
 1. Amplía ese mismo export para que incluya **todo** el dato económico del usuario (H1) — un único export, siempre completo, en vez de mantener dos.
 2. Añade la importación de un fichero exportado previamente, en modo **aditivo/fusión** (H2) — capacidad que no existe hoy (el "import" actual, specs 003/012/026, es solo para movimientos vía Excel/Google Sheets, no para restaurar una copia completa).
 3. Da acceso a ambas desde un punto único (H3), en vez de solo dentro de "Mi perfil" como hoy el export RGPD.
+4. Añade Google Drive como destino adicional de la exportación (H4), sin quitar la descarga local.
 
 ## 1. Historias de usuario
 
@@ -41,6 +42,18 @@ Como usuario quiero encontrar "exportar mis datos" e "importar datos" juntos, en
 - Criterio 1: existe una pantalla/menú dedicado con las dos acciones (exportar / importar), enlazado desde la navegación principal. El detalle exacto de dónde vive y cómo se llama se decide en `plan.md` (fuera de esta spec, ver constitution §5).
 - Criterio 2: "Mi perfil" deja de ser el único sitio con el botón de exportar (puede seguir teniendo un enlace al nuevo menú, a decidir en el plan).
 
+**H4 — Guardar la exportación directamente en mi Google Drive**
+
+Como usuario quiero poder enviar el fichero de exportación (H1) directamente a mi Google Drive, sin tener que descargarlo primero a mi dispositivo y subirlo yo a mano.
+
+- Criterio 1: en la pantalla de copia de seguridad (H3), junto al botón "Exportar mis datos" (descarga local, sin cambios), hay un botón adicional "Guardar en Google Drive". Ninguno de los dos sustituye al otro.
+- Criterio 2: la primera vez que se usa, la app pide autorización explícita para acceder a Google Drive ("Conectar Google Drive"), separada del login con Google — un usuario puede tener sesión iniciada con Google (o con email/contraseña) y no haber conectado Drive, y viceversa no aplica (conectar Drive exige tener cuenta en la app, pero no necesariamente haber iniciado sesión con Google). Una vez conectado, los siguientes envíos no vuelven a pedir autorización.
+- Criterio 3: el acceso solicitado se limita a los ficheros que la propia app crea en Drive (alcance "solo mis ficheros"): la app nunca puede ver, listar ni tocar el resto del Drive del usuario.
+- Criterio 4: el fichero se guarda en una carpeta propia de la app dentro del Drive del usuario (p. ej. "Económía App"), creada automáticamente la primera vez si no existe. El nombre del fichero sigue el mismo criterio que la descarga local (fecha incluida).
+- Criterio 5: tras un envío correcto, se confirma en pantalla (p. ej. enlace al fichero en Drive). Si falla (p. ej. token de Drive caducado o revocado desde fuera de la app, cuota excedida), se muestra un error claro y no se pierde la posibilidad de seguir usando la descarga local con normalidad.
+- Criterio 6: existe una forma de desconectar Google Drive desde la misma pantalla (revocar el acceso guardado en la app). Desconectar no borra los ficheros ya subidos a Drive.
+- Criterio 7: mismo aislamiento por usuario que el resto de la app — el token de Drive de un usuario nunca se usa para otro, y se guarda cifrado en la base de datos (igual criterio que cualquier secreto de terceros, constitution §2 "seguridad por defecto").
+
 ## 2. Fuera de alcance
 
 - Otros formatos de fichero (CSV, Excel...) — se mantiene JSON, mismo criterio ya usado por el export RGPD existente (spec 001, decisión 2) y el único capaz de representar sin pérdida toda la estructura relacional (CSV aplanaría categorías/historiales). Diego lo propuso abierto a alternativas; se confirma JSON como parte de esta spec (§3).
@@ -50,12 +63,18 @@ Como usuario quiero encontrar "exportar mis datos" e "importar datos" juntos, en
 - Migrar datos de la cuenta de un usuario a la de otro — pensado como copia de seguridad/restauración de la propia cuenta (aislamiento por usuario, constitution §2), no como traspaso entre cuentas.
 - Tocar la configuración de importación de Google Sheets (spec 026) — tiene su propia pantalla de gestión; no forma parte de este export/import.
 - Exportar/importar sesiones activas, auditoría, o cualquier dato de autenticación — nunca formó parte del export RGPD y sigue sin formar parte de este.
+- **Importar desde Google Drive** (leer un fichero ya guardado allí) — H4 es solo de exportación/subida; H2 (importar) sigue funcionando exclusivamente subiendo un fichero `.json` desde el dispositivo, como hoy.
+- **Elegir carpeta de destino en Drive** — H4 usa siempre la misma carpeta propia de la app (criterio 4), sin selector de carpetas (Google Picker); si en el futuro se pide poder elegir, es una spec/decisión aparte.
+- **Copias de seguridad automáticas/periódicas a Drive** — H4 es un envío manual bajo demanda (botón), no una tarea programada.
 
 ## 3. Decisiones tomadas directamente con Diego
 
 1. **Formato: JSON.** Diego lo propuso, abierto a otras opciones; se confirma JSON — mismo formato que el export RGPD ya existente (spec 001) y el único que representa la estructura relacional completa sin aplanarla.
 2. **Importación en modo fusión/aditivo, nunca "reemplazar todo".** Decisión explícita: la importación nunca borra ni sobrescribe datos existentes, solo añade lo que falta (identificado por id) — prioriza seguridad frente a simplicidad de implementación.
 3. **El export ampliado sustituye al export RGPD existente**, en vez de mantener dos exports distintos (uno "legal" y otro "completo") — un único botón, siempre completo y al día, sirviendo a la vez para RGPD y para copia de seguridad.
+4. **H4 (Google Drive) se añade como opción extra, no sustituye la descarga local** — se mantienen ambos botones.
+5. **H4 pide autorización de Drive por separado del login con Google**, no se amplía el scope del login existente — así solo los usuarios que vayan a usar esta función conceden ese permiso adicional, y no se cambia el comportamiento del login para el resto.
+6. **H4 usa el scope más restrictivo de Drive (`drive.file`)** — la app solo puede ver y gestionar los ficheros que ella misma crea, nunca el resto del Drive del usuario — y siempre la misma carpeta propia de la app, sin selector de carpetas.
 
 ---
-**Siguiente paso:** revisar esta spec con Diego; con su aprobación (o los ajustes que pida), se genera `plan.md` con el diseño técnico (modelo del fichero, endpoints, orden de inserción por dependencias entre tablas, UI del nuevo menú).
+**Siguiente paso:** revisar esta spec (incluyendo H4) con Diego; con su aprobación (o los ajustes que pida), se amplía `plan.md` con el diseño técnico de H4 (nueva tabla para el token de Drive, flujo OAuth de conexión/desconexión, endpoint de subida, credenciales de Google Cloud Console que Diego debe crear).

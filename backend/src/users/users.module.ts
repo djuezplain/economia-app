@@ -22,5 +22,9 @@ import { UsersService } from './users.service.js';
   imports: [AuthModule, MailModule, AuditModule],
   controllers: [SessionsController, ProfileController],
   providers: [UsersService],
+  // Spec 032 H4 (plan.md §9.8): GoogleDriveModule reutiliza
+  // `UsersService.exportData()` para no duplicar la construcción del
+  // fichero de exportación entre H1 (descarga local) y H4 (Google Drive).
+  exports: [UsersService],
 })
 export class UsersModule {}

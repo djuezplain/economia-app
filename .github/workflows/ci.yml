@@ -29,6 +29,7 @@ jobs:
       JWT_REFRESH_SECRET: ci-only-secret-min-32-bytes-bbbbbbb
       GOOGLE_CLIENT_ID: ''
       GOOGLE_CLIENT_SECRET: ''
+      DRIVE_TOKEN_ENCRYPTION_KEY: IapOcBFnHYsNCXQCAdz0rTu2kK/BP2uY+2z/PIUVJGc=
       MAIL_FROM: no-reply@economia-app.dev
     defaults:
       run:

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { exportAccountData } from '../api/users';
 import { confirmDataImport, previewDataImport, DATA_TABLE_LABELS } from '../api/data-import';
 import type { DataImportSummary } from '../api/data-import';
+import { disconnectDrive, driveConnectUrl, exportToDrive, getDriveConnectionStatus } from '../api/google-drive';
 import { ApiError } from '../api/client';
 
 /**
@@ -13,13 +14,35 @@ import { ApiError } from '../api/client';
  * en `ProfilePage`, ahora con todo el patrimonio incluido) e importarlos
  * de vuelta en modo fusión/aditivo (H2 — selecciona fichero → vista previa
  * automática → confirmar, mismo patrón de dos pasos que `ImportPage`).
+ * H4 añade el envío a Google Drive como opción extra de exportación, sin
+ * quitar la descarga local.
  */
+
+// Spec 032 H4, plan.md §9.5: `error` que puede llegar en `GET
+// /auth/drive/callback → /backup?driveConnected=0&error=...`.
+const DRIVE_CONNECT_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: 'Has cancelado la conexión con Google Drive.',
+  state: 'La conexión con Google Drive ha caducado. Inténtalo de nuevo.',
+  no_refresh_token: 'Google no ha concedido el permiso necesario. Vuelve a intentarlo.',
+};
+
 export function BackupPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Exportar (H1).
   const [exportError, setExportError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Google Drive (H4).
+  const [isDriveConnected, setIsDriveConnected] = useState<boolean | null>(null);
+  const [driveStatusError, setDriveStatusError] = useState<string | null>(null);
+  const [driveConnectNotice, setDriveConnectNotice] = useState<string | null>(null);
+  const [isExportingToDrive, setIsExportingToDrive] = useState(false);
+  const [driveExportError, setDriveExportError] = useState<string | null>(null);
+  const [driveExportLink, setDriveExportLink] = useState<string | null>(null);
+  const [isDisconnectingDrive, setIsDisconnectingDrive] = useState(false);
+  const [driveDisconnectError, setDriveDisconnectError] = useState<string | null>(null);
 
   // Importar (H2).
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -49,6 +72,84 @@ export function BackupPage() {
       setExportError(err instanceof ApiError ? err.message : 'No se han podido exportar tus datos.');
     } finally {
       setIsExporting(false);
+    }
+  }
+
+  async function loadDriveStatus() {
+    setDriveStatusError(null);
+    try {
+      const { connected } = await getDriveConnectionStatus();
+      setIsDriveConnected(connected);
+    } catch (err) {
+      // Igual que el resto de guards "no configurado" de Google en esta app
+      // (503 sin credenciales): se trata como "Drive no disponible", sin
+      // romper el resto de la página de copia de seguridad.
+      setIsDriveConnected(false);
+      setDriveStatusError(err instanceof ApiError ? err.message : 'No se ha podido comprobar la conexión con Google Drive.');
+    }
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void loadDriveStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  // Retorno de `GET /auth/drive/callback` (plan.md §9.5): lee el resultado de
+  // la query string una sola vez y la limpia, para que refrescar la página
+  // no vuelva a mostrar el aviso.
+  useEffect(() => {
+    const driveConnected = searchParams.get('driveConnected');
+    if (driveConnected === null) return;
+
+    if (driveConnected === '1') {
+      setDriveConnectNotice('Google Drive conectado correctamente.');
+      void loadDriveStatus();
+    } else {
+      const errorCode = searchParams.get('error');
+      setDriveConnectNotice(
+        (errorCode && DRIVE_CONNECT_ERROR_MESSAGES[errorCode]) ?? 'No se ha podido conectar Google Drive.',
+      );
+    }
+
+    setSearchParams((params) => {
+      params.delete('driveConnected');
+      params.delete('error');
+      return params;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  function handleConnectDrive() {
+    window.location.href = driveConnectUrl();
+  }
+
+  async function handleExportToDrive() {
+    setDriveExportError(null);
+    setDriveExportLink(null);
+    setIsExportingToDrive(true);
+    try {
+      const result = await exportToDrive();
+      setDriveExportLink(result.webViewLink);
+    } catch (err) {
+      setDriveExportError(err instanceof ApiError ? err.message : 'No se ha podido guardar el fichero en Google Drive.');
+    } finally {
+      setIsExportingToDrive(false);
+    }
+  }
+
+  async function handleDisconnectDrive() {
+    if (!window.confirm('¿Desconectar Google Drive? Los ficheros ya guardados allí no se borran.')) return;
+    setDriveDisconnectError(null);
+    setIsDisconnectingDrive(true);
+    try {
+      await disconnectDrive();
+      setIsDriveConnected(false);
+      setDriveExportLink(null);
+    } catch (err) {
+      setDriveDisconnectError(err instanceof ApiError ? err.message : 'No se ha podido desconectar Google Drive.');
+    } finally {
+      setIsDisconnectingDrive(false);
     }
   }
 
@@ -132,6 +233,59 @@ export function BackupPage() {
               {isExporting ? 'Exportando…' : 'Exportar mis datos'}
             </button>
           </div>
+        </div>
+
+        <div className="card elev-sm">
+          <h3>Google Drive</h3>
+          {driveConnectNotice && <p role="status">{driveConnectNotice}</p>}
+          {driveStatusError && <p role="alert">{driveStatusError}</p>}
+
+          {isDriveConnected === null && !driveStatusError && <p>Comprobando la conexión con Google Drive…</p>}
+
+          {isDriveConnected === false && (
+            <>
+              <p className="card-body">Conecta tu Google Drive para guardar ahí una copia cada vez que exportes.</p>
+              <button type="button" className="btn btn-secondary" onClick={handleConnectDrive}>
+                Conectar Google Drive
+              </button>
+            </>
+          )}
+
+          {isDriveConnected === true && (
+            <>
+              <p className="card-body">
+                Guarda el mismo fichero de exportación en la carpeta "Economía App" de tu Google Drive.
+              </p>
+              {driveExportError && <p role="alert">{driveExportError}</p>}
+              {driveExportLink && (
+                <p role="status">
+                  Guardado en Google Drive.{' '}
+                  <a href={driveExportLink} target="_blank" rel="noreferrer">
+                    Ver fichero
+                  </a>
+                </p>
+              )}
+              {driveDisconnectError && <p role="alert">{driveDisconnectError}</p>}
+              <div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={isExportingToDrive}
+                  onClick={() => void handleExportToDrive()}
+                >
+                  {isExportingToDrive ? 'Guardando…' : 'Guardar en Google Drive'}
+                </button>{' '}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={isDisconnectingDrive}
+                  onClick={() => void handleDisconnectDrive()}
+                >
+                  {isDisconnectingDrive ? 'Desconectando…' : 'Desconectar'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </section>
 

@@ -112,6 +112,25 @@ export class SessionsService {
     return this.issueForUser(session.userId, device);
   }
 
+  /**
+   * Igual validación que el primer bloque de `rotate()` (sesión existe, no
+   * revocada, no caducada), pero de solo lectura: no rota el refresh token
+   * ni escribe nada. Lo usa `GET /auth/drive/connect` (spec 032 H4, plan.md
+   * §9.5) para identificar al usuario a partir de la cookie de refresh en
+   * una navegación completa del navegador (sin `Authorization: Bearer`,
+   * así que `AuthGuard` no sirve ahí) sin el efecto secundario de emitir una
+   * sesión nueva — conectar Drive no es "refrescar sesión".
+   */
+  async verifyActive(refreshTokenPlaintext: string): Promise<{ userId: string }> {
+    const hash = hashOpaqueToken(refreshTokenPlaintext);
+    const session = await this.db.query.sessions.findFirst({ where: eq(sessions.refreshTokenHash, hash) });
+
+    if (!session || session.revokedAt || session.expiresAt.getTime() < Date.now()) {
+      throw new UnauthorizedException('Sesión inválida.');
+    }
+    return { userId: session.userId };
+  }
+
   /** Revoca una sesión concreta, solo si pertenece al usuario indicado (aislamiento). Usado por logout. */
   async revokeByRefreshToken(refreshTokenPlaintext: string, userId: string): Promise<void> {
     const hash = hashOpaqueToken(refreshTokenPlaintext);

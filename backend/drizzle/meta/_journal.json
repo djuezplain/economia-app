@@ -176,6 +176,13 @@
       "when": 1788765326565,
       "tag": "0024_add_stock_sales",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788966284738,
+      "tag": "0025_add_google_drive_connections",
+      "breakpoints": true
     }
   ]
 }
