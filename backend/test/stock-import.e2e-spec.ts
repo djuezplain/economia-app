@@ -184,6 +184,29 @@ describe('Importar acciones desde CSV (e2e) — spec 033', () => {
     }
   });
 
+  it('dos compras ya existentes con la misma fecha pero distinto precio o cantidad no se confunden con un duplicado', async () => {
+    // H2 criterio 1 (spec.md): la coincidencia es exacta por fecha + cantidad + precio, no solo por fecha.
+    const user = await createUser('duplicado-exacto@example.com');
+    const token = await login(user.email);
+    const [stock] = await db.insert(stocks).values({ userId: user.id, custodyBank: 'MyInvestor', stock: 'Repsol' }).returning();
+    await db.insert(stockPurchases).values({ stockId: stock.id, shareCount: '260.00000000', purchasePrice: '9.60700000', date: '2025-04-09' });
+
+    const csv = buildCsv({
+      open: [
+        ['Repsol', 'REP', '09/04/2025', '260.00000000', '9,607'], // idéntica a la ya existente → se omite
+        ['Repsol', 'REP', '09/04/2025', '50.00000000', '9,607'], // misma fecha y precio, distinta cantidad → nueva
+        ['Repsol', 'REP', '09/04/2025', '260.00000000', '10,500'], // misma fecha y cantidad, distinto precio → nueva
+      ],
+    });
+
+    const res = await attach('/stock-import/confirm', token, csv).expect(201);
+    const repsolRow = res.body.stocks.find((r: { name: string }) => r.name === 'Repsol');
+    expect(repsolRow.purchases).toEqual({ total: 3, toImport: 2, alreadyExisting: 1 });
+
+    const purchases = await db.select().from(stockPurchases).where(eq(stockPurchases.stockId, stock.id));
+    expect(purchases).toHaveLength(3);
+  });
+
   it('reimportar el mismo fichero dos veces seguidas no duplica nada', async () => {
     const user = await createUser('reimportar@example.com');
     const token = await login(user.email);

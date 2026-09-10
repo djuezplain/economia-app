@@ -33,3 +33,53 @@
 
 ---
 **Cómo trabajamos esto:** una tarea a la vez, en orden dentro de cada grupo. Al terminar una tarea, se marca y se hace commit; solo entonces se pasa a la siguiente. Si algo del plan no encaja al implementarlo, se para y se ajusta `plan.md` antes de seguir (no se parchea en silencio).
+
+---
+
+## Checklist de cierre — spec 033 (T4.1)
+
+Repaso de `spec.md` historia por historia. `[x]` = cubierto por al menos un test automático.
+
+### H1 — Subir el CSV y ver qué se va a importar antes de confirmar
+
+- [x] Criterio 1 (vista previa por acción: nueva/existente/ambigua, compras/ventas/valoraciones nuevas vs. ya existentes): `test/stock-import.e2e-spec.ts` — "preview: nueva, ya existente y ambigua se calculan bien sin escribir nada"; `StockImportPage.test.tsx` — "muestra los 3 estados de fila".
+- [x] Criterio 2 (nada se escribe hasta confirmar): mismo test e2e de preview, comprueba `db.select` vacío tras el preview.
+- [x] Criterio 3 (estructura inesperada → error claro): `stock-import.parsing.spec.ts` — sección/columna ausente lanza `InvalidStockCsvError`; `test/stock-import.e2e-spec.ts` — "fichero sin la sección... → 400, nada escrito"; `StockImportPage.test.tsx` — "un fichero inválido (400) muestra el motivo del backend".
+
+### H2 — Importar sin duplicar si se repite el CSV
+
+- [x] Criterio 1 (coincidencia exacta por acción+fecha+cantidad+precio, no solo fecha): `test/stock-import.e2e-spec.ts` — "dos compras ya existentes con la misma fecha pero distinto precio o cantidad no se confunden con un duplicado" (añadido durante este cierre, T4.1 — hueco real encontrado: la única cobertura previa de deduplicación era el reimport íntegro, que no distinguía "mismo día" de "mismo día+cantidad+precio").
+- [x] Criterio 2 (duplicados se omiten sin bloquear el resto): "confirm: importa compras, ventas y valoraciones; la fila ambigua no inserta nada" — el resto del fichero se importa igual.
+- [x] Criterio 3 (reimportar el mismo fichero dos veces → 0 nuevos la segunda vez): "reimportar el mismo fichero dos veces seguidas no duplica nada".
+
+### H3 — Emparejar cada acción del CSV con una posición ya existente
+
+- [x] Criterio 1 (nombre normalizado, sin distinguir mayúsculas/tildes/espacios): `stock-import.parsing.spec.ts` — `matchStockNames`, casos "existing" y de normalización; e2e — Repsol emparejada reutilizando `custodyBank`.
+- [x] Criterio 2 (≥2 coincidencias → ambigua, no se elige ninguna): `stock-import.parsing.spec.ts` — caso `ambiguous`; e2e — "Santander" con dos posiciones existentes no inserta nada.
+- [x] Criterio 3 (sin coincidencia → nueva, `custodyBank: "-"`): `stock-import.parsing.spec.ts` — caso `new`; e2e — "BBVA"/"Repsol" nuevas con `custodyBank: '-'`.
+
+### H4 — Traer también las posiciones ya cerradas
+
+- [x] Criterio 1 (lote cerrado → compra + venta emparejadas): e2e — "Amadeus" (solo en cerradas) con 1 compra + 1 venta insertadas.
+- [x] Criterio 2 (acción solo en cerradas se crea sin valoración): mismo test — 0 valoraciones para "Amadeus".
+
+### H5 — Traer el precio actual de cada posición abierta
+
+- [x] Criterio 1 (valoración con precio actual por posición abierta): e2e — "Repsol" recibe 1 valoración nueva desde "Resumen de posiciones".
+- [x] Criterio 2 (misma fecha → no se duplica): e2e — "reimportar..." comprueba `valuations: { total: 1, toImport: 0, alreadyExisting: 1 }` en la segunda pasada.
+
+### Aislamiento de datos (spec.md, constitution §2)
+
+- [x] El emparejamiento y la escritura solo tocan acciones del usuario autenticado: `test/stock-import.e2e-spec.ts` — "el emparejamiento y la escritura solo tocan acciones del usuario autenticado (aislamiento)".
+- [x] 401 sin autenticar / 403 `PENDING_VERIFICATION`: tests dedicados en el mismo fichero.
+- [x] Todo o nada ante un fallo real de la base de datos: "un nombre de acción que excede el límite de columna hace fallar toda la transacción".
+
+### Fuera de alcance (spec.md §4)
+
+Cotización en vivo, conversión de divisa, dividendos, fusión difusa de nombres, otros formatos de CSV, edición de filas desde la propia pantalla: ninguno tiene código en esta spec — ausencia deliberada, nada que verificar (mismo criterio que el cierre de spec 003 con sus propios "fuera de alcance").
+
+### Resultado del cierre
+
+Todos los criterios de aceptación de H1-H5 quedan cubiertos por al menos un test automático. El repaso encontró un hueco real de cobertura (H2 criterio 1: la deduplicación exacta por cantidad/precio, no solo por fecha, no tenía un test que la distinguiera del caso "reimport íntegro") — corregido con un test e2e nuevo durante este mismo cierre, sin cambios de comportamiento (el código de `amountKey`/`dedupeAgainstExisting` ya era correcto).
+
+Con esto, **spec 033 queda cerrada** en cuanto termine T4.2 (verificación manual en el navegador).
