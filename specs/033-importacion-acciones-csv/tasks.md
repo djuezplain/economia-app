@@ -82,4 +82,10 @@ Cotización en vivo, conversión de divisa, dividendos, fusión difusa de nombre
 
 Todos los criterios de aceptación de H1-H5 quedan cubiertos por al menos un test automático. El repaso encontró un hueco real de cobertura (H2 criterio 1: la deduplicación exacta por cantidad/precio, no solo por fecha, no tenía un test que la distinguiera del caso "reimport íntegro") — corregido con un test e2e nuevo durante este mismo cierre, sin cambios de comportamiento (el código de `amountKey`/`dedupeAgainstExisting` ya era correcto).
 
-Con esto, **spec 033 queda cerrada** en cuanto termine T4.2 (verificación manual en el navegador).
+### T4.2 — Verificación final
+
+`npm run lint`/`build` en verde en ambos paquetes; backend 207 tests unitarios + 543 e2e en verde (`--no-file-parallelism`: en paralelo hay contención real de conexiones contra el Postgres local compartido de esta máquina, no relacionada con esta spec); frontend build (`tsc -b`) y 524/527 tests en verde (3 fallos pre-existentes y no relacionados, confirmados reproduciéndolos también en el árbol limpio sin este cambio — dos timing/fecha-dependientes en `SyncStatusPanel`/`RegisterMovementPage`, uno de agrupación semanal en `WealthPage` ligado a la fecha de hoy).
+
+Verificación manual contra el servidor de desarrollo real (`backend-dev`/`frontend-dev`, base de datos `economia_dev`, usuario de prueba creado y eliminado al terminar): CSV sintético con Repsol/BBVA (abiertas) y Amadeus (solo cerrada) → `preview` no escribe nada, `confirm` inserta las 3 acciones con `custodyBank: '-'`, sus compras/venta y las 2 valoraciones; verificado en `psql` fila a fila (fechas, cantidades — `1420.00000000` correctamente distinto de un precio con el mismo nº de dígitos — y precios) y en la UI (`WealthPage` renderiza el Total, la composición y cada acción con el coste/valor correctos; el redondeo a 2 decimales de `pricePerShare`, `25,045` → `25.05`, se refleja fielmente en el total mostrado). Sin errores de consola relacionados con la importación.
+
+Con esto, **spec 033 queda cerrada**.
