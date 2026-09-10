@@ -15,6 +15,8 @@ function buildCsv(options: {
   summaryHeader?: string[];
   openHeader?: string[];
   closedHeader?: string[];
+  /** Reproduce el BOM UTF-8 que lleva el CSV real exportado por Investing.com. */
+  bom?: boolean;
 }): Buffer {
   const includeSections = options.includeSections ?? ['summary', 'open', 'closed'];
   const summaryHeader = options.summaryHeader ?? ['', 'Nombre', 'Símbolo', 'Precio actual'];
@@ -56,7 +58,8 @@ function buildCsv(options: {
     blocks.push(csvLine(['B/P posic. cerradas', '10,00 €']));
   }
 
-  return Buffer.from(blocks.join('\n'), 'utf-8');
+  const text = (options.bom ? '﻿' : '') + blocks.join('\n');
+  return Buffer.from(text, 'utf-8');
 }
 
 describe('parseStockCsv', () => {
@@ -128,6 +131,21 @@ describe('parseStockCsv', () => {
     const parsed = parseStockCsv(csv);
     expect(parsed.closedLots[0].fechaApertura).toBe('2026-07-08');
     expect(parsed.closedLots[0].fechaCierre).toBe('2026-09-08');
+  });
+
+  it('acepta un fichero con BOM UTF-8 al principio (tal cual lo exporta Investing.com)', () => {
+    // Bug real encontrado con el fichero real de Diego: sin manejar el BOM,
+    // csv-parse ni siquiera conseguía interpretar la primera celda
+    // entrecomillada y el fichero se rechazaba entero como "no válido".
+    const csv = buildCsv({
+      summary: [['Repsol', 'REP', '29,120']],
+      bom: true,
+    });
+
+    const parsed = parseStockCsv(csv);
+
+    expect(parsed.summary).toHaveLength(1);
+    expect(parsed.summary[0].nombre).toBe('Repsol');
   });
 });
 
