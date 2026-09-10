@@ -21,6 +21,7 @@ import { ImportPage } from './pages/ImportPage';
 import { GoalsPage } from './pages/GoalsPage';
 import { WealthPage } from './pages/WealthPage';
 import { StockDetailPage } from './pages/StockDetailPage';
+import { StockImportPage } from './pages/StockImportPage';
 import { BackupPage } from './pages/BackupPage';
 
 function App() {
@@ -43,6 +44,7 @@ function App() {
             </Route>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/patrimonio" element={<WealthPage />} />
+            <Route path="/patrimonio/acciones/importar" element={<StockImportPage />} />
             <Route path="/patrimonio/acciones/:id" element={<StockDetailPage />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/goals" element={<GoalsPage />} />
