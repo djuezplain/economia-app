@@ -4633,6 +4633,7 @@ export function WealthPage() {
                         {saleRows.map((row) => (
                           <tr key={row.id}>
                             <td data-label="Concepto">
+                              <span aria-hidden="true">{row.amount >= 0 ? '📈' : '📉'}</span>{' '}
                               Venta de {row.stock} ({row.date})
                             </td>
                             <td data-label="Tipo">—</td>
@@ -4642,7 +4643,10 @@ export function WealthPage() {
                         ))}
                         {saleRows.length > 1 && (
                           <tr>
-                            <td data-label="Concepto">Ganancia/pérdida patrimonial bruta</td>
+                            <td data-label="Concepto">
+                              <span aria-hidden="true">{compensation.grossAmount >= 0 ? '📈' : '📉'}</span>{' '}
+                              Ganancia/pérdida patrimonial bruta
+                            </td>
                             <td data-label="Tipo">—</td>
                             <td data-label="Base">{formatCurrency(compensation.grossAmount.toFixed(2))}</td>
                             <td data-label="Cuota">—</td>
@@ -4650,7 +4654,9 @@ export function WealthPage() {
                         )}
                         {compensation.compensatedLosses.map((loss) => (
                           <tr key={loss.year}>
-                            <td data-label="Concepto">Pérdida compensada de {loss.year}</td>
+                            <td data-label="Concepto">
+                              <span aria-hidden="true">📉</span> Pérdida compensada de {loss.year}
+                            </td>
                             <td data-label="Tipo">—</td>
                             <td data-label="Base">−{formatCurrency(loss.amount.toFixed(2))}</td>
                             <td data-label="Cuota">—</td>

@@ -2208,7 +2208,7 @@ describe('WealthPage', () => {
       expect(rows).toHaveLength(5);
       expect(rows[1]).toHaveTextContent('Venta de Inditex (2026-06-01)');
       expect(rows[1]).toHaveTextContent('10.000,00 €');
-      expect(rows[2]).toHaveTextContent('Pérdida compensada de 2025');
+      expect(rows[2]).toHaveTextContent('📉 Pérdida compensada de 2025');
       expect(rows[2]).toHaveTextContent('−4000,00 €');
       expect(rows[3]).toHaveTextContent('Base imponible');
       expect(rows[3]).toHaveTextContent('6000,00 €');
@@ -2275,11 +2275,11 @@ describe('WealthPage', () => {
       const rows = within(table).getAllByRole('row');
       // Cabecera + venta con pérdida + venta con ganancia + subtotal neto + 2 tramos.
       expect(rows).toHaveLength(6);
-      expect(rows[1]).toHaveTextContent('Venta de Inditex (2026-03-01)');
+      expect(rows[1]).toHaveTextContent('📉 Venta de Inditex (2026-03-01)');
       expect(rows[1]).toHaveTextContent('-700,00 €');
-      expect(rows[2]).toHaveTextContent('Venta de Inditex (2026-04-01)');
+      expect(rows[2]).toHaveTextContent('📈 Venta de Inditex (2026-04-01)');
       expect(rows[2]).toHaveTextContent('7000,00 €');
-      expect(rows[3]).toHaveTextContent('Ganancia/pérdida patrimonial bruta');
+      expect(rows[3]).toHaveTextContent('📈 Ganancia/pérdida patrimonial bruta');
       expect(rows[3]).toHaveTextContent('6300,00 €');
       expect(rows[4]).toHaveTextContent('19 %');
       expect(rows[5]).toHaveTextContent('21 %');
