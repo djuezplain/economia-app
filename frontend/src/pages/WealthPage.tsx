@@ -3563,6 +3563,12 @@ export function WealthPage() {
           <h2>📈 Acciones</h2>
         </summary>
 
+        <p>
+          <Link to="/patrimonio/acciones/importar" className="btn btn-ghost">
+            Importar desde CSV
+          </Link>
+        </p>
+
         {stocksLoadError && <p role="alert">{stocksLoadError}</p>}
         {purchasesLoadError && <p role="alert">{purchasesLoadError}</p>}
         {stockSalesLoadError && <p role="alert">{stockSalesLoadError}</p>}

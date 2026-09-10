@@ -16,6 +16,7 @@ import { GoalsModule } from './goals/goals.module.js';
 import { WealthModule } from './wealth/wealth.module.js';
 import { DataImportModule } from './data-import/data-import.module.js';
 import { GoogleDriveModule } from './google-drive/google-drive.module.js';
+import { StockImportModule } from './stock-import/stock-import.module.js';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { GoogleDriveModule } from './google-drive/google-drive.module.js';
     WealthModule,
     DataImportModule,
     GoogleDriveModule,
+    StockImportModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

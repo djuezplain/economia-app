@@ -693,6 +693,19 @@ describe('WealthPage', () => {
       expect(await screen.findByText('Todavía no tienes ninguna acción.')).toBeInTheDocument();
     });
 
+    it('muestra un enlace a la importación desde CSV (spec 033)', async () => {
+      mockOtherApis();
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
+
+      renderPage();
+
+      expect(await screen.findByRole('link', { name: 'Importar desde CSV' })).toHaveAttribute('href', '/patrimonio/acciones/importar');
+    });
+
     it('lista una acción existente, con sus totales y el valor actual calculado (precio por acción × nº de acciones)', async () => {
       mockOtherApis();
       vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([STOCK]);
