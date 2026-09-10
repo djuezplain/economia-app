@@ -1,6 +1,7 @@
 import { parse } from 'csv-parse/sync';
 import { Decimal } from 'decimal.js';
 import { parseDate } from '../import/import.parsing.js';
+import { normalizeText } from '../common/normalize-text.util.js';
 
 /**
  * Spec 033, plan.md §4-§5: funciones puras de lectura y parseo del CSV de
@@ -182,4 +183,40 @@ function parseRequiredDate(raw: string, fieldName: string): string {
     throw new InvalidStockCsvError(`"${fieldName}" con formato inesperado: "${raw}".`);
   }
   return parsed;
+}
+
+// --- Emparejamiento con acciones ya existentes (plan.md §6, H3) ----------
+
+export type StockMatchStatus = 'new' | 'existing' | 'ambiguous';
+
+export interface ExistingStockRef {
+  id: string;
+  custodyBank: string;
+  stock: string;
+}
+
+export interface StockMatch {
+  /** Columna "Nombre" del CSV, tal cual (H3 criterio 3: se usa literal para crear una acción nueva). */
+  nombre: string;
+  status: StockMatchStatus;
+  /** Solo presente si `status === 'existing'` (H3 criterio 1). */
+  existingStock?: { id: string; custodyBank: string };
+}
+
+/**
+ * Empareja cada nombre distinto del CSV con las acciones ya existentes del
+ * usuario, comparando por nombre normalizado (H3 criterio 1) e ignorando el
+ * banco custodia en la comparación. 0 coincidencias → `new`; 1 → `existing`
+ * (se reutiliza su `id`/`custodyBank`); ≥2 → `ambiguous`, ninguna se elige
+ * automáticamente (H3 criterio 2).
+ */
+export function matchStockNames(csvNames: string[], existingStocks: ExistingStockRef[]): StockMatch[] {
+  const distinctNames = Array.from(new Set(csvNames));
+  return distinctNames.map((nombre) => {
+    const normalized = normalizeText(nombre);
+    const matches = existingStocks.filter((s) => normalizeText(s.stock) === normalized);
+    if (matches.length === 0) return { nombre, status: 'new' };
+    if (matches.length === 1) return { nombre, status: 'existing', existingStock: { id: matches[0].id, custodyBank: matches[0].custodyBank } };
+    return { nombre, status: 'ambiguous' };
+  });
 }

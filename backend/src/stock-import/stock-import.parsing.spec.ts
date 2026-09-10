@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { InvalidStockCsvError, parseStockCsv } from './stock-import.parsing.js';
+import { InvalidStockCsvError, matchStockNames, parseStockCsv } from './stock-import.parsing.js';
+import type { ExistingStockRef } from './stock-import.parsing.js';
 
 /** CSVs sintéticos, nunca el fichero real de Diego (plan.md §13). */
 function csvLine(cells: string[]): string {
@@ -127,5 +128,38 @@ describe('parseStockCsv', () => {
     const parsed = parseStockCsv(csv);
     expect(parsed.closedLots[0].fechaApertura).toBe('2026-07-08');
     expect(parsed.closedLots[0].fechaCierre).toBe('2026-09-08');
+  });
+});
+
+describe('matchStockNames', () => {
+  it('marca como "new" un nombre sin ninguna coincidencia', () => {
+    const result = matchStockNames(['Repsol'], []);
+    expect(result).toEqual([{ nombre: 'Repsol', status: 'new' }]);
+  });
+
+  it('marca como "existing" y reutiliza id/custodyBank con una única coincidencia normalizada', () => {
+    const existing: ExistingStockRef[] = [{ id: 'stock-1', custodyBank: 'MyInvestor', stock: 'Repsol' }];
+    const result = matchStockNames(['REPSOL'], existing);
+    expect(result).toEqual([{ nombre: 'REPSOL', status: 'existing', existingStock: { id: 'stock-1', custodyBank: 'MyInvestor' } }]);
+  });
+
+  it('coincide ignorando tildes, mayúsculas y espacios sobrantes', () => {
+    const existing: ExistingStockRef[] = [{ id: 'stock-1', custodyBank: 'MyInvestor', stock: 'Redeia Corporación' }];
+    const result = matchStockNames([' redeia corporacion  '], existing);
+    expect(result[0]).toMatchObject({ status: 'existing', existingStock: { id: 'stock-1' } });
+  });
+
+  it('marca como "ambiguous" y no elige ninguna con dos o más coincidencias', () => {
+    const existing: ExistingStockRef[] = [
+      { id: 'stock-1', custodyBank: 'MyInvestor', stock: 'Santander' },
+      { id: 'stock-2', custodyBank: 'DEGIRO', stock: 'Santander' },
+    ];
+    const result = matchStockNames(['Santander'], existing);
+    expect(result).toEqual([{ nombre: 'Santander', status: 'ambiguous' }]);
+  });
+
+  it('deduplica nombres repetidos del CSV, devolviendo una sola entrada por nombre distinto', () => {
+    const result = matchStockNames(['Repsol', 'Repsol', 'BBVA'], []);
+    expect(result).toHaveLength(2);
   });
 });
