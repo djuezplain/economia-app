@@ -1,4 +1,5 @@
 import { Decimal } from 'decimal.js';
+import { normalizeText } from '../common/normalize-text.util.js';
 // `exceljs` es un módulo CommonJS que solo expone `module.exports = ExcelJS`
 // (sin asignar propiedades individuales), así que Node no puede sintetizar
 // `Workbook` como export nombrado bajo ESM nativo: `import { Workbook } from
@@ -204,14 +205,6 @@ function cellValue(cell: { value: unknown }): CellPrimitive {
 }
 
 // --- Normalización y mapeo (plan.md §5) ----------------------------------
-
-function normalizeText(raw: string): string {
-  return raw
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, ''); // quita diacríticos (tildes)
-}
 
 /**
  * Clave normalizada para comparar contra las categorías ya existentes del
