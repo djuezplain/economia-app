@@ -96,7 +96,10 @@ export function parseStockCsv(buffer: Buffer): ParsedStockCsv {
 
 function parseCsvRows(buffer: Buffer): string[][] {
   try {
-    return parse(buffer.toString('utf-8'), { skip_empty_lines: false, relax_column_count: true }) as string[][];
+    // `bom: true`: el CSV real exportado por Investing.com lleva un BOM UTF-8 al principio del
+    // fichero — sin esto, `csv-parse` ni siquiera consigue interpretar la primera celda entrecomillada
+    // (el BOM queda pegado a la comilla de apertura) y el fichero se rechazaba entero como "no válido".
+    return parse(buffer.toString('utf-8'), { skip_empty_lines: false, relax_column_count: true, bom: true }) as string[][];
   } catch {
     throw new InvalidStockCsvError('El fichero no es un CSV válido.');
   }
