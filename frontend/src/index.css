@@ -1018,6 +1018,17 @@ main ul li:last-child {
   min-width: 0;
   flex: 1 1 auto;
 }
+/* Spec 031 (venta de acciones), detalle de acción: el título de una acción es ahora un
+   enlace a su página de detalle — mismo aspecto que el `<span>` de antes (color heredado,
+   sin subrayado), con el subrayado solo al pasar el ratón como única pista de que es
+   interactivo, sin recargar visualmente la tarjeta. */
+a.card-title {
+  color: inherit;
+  text-decoration: none;
+}
+a.card-title:hover {
+  text-decoration: underline;
+}
 .wealth-item-header .card-amount {
   flex-shrink: 0;
   font-size: 20px;
@@ -1412,4 +1423,20 @@ code {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
+}
+
+/* Spec 031 (venta de acciones), "Imprimir resumen" del detalle de una acción: oculta todo el
+   chrome de navegación y cualquier control marcado `.no-print` (botones, formularios de alta),
+   dejando solo el contenido de la página — mismo criterio en cualquier página que use `.no-print`,
+   no solo el detalle de acción. */
+@media print {
+  #app-sidebar,
+  #app-mobile-menu-toggle,
+  #app-sidebar-backdrop,
+  #app-bottom-nav,
+  #app-fab,
+  #sync-status-panel,
+  .no-print {
+    display: none !important;
+  }
 }
