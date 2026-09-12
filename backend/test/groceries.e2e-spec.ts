@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import { eq } from 'drizzle-orm';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
@@ -177,6 +178,160 @@ describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 
       const token = await login(other.email);
 
       await request(app.getHttpServer()).get(`/receipts/${receipt.id}`).set('Authorization', `Bearer ${token}`).expect(404);
+    });
+  });
+
+  describe('PUT /receipts/:id (spec 035, H2-H3)', () => {
+    it('actualiza fecha, supermercado y total, y sustituye todas las líneas por otras', async () => {
+      const user = await createUser('update-1@example.com');
+      const [mercadona] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+      const [carrefour] = await db.insert(supermarkets).values({ userId: user.id, name: 'Carrefour' }).returning();
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Chocolate Classic' }).returning();
+      const [receipt] = await db.insert(receipts).values({ userId: user.id, supermarketId: mercadona.id, date: '2026-04-01', printedTotal: '1.30' }).returning();
+      await db.insert(receiptLines).values({ receiptId: receipt.id, productId: product.id, description: 'CHOCOLATE CLASSIC', quantity: '1', unit: 'unidad', pricePerUnit: '1.30', amount: '1.30' });
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .put(`/receipts/${receipt.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          supermarket: { id: carrefour.id },
+          date: '2026-04-05',
+          printedTotal: '2.50',
+          lines: [{ description: 'AGUA', quantity: '1', unit: 'unidad', pricePerUnit: '0.50', amount: '0.50', product: { name: 'Agua' } }],
+        })
+        .expect(200);
+
+      expect(res.body).toMatchObject({ date: '2026-04-05', supermarketId: carrefour.id, supermarketName: 'Carrefour', printedTotal: '2.50' });
+      expect(res.body.lines).toHaveLength(1);
+      expect(res.body.lines[0].description).toBe('AGUA');
+
+      const lineRows = await db.select().from(receiptLines).where(eq(receiptLines.receiptId, receipt.id));
+      expect(lineRows).toHaveLength(1);
+      expect(lineRows[0].description).toBe('AGUA');
+    });
+
+    it('el precio corregido se refleja de inmediato en la comparativa de precios (H3 criterio 4)', async () => {
+      const user = await createUser('update-2@example.com');
+      const [supermarket] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Leche' }).returning();
+      const [receipt] = await db.insert(receipts).values({ userId: user.id, supermarketId: supermarket.id, date: '2026-04-01' }).returning();
+      await db.insert(receiptLines).values({ receiptId: receipt.id, productId: product.id, description: 'Leche', quantity: '1', unit: 'unidad', pricePerUnit: '0.95', amount: '0.95' });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .put(`/receipts/${receipt.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          supermarket: { id: supermarket.id },
+          date: '2026-04-01',
+          lines: [{ description: 'Leche', quantity: '1', unit: 'unidad', pricePerUnit: '1.10', amount: '1.10', product: { id: product.id } }],
+        })
+        .expect(200);
+
+      const prices = await request(app.getHttpServer()).get(`/products/${product.id}/prices`).set('Authorization', `Bearer ${token}`).expect(200);
+      expect(prices.body).toEqual([expect.objectContaining({ pricePerUnit: '1.100' })]);
+    });
+
+    it('un ticket de otro usuario responde 404 y no cambia nada', async () => {
+      const owner = await createUser('update-owner@example.com');
+      const [supermarket] = await db.insert(supermarkets).values({ userId: owner.id, name: 'Mercadona' }).returning();
+      const [receipt] = await db.insert(receipts).values({ userId: owner.id, supermarketId: supermarket.id, date: '2026-04-01', printedTotal: '1.30' }).returning();
+
+      const other = await createUser('update-otro@example.com');
+      const token = await login(other.email);
+
+      await request(app.getHttpServer())
+        .put(`/receipts/${receipt.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          supermarket: { name: 'Otro' },
+          date: '2026-04-02',
+          lines: [{ description: 'AGUA', quantity: '1', unit: 'unidad', pricePerUnit: '0.50', amount: '0.50', product: { name: 'Agua' } }],
+        })
+        .expect(404);
+
+      const [unchanged] = await db.select().from(receipts).where(eq(receipts.id, receipt.id));
+      expect(unchanged.date).toBe('2026-04-01');
+      expect(unchanged.printedTotal).toBe('1.30');
+    });
+
+    it('un producto de otro usuario en una línea responde 404 y no deja la transacción a medias', async () => {
+      const owner = await createUser('update-line-owner@example.com');
+      const [foreignProduct] = await db.insert(products).values({ userId: owner.id, name: 'Producto ajeno' }).returning();
+
+      const user = await createUser('update-line@example.com');
+      const [supermarket] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+      const [receipt] = await db.insert(receipts).values({ userId: user.id, supermarketId: supermarket.id, date: '2026-04-01' }).returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .put(`/receipts/${receipt.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          supermarket: { id: supermarket.id },
+          date: '2026-04-01',
+          lines: [{ description: 'AGUA', quantity: '1', unit: 'unidad', pricePerUnit: '0.50', amount: '0.50', product: { id: foreignProduct.id } }],
+        })
+        .expect(404);
+
+      const lineRows = await db.select().from(receiptLines).where(eq(receiptLines.receiptId, receipt.id));
+      expect(lineRows).toHaveLength(0);
+    });
+  });
+
+  describe('DELETE /receipts/:id (spec 035, H1)', () => {
+    it('borra el ticket y sus líneas, sin tocar el producto ni el supermercado', async () => {
+      const user = await createUser('delete-1@example.com');
+      const [supermarket] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Chocolate Classic' }).returning();
+      const [receipt] = await db.insert(receipts).values({ userId: user.id, supermarketId: supermarket.id, date: '2026-04-01' }).returning();
+      await db.insert(receiptLines).values({ receiptId: receipt.id, productId: product.id, description: 'CHOCOLATE CLASSIC', quantity: '1', unit: 'unidad', pricePerUnit: '1.30', amount: '1.30' });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer()).delete(`/receipts/${receipt.id}`).set('Authorization', `Bearer ${token}`).expect(204);
+
+      const [deletedReceipt] = await db.select().from(receipts).where(eq(receipts.id, receipt.id));
+      expect(deletedReceipt).toBeUndefined();
+      const lineRows = await db.select().from(receiptLines).where(eq(receiptLines.receiptId, receipt.id));
+      expect(lineRows).toHaveLength(0);
+
+      const [survivingProduct] = await db.select().from(products).where(eq(products.id, product.id));
+      expect(survivingProduct).toBeDefined();
+      const [survivingSupermarket] = await db.select().from(supermarkets).where(eq(supermarkets.id, supermarket.id));
+      expect(survivingSupermarket).toBeDefined();
+    });
+
+    it('no afecta a otro ticket que use el mismo producto', async () => {
+      const user = await createUser('delete-2@example.com');
+      const [supermarket] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Leche' }).returning();
+      const [receiptToDelete] = await db.insert(receipts).values({ userId: user.id, supermarketId: supermarket.id, date: '2026-04-01' }).returning();
+      const [receiptToKeep] = await db.insert(receipts).values({ userId: user.id, supermarketId: supermarket.id, date: '2026-04-02' }).returning();
+      await db.insert(receiptLines).values([
+        { receiptId: receiptToDelete.id, productId: product.id, description: 'Leche', quantity: '1', unit: 'unidad', pricePerUnit: '0.95', amount: '0.95' },
+        { receiptId: receiptToKeep.id, productId: product.id, description: 'Leche', quantity: '1', unit: 'unidad', pricePerUnit: '1.00', amount: '1.00' },
+      ]);
+      const token = await login(user.email);
+
+      await request(app.getHttpServer()).delete(`/receipts/${receiptToDelete.id}`).set('Authorization', `Bearer ${token}`).expect(204);
+
+      const remainingLines = await db.select().from(receiptLines).where(eq(receiptLines.receiptId, receiptToKeep.id));
+      expect(remainingLines).toHaveLength(1);
+    });
+
+    it('un ticket de otro usuario responde 404 y no se borra nada', async () => {
+      const owner = await createUser('delete-owner@example.com');
+      const [supermarket] = await db.insert(supermarkets).values({ userId: owner.id, name: 'Mercadona' }).returning();
+      const [receipt] = await db.insert(receipts).values({ userId: owner.id, supermarketId: supermarket.id, date: '2026-04-01' }).returning();
+
+      const other = await createUser('delete-otro@example.com');
+      const token = await login(other.email);
+
+      await request(app.getHttpServer()).delete(`/receipts/${receipt.id}`).set('Authorization', `Bearer ${token}`).expect(404);
+
+      const [stillThere] = await db.select().from(receipts).where(eq(receipts.id, receipt.id));
+      expect(stillThere).toBeDefined();
     });
   });
 });
