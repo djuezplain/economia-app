@@ -59,3 +59,13 @@ Frontend: `tsc -b`/lint en verde (sin warnings nuevos); 547/548 tests en verde �
 **Verificación manual real** contra los servidores de desarrollo (usuario de prueba creado y eliminado al terminar): listado con 2 productos, entré en "Chocolate Classic" (nombre editable + tabla de precios con Mercadona 1,30 €), lo renombré a "Chocolate Classic Corregido" y confirmé en `psql` que la línea del ticket ya guardado sigue con su descripción original (`CHOCOLATE CLASSIC`) — H3 criterio 3 verificado con datos reales, no solo en test.
 
 Con esto, **spec 036 queda cerrada**.
+
+---
+
+## Cambio posterior — solo el precio más reciente por defecto, con historial bajo un botón
+
+Petición de Diego: `ProductDetailPage` mostraba cada línea histórica de precio directamente — pedido pasar a mostrar solo el precio más reciente de cada supermercado por defecto, con un botón "Historial" para ver todo. Revisa `spec.md` H4 criterio 3 (spec 034).
+
+Sin cambio de backend: `GET /products/:id/prices` (spec 034) sigue devolviendo todo el historial tal cual; el filtrado a "solo el más reciente por supermercado" y el reagrupado del historial completo (por supermercado, cronológico) son funciones puras en el propio `ProductDetailPage.tsx` — a esta escala (datos de un usuario) no hace falta un parámetro nuevo en la API para esto.
+
+Tests nuevos en `ProductDetailPage.test.tsx`: con dos precios del mismo supermercado en fechas distintas, la vista por defecto muestra solo el más reciente; el botón "Historial" muestra ambos; volver a pulsarlo (ahora "Ver solo el precio más reciente") vuelve a filtrar.

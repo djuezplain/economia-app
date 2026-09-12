@@ -59,7 +59,7 @@ Como usuario quiero, dado un producto, ver su precio en cada supermercado donde 
 
 - Criterio 1: al guardar una línea (H2), Diego puede emparejarla con un producto ya existente (creado desde un ticket anterior, de cualquier supermercado) o crear uno nuevo con el nombre de la línea.
 - Criterio 2: no hay fusión automática de nombres de producto parecidos pero no idénticos (p. ej. "Leche Pascual 1L" vs "Leche Pascual Entera 1L") — se resuelve a mano, mismo criterio que spec 033 §4 y spec 020 §2 para casos equivalentes.
-- Criterio 3: hay una pantalla, por producto, que lista su precio en cada supermercado y fecha de compra, ordenada de más barato a más caro.
+- Criterio 3: hay una pantalla, por producto, que lista su precio en cada supermercado, ordenada de más barato a más caro. **Revisado (petición de Diego, spec 036):** por defecto muestra solo el precio más reciente de cada supermercado, no cada compra histórica — un botón "Historial" muestra la lista completa (todas las fechas, agrupadas por supermercado).
 - Criterio 4: si el producto se vende por peso (el ticket trae cantidad en kg y precio/kg, como fruta o verdura), la comparación se hace por precio/kg; si se vende por unidad, por precio de la línea. No se convierte entre ambas unidades.
 
 **H5 — Ver el historial de tickets importados**

@@ -92,4 +92,41 @@ describe('ProductDetailPage', () => {
 
     expect(await screen.findByText('Todavía no tienes ningún ticket con este producto.')).toBeInTheDocument();
   });
+
+  describe('solo el precio más reciente por defecto, con historial bajo un botón', () => {
+    const TWO_DATES_SAME_SUPERMARKET: ProductPrice[] = [
+      { receiptId: 'r1', supermarketId: 's1', supermarketName: 'Mercadona', date: '2026-03-01', unit: 'unidad', pricePerUnit: '1.200' },
+      { receiptId: 'r2', supermarketId: 's1', supermarketName: 'Mercadona', date: '2026-04-01', unit: 'unidad', pricePerUnit: '1.300' },
+    ];
+
+    it('por defecto muestra solo el precio más reciente de cada supermercado', async () => {
+      vi.spyOn(groceriesApi, 'getProductPrices').mockResolvedValue(TWO_DATES_SAME_SUPERMARKET);
+
+      renderPage();
+      await screen.findByRole('heading', { name: 'Chocolate Classic', level: 1 });
+
+      const rows = await screen.findAllByRole('row', { name: /Mercadona/ });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toHaveTextContent('2026-04-01');
+      expect(rows[0]).toHaveTextContent('1.300');
+    });
+
+    it('el botón "Historial" muestra todas las fechas, y se puede volver a filtrar', async () => {
+      vi.spyOn(groceriesApi, 'getProductPrices').mockResolvedValue(TWO_DATES_SAME_SUPERMARKET);
+
+      renderPage();
+      await screen.findByRole('heading', { name: 'Chocolate Classic', level: 1 });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Historial' }));
+
+      const historyRows = await screen.findAllByRole('row', { name: /Mercadona/ });
+      expect(historyRows).toHaveLength(2);
+      expect(historyRows.some((row) => row.textContent?.includes('2026-03-01'))).toBe(true);
+      expect(historyRows.some((row) => row.textContent?.includes('2026-04-01'))).toBe(true);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Ver solo el precio más reciente' }));
+      const filteredRows = await screen.findAllByRole('row', { name: /Mercadona/ });
+      expect(filteredRows).toHaveLength(1);
+    });
+  });
 });
