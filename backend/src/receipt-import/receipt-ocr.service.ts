@@ -3,11 +3,112 @@ import { ConfigService } from '@nestjs/config';
 
 const VISION_ANNOTATE_URL = 'https://vision.googleapis.com/v1/images:annotate';
 
+interface VisionVertex {
+  x?: number;
+  y?: number;
+}
+interface VisionWord {
+  boundingBox?: { vertices?: VisionVertex[] };
+  symbols?: Array<{ text: string }>;
+}
+interface VisionFullTextAnnotation {
+  text: string;
+  pages?: Array<{
+    blocks?: Array<{
+      paragraphs?: Array<{
+        words?: VisionWord[];
+      }>;
+    }>;
+  }>;
+}
 interface VisionAnnotateResponse {
   responses?: Array<{
-    fullTextAnnotation?: { text: string };
+    fullTextAnnotation?: VisionFullTextAnnotation;
     error?: { message: string };
   }>;
+}
+
+interface PositionedWord {
+  text: string;
+  x: number;
+  yCenter: number;
+  height: number;
+}
+
+/**
+ * Bug real encontrado con un ticket real de Lidl (Diego: "casi no
+ * reconoce texto"): Vision sí reconocía el texto bien, pero
+ * `fullTextAnnotation.text` lo entrega agrupado por bloques/párrafos
+ * internos de Vision, no por fila visual — en un ticket con "nombre en una
+ * línea, peso/precio en la siguiente" eso puede invertir el orden
+ * (`"0,760 kg x 2,69"` antes que `"PIMIENTO VERDE FREÍR"`, al revés que en
+ * el papel), rompiendo el parseo línea a línea que ya esperaba `Tesseract`.
+ *
+ * Cada palabra de `fullTextAnnotation` sí trae su caja delimitadora en
+ * píxeles — de ahí se puede reconstruir el orden de lectura real (fila a
+ * fila, izquierda a derecha) ignorando cómo Vision agrupó internamente el
+ * texto. `receipt-import.parsing.ts` no cambia nada: sigue recibiendo una
+ * única cadena con saltos de línea, ahora en el orden correcto.
+ */
+export function extractPositionedWords(fullTextAnnotation: VisionFullTextAnnotation): PositionedWord[] {
+  const words: PositionedWord[] = [];
+  for (const page of fullTextAnnotation.pages ?? []) {
+    for (const block of page.blocks ?? []) {
+      for (const paragraph of block.paragraphs ?? []) {
+        for (const word of paragraph.words ?? []) {
+          const vertices = word.boundingBox?.vertices ?? [];
+          const xs = vertices.map((v) => v.x ?? 0);
+          const ys = vertices.map((v) => v.y ?? 0);
+          if (xs.length === 0 || ys.length === 0) continue;
+          const text = (word.symbols ?? []).map((s) => s.text).join('');
+          if (text === '') continue;
+          words.push({
+            text,
+            x: Math.min(...xs),
+            yCenter: (Math.min(...ys) + Math.max(...ys)) / 2,
+            height: Math.max(...ys) - Math.min(...ys) || 1,
+          });
+        }
+      }
+    }
+  }
+  return words;
+}
+
+/**
+ * Agrupa palabras en filas por proximidad vertical (dos palabras caen en
+ * la misma fila si sus centros verticales están a menos del 60% de la
+ * altura de palabra más alta de las dos) y las ordena de izquierda a
+ * derecha dentro de cada fila — mismo criterio general que cualquier
+ * reconstructor de líneas a partir de cajas de OCR, independiente del
+ * formato de ticket concreto (a diferencia de una regla ad-hoc por
+ * supermercado).
+ */
+export function reconstructRowText(words: PositionedWord[]): string {
+  if (words.length === 0) return '';
+  const sorted = [...words].sort((a, b) => a.yCenter - b.yCenter);
+  const rows: PositionedWord[][] = [];
+  for (const word of sorted) {
+    const lastRow = rows[rows.length - 1];
+    if (lastRow) {
+      const rowYCenter = lastRow.reduce((sum, w) => sum + w.yCenter, 0) / lastRow.length;
+      const rowHeight = Math.max(...lastRow.map((w) => w.height));
+      const tolerance = Math.max(rowHeight, word.height) * 0.6;
+      if (Math.abs(word.yCenter - rowYCenter) <= tolerance) {
+        lastRow.push(word);
+        continue;
+      }
+    }
+    rows.push([word]);
+  }
+  return rows
+    .map((row) =>
+      row
+        .sort((a, b) => a.x - b.x)
+        .map((w) => w.text)
+        .join(' '),
+    )
+    .join('\n');
 }
 
 /**
@@ -28,11 +129,6 @@ export class ReceiptOcrService {
   constructor(private readonly config: ConfigService) {}
 
   async extractText(imageBuffer: Buffer): Promise<string> {
-    // Log temporal de diagnóstico (Diego: "casi no reconoce texto" con un
-    // ticket real) — quitar en cuanto se confirme la causa real. El texto
-    // de un ticket de supermercado no es dato sensible.
-    this.logger.debug(`Enviando imagen a Vision: ${imageBuffer.length} bytes`);
-
     const apiKey = this.config.get<string>('GOOGLE_CLOUD_VISION_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -68,10 +164,14 @@ export class ReceiptOcrService {
       throw new Error(`Google Cloud Vision: ${result.error.message}`);
     }
 
-    // Cadena única con saltos de línea — misma forma que la salida de
-    // `tesseract ... stdout` que ya esperaba el parseo (H1 criterio 4: ''
-    // si Vision no reconoce ningún texto, no lanza).
-    const text = result?.fullTextAnnotation?.text ?? '';
+    const fullTextAnnotation = result?.fullTextAnnotation;
+    if (!fullTextAnnotation) return '';
+
+    // Reconstruido por geometría (ver comentario de `reconstructRowText`);
+    // si por lo que sea no hay palabras posicionadas (respuesta atípica),
+    // se cae al texto plano de Vision en vez de devolver una cadena vacía.
+    const positionedWords = extractPositionedWords(fullTextAnnotation);
+    const text = positionedWords.length > 0 ? reconstructRowText(positionedWords) : fullTextAnnotation.text;
     this.logger.debug(`Vision reconoció ${text.length} caracteres:\n${text}`);
     return text;
   }
