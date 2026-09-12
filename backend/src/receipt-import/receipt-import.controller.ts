@@ -7,8 +7,13 @@ import type { RequestUser } from '../auth/guards/require-active-user.guard.js';
 import { ConfirmReceiptDto } from './dto/confirm-receipt.dto.js';
 import { ReceiptImportService } from './receipt-import.service.js';
 
-/** plan.md §3: fotos de móvil modernas superan el límite de 10 MB ya usado para CSV/Excel. */
-const MAX_IMAGE_SIZE_BYTES = 15 * 1024 * 1024;
+/**
+ * plan.md §2 (nota de implementación — cambio de motor a Google Cloud
+ * Vision): la imagen viaja codificada en base64 dentro del cuerpo JSON de
+ * la petición a Vision (~33% de overhead sobre el tamaño original) — 10 MB
+ * de foto quedan en ~13,3 MB codificados, con margen cómodo.
+ */
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
 
 /** Spec 034 (H1-H5). Mismo guard que el resto de rutas de datos económicos. */

@@ -204,14 +204,12 @@ export function ReceiptImportPage() {
         <h2>1. Subir imagen</h2>
         <form onSubmit={(e) => void handlePreview(e)}>
           <label htmlFor="receipt-import-file">Foto del ticket</label>
-          <input
-            id="receipt-import-file"
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="input"
-            onChange={handleFileChange}
-          />
+          {/* Sin `capture`: con ese atributo, algunos navegadores móviles
+              (sobre todo iOS Safari) abren la cámara directamente en vez de
+              ofrecer también la opción de elegir una foto ya existente de
+              la galería — spec.md §3 ya preveía el selector de fichero
+              estándar con ambas opciones, no una vista de cámara forzada. */}
+          <input id="receipt-import-file" type="file" accept="image/*" className="input" onChange={handleFileChange} />
 
           {previewError && <p role="alert">{previewError}</p>}
 

@@ -5,60 +5,49 @@ import type { App } from 'supertest/types';
 import { eq } from 'drizzle-orm';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
-import sharp from 'sharp';
+import { vi } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
 import { products, receiptLines, receipts, supermarkets, users } from '../src/db/schema/index.js';
+import { ReceiptOcrService } from '../src/receipt-import/receipt-ocr.service.js';
 
 /**
- * Imagen sintética renderizada con SVG (plan.md §14): nunca el ticket real
- * de Diego. Reproduce cabecera + supermercado + líneas de producto + TOTAL,
- * suficiente para ejercitar el pipeline de OCR real (sin mocks) de extremo
- * a extremo en `preview`.
+ * plan.md §13 (revisado — cambio de motor a Google Cloud Vision): un
+ * servicio de pago no se invoca de verdad en la suite automática. Se
+ * sobreescribe `ReceiptOcrService` con un doble de test cuyo `extractText`
+ * devuelve texto ya preparado — mismos patrones ya verificados contra el
+ * ticket real de `spec.md` §1, nunca el ticket real de Diego. El contenido
+ * real del fichero subido ya no importa (Vision no llega a verlo).
  */
-async function buildSyntheticTicketImage(lines: string[]): Promise<Buffer> {
-  const paperWidth = 520;
-  const paperHeight = 60 + lines.length * 36;
-  const margin = 100;
-  const totalWidth = paperWidth + margin * 2;
-  const totalHeight = paperHeight + margin * 2;
-  const textElements = lines
-    .map((line, index) => `<text x="${margin + 20}" y="${margin + 40 + index * 36}" font-family="monospace" font-size="24" fill="black">${line}</text>`)
-    .join('\n');
-  const svg = `
-    <svg width="${totalWidth}" height="${totalHeight}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${totalWidth}" height="${totalHeight}" fill="#334455"/>
-      <rect x="${margin}" y="${margin}" width="${paperWidth}" height="${paperHeight}" fill="white"/>
-      ${textElements}
-    </svg>
-  `;
-  return sharp(Buffer.from(svg)).jpeg().toBuffer();
+const DEFAULT_TICKET_TEXT = ['MERCADONA, S.A.', '01/04/2026 16:10', 'Descripcion P.Unit Imp.', '1 CHOCOLATE CLASSIC 1,30', '2 NACHOS 0,90 1,80', 'TOTAL 3,10'].join(
+  '\n',
+);
+
+function fakeImageBuffer(): Buffer {
+  return Buffer.from('contenido de prueba, nunca llega a Vision de verdad');
 }
 
 describe('Importar tickets escaneados por OCR (e2e) — spec 034', () => {
   let app: INestApplication<App>;
   let db: Database;
   let ticketImage: Buffer;
+  const extractTextMock = vi.fn<() => Promise<string>>();
 
   const PASSWORD = 'Contraseña-Segura-123';
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(ReceiptOcrService)
+      .useValue({ extractText: extractTextMock })
+      .compile();
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
     db = moduleFixture.get<Database>(DB);
-    ticketImage = await buildSyntheticTicketImage([
-      'MERCADONA, S.A.',
-      '01/04/2026 16:10',
-      'Descripcion P.Unit Imp.',
-      '1 CHOCOLATE CLASSIC 1,30',
-      '2 NACHOS 0,90 1,80',
-      'TOTAL 3,10',
-    ]);
-  }, 30000);
+    ticketImage = fakeImageBuffer();
+  });
 
   afterAll(async () => {
     await app.close();
@@ -66,6 +55,8 @@ describe('Importar tickets escaneados por OCR (e2e) — spec 034', () => {
 
   beforeEach(async () => {
     await db.delete(users);
+    extractTextMock.mockReset();
+    extractTextMock.mockResolvedValue(DEFAULT_TICKET_TEXT);
   });
 
   async function createUser(email: string, status: 'ACTIVE' | 'PENDING_VERIFICATION' = 'ACTIVE') {
@@ -121,7 +112,7 @@ describe('Importar tickets escaneados por OCR (e2e) — spec 034', () => {
 
       const receiptRows = await db.select().from(receipts).where(eq(receipts.userId, user.id));
       expect(receiptRows).toHaveLength(0);
-    }, 20000);
+    });
 
     it('sugiere un supermercado ya existente del usuario en vez de uno nuevo', async () => {
       const user = await createUser('preview-existente@example.com');
@@ -135,7 +126,7 @@ describe('Importar tickets escaneados por OCR (e2e) — spec 034', () => {
         .expect(201);
 
       expect(res.body.supermarket).toEqual({ matchedId: existing.id, suggestedName: null });
-    }, 20000);
+    });
 
     it('un fichero que no es imagen responde 400', async () => {
       const user = await createUser('preview-invalido@example.com');
@@ -145,24 +136,35 @@ describe('Importar tickets escaneados por OCR (e2e) — spec 034', () => {
         .set('Authorization', `Bearer ${token}`)
         .attach('file', Buffer.from('no soy una imagen'), { filename: 'ticket.txt', contentType: 'text/plain' })
         .expect(400);
+      expect(extractTextMock).not.toHaveBeenCalled();
     });
 
     it('una imagen sin ningún texto legible avisa en vez de devolver una vista previa vacía como si estuviera bien (H1 criterio 4)', async () => {
       const user = await createUser('preview-ilegible@example.com');
       const token = await login(user.email);
-      const blankImage = await sharp({ create: { width: 300, height: 200, channels: 3, background: 'white' } })
-        .jpeg()
-        .toBuffer();
+      extractTextMock.mockResolvedValue('');
 
       const res = await request(app.getHttpServer())
         .post('/receipt-import/preview')
         .set('Authorization', `Bearer ${token}`)
-        .attach('file', blankImage, 'ticket.jpg')
+        .attach('file', ticketImage, 'ticket.jpg')
         .expect(201);
 
       expect(res.body.lines).toEqual([]);
       expect(res.body.warnings).toContain('No se ha podido reconocer ninguna línea de producto en la imagen.');
-    }, 20000);
+    });
+
+    it('si Google Cloud Vision falla (p. ej. sin configurar o cuota agotada), el error se propaga con un mensaje claro', async () => {
+      const user = await createUser('preview-vision-caida@example.com');
+      const token = await login(user.email);
+      extractTextMock.mockRejectedValue(new Error('Google Cloud Vision respondió 429: quota exceeded'));
+
+      await request(app.getHttpServer())
+        .post('/receipt-import/preview')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('file', ticketImage, 'ticket.jpg')
+        .expect(500);
+    });
   });
 
   describe('confirm', () => {
@@ -195,6 +197,8 @@ describe('Importar tickets escaneados por OCR (e2e) — spec 034', () => {
       const supermarketRows = await db.select().from(supermarkets).where(eq(supermarkets.userId, user.id));
       expect(supermarketRows).toHaveLength(1);
       expect(supermarketRows[0].name).toBe('Mercadona');
+      // confirm no invoca OCR — el DTO ya viene corregido (plan.md §7).
+      expect(extractTextMock).not.toHaveBeenCalled();
     });
 
     it('reutiliza un producto ya existente en vez de duplicarlo', async () => {

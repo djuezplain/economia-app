@@ -119,3 +119,21 @@ Todos los criterios de aceptación de H1-H5 quedan cubiertos por al menos un tes
   - Al terminar, se borró el usuario de prueba (`DELETE FROM users`) sin ningún error — confirma en un escenario real, no solo sintético en `psql`, que la corrección de cascada de T1.1/T4.2 funciona con datos reales de tickets/productos/supermercados de por medio.
 
 Con esto, **spec 034 queda cerrada**.
+
+---
+
+## Grupo 8 — Cambios posteriores al cierre (pedidos por Diego tras usar la spec en producción)
+
+### T8.1 — Selector de imagen: permitir también subir una foto ya existente
+
+`capture="environment"` en el `<input type="file">` de `ReceiptImportPage.tsx` forzaba la cámara directamente en algunos navegadores móviles, sin ofrecer la opción de elegir una foto ya existente de la galería — desviación real de `spec.md` §3 (que ya preveía el selector de fichero estándar del sistema operativo, con ambas opciones). Corregido quitando el atributo. Sin test nuevo (no hay comportamiento observable en jsdom que distinga "con" de "sin" `capture`); verificado leyendo el HTML resultante.
+
+### T8.2 — Cambiar el motor de OCR de Tesseract a Google Cloud Vision
+
+Pedido explícito de Diego — la propia spec ya dejaba esto como decisión "revisable" (`spec.md` §4 decisión 1 original). Detalle completo del cambio en `plan.md` §2 (nota de implementación) y §4.
+
+- Retirados: dependencia `sharp`, `tesseract-ocr`/`tesseract-ocr-spa` del `Dockerfile`, instrucciones de instalación local de Tesseract del README.
+- `ReceiptOcrService.extractText(buffer): Promise<string>` reescrito para llamar a la API REST de Google Cloud Vision (`DOCUMENT_TEXT_DETECTION`, autenticación por API key vía `GOOGLE_CLOUD_VISION_API_KEY`) en vez de invocar Tesseract como subproceso — misma firma exacta, así que `receipt-import.parsing.ts` (parseo), los endpoints y el frontend no cambian ni una línea.
+- `MAX_IMAGE_SIZE_BYTES` del controller baja de 15 MB a 10 MB (overhead de base64 en el cuerpo de la petición a Vision).
+- Tests: `receipt-ocr.service.spec.ts` reescrito para mockear `global.fetch` (éxito, sin texto, HTTP no-2xx, error de Vision, API key ausente → 503) en vez de invocar Tesseract real. `receipt-import.e2e-spec.ts` reescrito para sobreescribir el provider `ReceiptOcrService` (`overrideProvider().useValue(...)`, `@nestjs/testing`) con un doble de test en vez de generar imágenes sintéticas con `sharp`/SVG y esperar un OCR real — necesario porque Vision es un servicio de pago, no se puede invocar de verdad en la suite automática. Añadido un test nuevo (fallo de Vision se propaga como 500 con mensaje claro).
+- Verificado: backend 228 unitarios + 566 e2e en verde, frontend `tsc -b`/lint en verde y 538/539 tests (1 fallo pre-existente y no relacionado, `WealthPage.test.tsx`, ya documentado en cierres anteriores). Sin verificación manual contra Vision real en este cambio (no hay una API key de Google Cloud Vision configurada en este entorno de desarrollo) — pendiente de que Diego la configure y pruebe con un ticket real antes de dar el cambio por completamente verificado en producción.

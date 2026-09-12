@@ -63,8 +63,17 @@ export const receiptLines = pgTable('receipt_lines', {
 
 ## 2. Dependencias nuevas
 
-- **`sharp`** (recorte, escala de grises, upscale, autocontraste — mismas operaciones que la prueba con Pillow de `spec.md` §1, ahora en Node). Módulo nativo con binarios precompilados para `linux-arm64`; se verifica explícitamente en el Raspberry Pi de despliegue (§10) antes de dar la tarea por cerrada — mismo tipo de riesgo que `argon2` (Dockerfile actual ya instala `python3 build-essential` como red de seguridad si hiciera falta compilar).
-- **`tesseract-ocr` + `tesseract-ocr-spa`**: no es un paquete npm, es un binario del sistema operativo que el backend invoca como subproceso (`child_process.execFile`). Se añade al `Dockerfile` del backend vía `apt-get install` (Debian bookworm, mismo paquete y versión ya verificados en la prueba real de `spec.md` §1). Fuera de Docker (desarrollo local), cada máquina necesita instalarlo aparte (`brew install tesseract tesseract-lang` en macOS, documentado en el README del backend).
+> **Revisado (ver nota de implementación al final de esta sección):** esta sección describía originalmente `sharp` + `tesseract-ocr` (motor local, gratuito). Diego pidió pasar a **Google Cloud Vision**; el contenido de esta sección refleja ya la versión final (Vision), no la original.
+
+- **Ninguna dependencia npm nueva de producción.** Se llama a la API REST de Google Cloud Vision (`https://vision.googleapis.com/v1/images:annotate`) con el `fetch` global de Node 22 — sin SDK de Google Cloud (`@google-cloud/vision` arrastra `grpc-js`/`google-gax`, mucho más peso del que hace falta para una única llamada REST) y sin el patrón de cuenta de servicio + `google-auth-library`/JWT que ya usa `GoogleSheetsService` (spec 026): Vision, a diferencia de Sheets, no necesita acceder a un recurso privado de un usuario concreto, así que una **API key** de proyecto (autenticación más simple posible, forma estándar recomendada por Google para este caso) es suficiente.
+- **Variable de entorno nueva**: `GOOGLE_CLOUD_VISION_API_KEY` (`env.validation.ts`, `.env.example`) — Diego la obtiene habilitando "Cloud Vision API" en un proyecto de Google Cloud Console y creando una API key restringida a esa API. Sin ella, `ReceiptOcrService` rechaza con un 503 claro en vez de fallar de forma confusa contra Google (mismo criterio que `GoogleConfiguredGuard`, spec 001 grupo 4, para credenciales de Google no configuradas).
+- **Sin preprocesado de imagen** (`sharp` queda retirado, ver nota): Vision es robusto contra fondo, rotación e iluminación variable sin ayuda adicional — a diferencia de Tesseract, no hace falta recortar/escalar/aumentar contraste antes de enviarle la foto.
+
+> **Nota de implementación — cambio de motor de OCR (Tesseract → Google Cloud Vision), pedido por Diego después de la implementación inicial ya cerrada y desplegada:**
+> - Se retiran `sharp` (preprocesado de imagen) y `tesseract-ocr`/`tesseract-ocr-spa` (Dockerfile) — ninguno de los dos hace falta ya. `ReceiptOcrService.extractText(buffer): Promise<string>` mantiene exactamente la misma firma; todo lo demás (parseo de §5, detección de §6, endpoints de §3, frontend) no cambia una línea — exactamente la garantía que ya anticipaba `spec.md` §4 decisión 1 al dejar el motor como "revisable".
+> - `MAX_IMAGE_SIZE_BYTES` del controller baja de 15 MB a 10 MB (§3): la API de Vision acepta la imagen codificada en base64 dentro del cuerpo JSON de la petición, que añade ~33% de overhead sobre el tamaño del fichero original — 10 MB de foto quedan en ~13,3 MB codificados, con margen cómodo bajo cualquier límite razonable de tamaño de petición, sin necesitar `sharp` para reescalar antes de enviar.
+> - **Coste**: Google Cloud Vision no es gratuito sin límite como Tesseract — tiene una capa gratuita mensual y cobra por imagen a partir de ahí. Asumido por Diego al pedir el cambio; no se implementa ningún control de cuota o límite de uso propio en esta revisión (fuera de alcance, igual que el resto de "fuera de alcance" de `spec.md` §3).
+> - **Tests**: ya no es posible (ni deseable) invocar el motor real en la suite automática — a diferencia de Tesseract (binario local, gratis, sin red), cada llamada a Vision cuesta dinero y depende de red/credenciales. `ReceiptOcrService.spec.ts` pasa a mockear `global.fetch`; `receipt-import.e2e-spec.ts` pasa a sobreescribir el provider `ReceiptOcrService` con un doble de test (`overrideProvider`, ya nativo de `@nestjs/testing`) en vez de generar imágenes sintéticas con texto renderizado y esperar un OCR real. Ver §13.
 
 ## 3. Endpoints
 
@@ -72,7 +81,7 @@ export const receiptLines = pgTable('receipt_lines', {
 
 | Método y ruta | Guard | Descripción |
 |---|---|---|
-| `POST /receipt-import/preview` | `AuthGuard`, `RequireActiveUserGuard` | H1. `multipart/form-data`, campo `file` (imagen, `.jpg`/`.jpeg`/`.png`, máx. 15 MB — fotos de móvil modernas superan el límite de 10 MB ya usado para CSV/Excel). Ejecuta el pipeline completo (§4-§6) y devuelve la vista previa. No escribe nada. |
+| `POST /receipt-import/preview` | `AuthGuard`, `RequireActiveUserGuard` | H1. `multipart/form-data`, campo `file` (imagen, `.jpg`/`.jpeg`/`.png`, máx. 10 MB — ver nota de implementación de §2 sobre el overhead de base64 de Vision). Ejecuta el pipeline completo (§4-§6) y devuelve la vista previa. No escribe nada. |
 | `POST /receipt-import/confirm` | ídem | H2-H5. **A diferencia de `stock-import`/`import`, no vuelve a subirse el fichero** — recibe JSON con los datos ya corregidos por Diego en la vista previa (§7 explica por qué). |
 
 ```ts
@@ -122,12 +131,13 @@ interface ConfirmReceiptDto {
 
 Las cuatro rutas de consulta llevan los mismos guards (`AuthGuard`, `RequireActiveUserGuard`) y filtran siempre por `userId` (constitution §2).
 
-## 4. Pipeline de imagen → texto (receta verificada en `spec.md` §1, ahora con `sharp`)
+## 4. Pipeline de imagen → texto (revisado: Google Cloud Vision, ver nota de implementación de §2)
 
-1. **Recorte del papel**: en escala de grises, se calculan las columnas y filas cuyo brillo medio supera un umbral (mismo método que el script de prueba: `mean > 140` sobre 0-255) y se recorta al rectángulo resultante. Si el recorte da un área menor al 5 % de la imagen original (fallo de detección — p. ej. una foto ya muy recortada o con el ticket ocupando toda la imagen), se usa la imagen completa sin recortar en vez de un recorte absurdo.
-2. **Escala de grises + upscale x3 + autocontraste** — sin binarizar (verificado que empeora, `spec.md` §1).
-3. `execFile('tesseract', [tmpFile, 'stdout', '-l', 'spa', '--psm', '6'])` sobre un fichero temporal (Tesseract CLI no acepta un buffer por stdin de forma fiable en todas las versiones; se escribe a `os.tmpdir()` y se borra en un `finally`).
-4. El texto plano resultante pasa al parseo (§5).
+1. Se codifica el buffer de la imagen en base64, tal cual llega del `multipart/form-data` — sin recorte, sin escala de grises, sin upscale ni autocontraste (innecesarios con Vision, a diferencia de Tesseract).
+2. `POST https://vision.googleapis.com/v1/images:annotate?key=<GOOGLE_CLOUD_VISION_API_KEY>` con `features: [{ type: 'DOCUMENT_TEXT_DETECTION' }]` (el modo de Vision pensado para bloques densos de texto como recibos/documentos, no `TEXT_DETECTION`, pensado para texto disperso en fotos) e `imageContext: { languageHints: ['es'] }`.
+3. Si Google responde con un HTTP no-2xx, o con un `responses[0].error`, se lanza un error claro (mensaje real de Google incluido) — sin reintentos automáticos, misma filosofía de "fallar con un mensaje claro" que el resto de integraciones externas de la app.
+4. El texto resultante es `responses[0].fullTextAnnotation.text` (cadena única con saltos de línea, misma forma que la salida de `tesseract ... stdout` que ya esperaba el parseo — **`receipt-import.parsing.ts` no cambia nada**, es agnóstico al motor). `''` si Vision no reconoce ningún texto (imagen ilegible, H1 criterio 4).
+5. El texto plano resultante pasa al parseo (§5).
 
 ## 5. Parseo del texto OCR a líneas estructuradas (heurístico, best-effort — H1 criterio 4)
 
@@ -171,14 +181,7 @@ Mismo algoritmo, ya usado en spec 033 §6 para acciones, aplicado dos veces (ind
 
 ## 10. Despliegue (Raspberry Pi, `backend/Dockerfile`)
 
-```dockerfile
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 build-essential \
-    tesseract-ocr tesseract-ocr-spa \
-    && rm -rf /var/lib/apt/lists/*
-```
-
-Riesgo a verificar en la primera tarea de implementación (no asumido aquí): que `sharp` resuelva un binario precompilado para `linux-arm64` sobre `node:22-bookworm-slim` sin necesitar `libvips` adicional — es una librería muy usada en ese target, pero no hay una prueba real todavía contra el Raspberry Pi de Diego (a diferencia del resto de esta spec, que sí se verificó contra un ticket real).
+**Revisado:** sin `sharp` ni Tesseract, no hace falta ningún cambio en el `Dockerfile` más allá de lo que ya traía antes de esta spec (`python3 build-essential` para `argon2`, sin relación con el OCR). El único requisito de despliegue nuevo es la variable de entorno `GOOGLE_CLOUD_VISION_API_KEY` en el `.env` de producción — sin ella, `ReceiptImportModule` arranca igual, pero `POST /receipt-import/preview` responde 503 hasta que se configure.
 
 ## 11. Frontend
 
@@ -198,7 +201,7 @@ Nueva entrada de primer nivel en `AppLayout.tsx` (mismo patrón que "Ingresos y 
 }
 ```
 
-- **`ReceiptImportPage.tsx`** (`/tickets/importar`): selector de fichero de imagen (`<input type="file" accept="image/*" capture="environment">` — `capture` abre la cámara directamente en móvil, sin construir una vista de cámara propia, coherente con `spec.md` §4 "sin vista de cámara integrada"). Al subir, `POST /receipt-import/preview` y se muestra una tabla editable: supermercado (desplegable + opción "nuevo"), fecha, y una fila por línea (descripción, cantidad, unidad, precio/unidad, importe, producto emparejado — desplegable con búsqueda + opción "nuevo") — cada celda editable (H2 criterio 1), con botón para borrar la línea o añadir una nueva vacía (H2 criterio 2). Se muestra `linesTotal` junto a `printedTotal` con un aviso visual si no coinciden (H2 criterio 3, sin bloquear). Botón "Confirmar" → `POST /receipt-import/confirm` con el DTO ya editado.
+- **`ReceiptImportPage.tsx`** (`/tickets/importar`): selector de fichero de imagen estándar (`<input type="file" accept="image/*">`, **sin** `capture` — ese atributo fuerza la cámara directamente en algunos navegadores móviles, sin ofrecer elegir una foto ya existente de la galería; corregido tras una prueba real de Diego). Sin vista de cámara propia (`spec.md` §3), el propio selector del sistema operativo ofrece cámara y galería. Al subir, `POST /receipt-import/preview` y se muestra una tabla editable: supermercado (desplegable + opción "nuevo"), fecha, y una fila por línea (descripción, cantidad, unidad, precio/unidad, importe, producto emparejado — desplegable con búsqueda + opción "nuevo") — cada celda editable (H2 criterio 1), con botón para borrar la línea o añadir una nueva vacía (H2 criterio 2). Se muestra `linesTotal` junto a `printedTotal` con un aviso visual si no coinciden (H2 criterio 3, sin bloquear). Botón "Confirmar" → `POST /receipt-import/confirm` con el DTO ya editado.
 - **`ReceiptsPage.tsx`** (`/tickets`): tabla de `GET /receipts` (H5 criterio 1); cada fila enlaza a `ReceiptDetailPage.tsx` (`/tickets/:id`, `GET /receipts/:id`, H5 criterio 2).
 - **`ProductPricesPage.tsx`** (`/tickets/productos`): buscador de producto (`GET /products?search=`) y, al elegir uno, tabla de `GET /products/:id/prices` ordenada por precio (H4 criterio 3).
 
@@ -226,18 +229,20 @@ export class ReceiptImportModule {}
 export class GroceriesModule {}
 ```
 
-`ReceiptOcrService` (pipeline §4) y `ReceiptParsingService` (parseo §5-§6) son las dos piezas separadas explícitamente: la primera es la única que toca `sharp`/`tesseract`/el sistema de ficheros temporal, la segunda son funciones puras sobre texto (testeables sin invocar Tesseract de verdad, igual criterio que `stock-import.parsing.ts` en spec 033).
+`ReceiptOcrService` (pipeline §4) y `receipt-import.parsing.ts` (parseo §5-§6) son las dos piezas separadas explícitamente: la primera es la única que toca la red/la API de Vision, la segunda son funciones puras sobre texto (testeables sin llamar a Google de verdad, igual criterio que `stock-import.parsing.ts` en spec 033).
 
 ## 13. Tests
 
-- **Unit**: `receipt-import.parsing.spec.ts` — cada regla de §5 con líneas de texto sintéticas (incluida la línea de dos importes y la de peso), detección de fecha/total/supermercado (§6), sin invocar Tesseract real.
-- **Integración/e2e**: `receipt-import.e2e-spec.ts` contra una imagen sintética generada en el propio test (un PNG con texto renderizado a mano con `sharp`/`canvas`, no una foto real) para el pipeline completo incluyendo `confirm`; y contra el texto ya extraído (mockeando `ReceiptOcrService`) para cubrir más casos de parseo sin depender de que Tesseract esté instalado en el entorno de CI.
+**Revisado:** con un motor de pago en la nube, ya no es aceptable (ni gratis) que la suite automática invoque el motor real, a diferencia de la versión con Tesseract.
+
+- **Unit**: `receipt-import.parsing.spec.ts` — cada regla de §5 con líneas de texto sintéticas (incluida la línea de dos importes y la de peso), detección de fecha/total/supermercado (§6), sin llamar a ningún servicio externo. `receipt-ocr.service.spec.ts` — mockea `global.fetch`: respuesta con texto, respuesta sin texto (imagen ilegible), HTTP no-2xx, `responses[0].error`, y sin `GOOGLE_CLOUD_VISION_API_KEY` configurada (503).
+- **Integración/e2e**: `receipt-import.e2e-spec.ts` sobreescribe el provider `ReceiptOcrService` (`overrideProvider(ReceiptOcrService).useValue(...)` de `@nestjs/testing`) con un doble cuyo `extractText` devuelve texto ya preparado — cubre el pipeline completo (`preview`+`confirm`, emparejamiento, aislamiento) sin red ni coste; la imagen subida en el `multipart/form-data` puede ser cualquier buffer con `Content-Type` de imagen, su contenido real ya no importa para el resultado del test.
 - **Backend `groceries`**: tests de servicio para los 5 endpoints de consulta (§3), incluido aislamiento por `userId` (constitution §2: un usuario nunca ve supermercados/productos/tickets de otro).
 - **Frontend**: `ReceiptImportPage.test.tsx` (preview/confirm mockeados, edición de una línea, aviso de total no coincidente), `ProductPricesPage.test.tsx`.
 
 ## 14. Datos de prueba
 
-El ticket real fotografiado por Diego (sección 1 de `spec.md`) no se incorpora al repositorio — mismo criterio que el CSV real de spec 033 §13. Los tests usan imágenes/textos sintéticos que reproducen los mismos patrones ya verificados (líneas por unidad, por peso, con dos importes, cabecera y total).
+El ticket real fotografiado por Diego (sección 1 de `spec.md`) no se incorpora al repositorio — mismo criterio que el CSV real de spec 033 §13. Los tests de parseo usan texto sintético que reproduce los mismos patrones ya verificados (líneas por unidad, por peso, con dos importes, cabecera y total); los tests de integración usan ese mismo texto como respuesta simulada de `ReceiptOcrService` (§13), sin necesitar ya una imagen realista.
 
 ## 15. Fuera de este plan
 

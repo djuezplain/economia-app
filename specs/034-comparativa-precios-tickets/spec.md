@@ -14,6 +14,8 @@ Esto es una funcionalidad nueva, sin nada parecido hoy en la app: no existe ning
 
 ## 1. Qué hemos verificado con una prueba real de OCR
 
+**Nota (revisión posterior a la aprobación inicial):** esta sección documenta la prueba que llevó a elegir Tesseract al aprobar la spec. Diego decidió después pasar a Google Cloud Vision (sección 4, decisión 1) — la razón de H2 (revisión obligatoria) sigue siendo válida igual: ningún OCR, tampoco uno de pago, garantiza el 100% de acierto en nombres de producto ni en el total impreso, así que la corrección manual sigue siendo necesaria.
+
 Se probó Tesseract (gratuito, sin cuota) contra una foto real de un ticket de Mercadona (26 líneas de producto, papel térmico, foto tomada con el móvil sobre una superficie de tela, no un escáner):
 
 - **El preprocesado de la imagen importa mucho más que el motor de OCR.** Sin recortar el ticket del fondo, el resultado es ilegible. Recortando solo la zona del ticket, pasando a escala de grises, aumentando la resolución (x3) y el contraste — **sin binarizar** (probamos umbral fijo y empeora el resultado, destruye los trazos finos de la impresora térmica) — el resultado es bueno.
@@ -79,8 +81,8 @@ Como usuario quiero ver la lista de tickets que ya he importado (fecha, supermer
 
 ## 4. Decisiones tomadas con Diego
 
-1. **Motor de OCR: Tesseract (gratuito)**, por el resultado ya obtenido con preprocesado en la prueba real de sección 1 — sin coste ni límite de uso. Se documenta como decisión revisable: si con más tickets reales el acierto no es suficiente, se valora pasar a una API de pago (Google Vision / Azure Read) sin necesidad de rediseñar el resto de la funcionalidad (H1-H5 no dependen del motor concreto).
-2. **El OCR corre dentro del propio backend NestJS**, invocando Tesseract como subproceso — no se introduce un microservicio aparte. Coherente con constitution §3 (todo vive hoy en Node + Postgres); si en el futuro hiciera falta más control sobre el preprocesado de imagen del que ofrezcan las librerías de Node, es una revisión de `plan.md`, no de esta spec.
+1. ~~Motor de OCR: Tesseract (gratuito)~~ **Revisado — motor de OCR: Google Cloud Vision.** La decisión original (sección 4, versión previa de esta spec) ya dejaba esto como "revisable": Tesseract dio buen resultado en la prueba de sección 1, pero Diego ha pedido pasar a Google Cloud Vision (API de pago, con capa gratuita) para mejor precisión sin depender del preprocesado manual de imagen. H1-H5 no cambian — el motor concreto es un detalle de `plan.md`, no de esta spec.
+2. **El OCR se invoca vía la API REST de Google Cloud Vision desde el propio backend NestJS** (autenticación por API key, sin SDK de Google Cloud) — no se introduce un microservicio aparte. Al ser un servicio externo ya gestionado por Google, ya no hace falta preprocesar la imagen (recorte/escala de grises/contraste) como sí hacía falta con Tesseract — Vision es robusto contra fondos, rotación e iluminación variable sin ayuda adicional.
 3. **"Supermercado" es una lista abierta**: Diego escribe el nombre la primera vez que aparece (detectado de la cabecera del ticket, H3, o a mano si no se reconoce) y se reutiliza después — mismo patrón que otros catálogos abiertos de la app (bancos custodia de spec 020, categorías de spec 002).
 4. **No se guarda la foto original del ticket.** Solo se guardan los datos ya extraídos y corregidos (H2). Evita añadir almacenamiento de ficheros a la app (no existe hoy en ningún otro sitio) — una vez corregida la vista previa, la foto no aporta nada que no esté ya en los datos guardados.
 

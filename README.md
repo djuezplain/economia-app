@@ -41,13 +41,12 @@ npm run start:dev          # http://localhost:3000 — probar GET /health
 npm run test                # unitarios (Vitest)
 npm run test:e2e            # e2e contra economia_test (usa .env.test, no toca economia_dev)
 
-# Spec 034 (comparativa de precios desde tickets escaneados): además de lo
-# anterior, hace falta Tesseract instalado en la máquina (no es un paquete
-# npm, `sharp` sí lo instala `npm install` como cualquier otra dependencia).
-# macOS:
-brew install tesseract tesseract-lang   # trae el paquete de idioma "spa"
-# Debian/Ubuntu (mismo paquete que usa el Dockerfile de producción):
-sudo apt-get install tesseract-ocr tesseract-ocr-spa
+# Spec 034 (comparativa de precios desde tickets escaneados): el
+# reconocimiento de tickets usa Google Cloud Vision — añade
+# GOOGLE_CLOUD_VISION_API_KEY a tu .env (proyecto de Google Cloud con
+# "Cloud Vision API" habilitada, API key restringida a esa API). Sin ella,
+# POST /receipt-import/preview responde 503, el resto de la app funciona
+# igual.
 
 # 2) Frontend (en otra terminal)
 cd frontend
