@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 const VISION_ANNOTATE_URL = 'https://vision.googleapis.com/v1/images:annotate';
@@ -124,8 +124,6 @@ export function reconstructRowText(words: PositionedWord[]): string {
  */
 @Injectable()
 export class ReceiptOcrService {
-  private readonly logger = new Logger(ReceiptOcrService.name);
-
   constructor(private readonly config: ConfigService) {}
 
   async extractText(imageBuffer: Buffer): Promise<string> {
@@ -171,8 +169,6 @@ export class ReceiptOcrService {
     // si por lo que sea no hay palabras posicionadas (respuesta atípica),
     // se cae al texto plano de Vision en vez de devolver una cadena vacía.
     const positionedWords = extractPositionedWords(fullTextAnnotation);
-    const text = positionedWords.length > 0 ? reconstructRowText(positionedWords) : fullTextAnnotation.text;
-    this.logger.debug(`Vision reconoció ${text.length} caracteres:\n${text}`);
-    return text;
+    return positionedWords.length > 0 ? reconstructRowText(positionedWords) : fullTextAnnotation.text;
   }
 }
