@@ -57,6 +57,10 @@ services:
       # GOOGLE_CALLBACK_URL (URL sintácticamente válida aunque no se use).
       GOOGLE_DRIVE_CALLBACK_URL: ${GOOGLE_DRIVE_CALLBACK_URL:-http://localhost:3000/auth/drive/callback}
       DRIVE_TOKEN_ENCRYPTION_KEY: ${DRIVE_TOKEN_ENCRYPTION_KEY:-}
+      # Reconocimiento de tickets por OCR (spec 034) — opcional, mismo
+      # criterio que el resto de Google: vacío/sin rellenar y el backend
+      # responde 503 de forma controlada en /receipt-import/preview.
+      GOOGLE_CLOUD_VISION_API_KEY: ${GOOGLE_CLOUD_VISION_API_KEY:-}
       # `.email()` de Joi valida el dominio contra una lista de TLD reales
       # — un dominio `.local`/`.internal` lo rechaza aunque el formato sea
       # correcto. `.dev` sí es un TLD real (mismo valor que
