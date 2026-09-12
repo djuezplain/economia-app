@@ -53,6 +53,16 @@ export function searchProducts(search?: string): Promise<Product[]> {
   return api.get<Product[]>(`/products${query}`);
 }
 
+/** Spec 036, plan.md §1 (H2). */
+export function getProduct(id: string): Promise<Product> {
+  return api.get<Product>(`/products/${id}`);
+}
+
+/** Spec 036, plan.md §1 (H3). */
+export function updateProduct(id: string, name: string): Promise<Product> {
+  return api.patch<Product>(`/products/${id}`, { name });
+}
+
 export function getProductPrices(productId: string): Promise<ProductPrice[]> {
   return api.get<ProductPrice[]>(`/products/${productId}/prices`);
 }

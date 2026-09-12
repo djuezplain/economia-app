@@ -9,10 +9,12 @@ import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
 import { products, receiptLines, receipts, supermarkets, users } from '../src/db/schema/index.js';
+import { RateLimitGuard } from '../src/common/rate-limit.guard.js';
 
 describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 5', () => {
   let app: INestApplication<App>;
   let db: Database;
+  let rateLimitGuard: RateLimitGuard;
 
   const PASSWORD = 'Contraseña-Segura-123';
 
@@ -23,6 +25,7 @@ describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
     db = moduleFixture.get<Database>(DB);
+    rateLimitGuard = moduleFixture.get<RateLimitGuard>(RateLimitGuard);
   });
 
   afterAll(async () => {
@@ -31,6 +34,11 @@ describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 
 
   beforeEach(async () => {
     await db.delete(users);
+    // Este fichero ya supera los 20 `login()` (límite real de
+    // `POST /auth/login`, 20 cada 15 min) tras añadir los tests de spec 036
+    // — mismo criterio ya documentado en `RateLimitGuard.resetForTests`
+    // (encontrado antes en `transactions.e2e-spec.ts`).
+    rateLimitGuard.resetForTests();
   });
 
   async function createUser(email: string) {
@@ -95,6 +103,69 @@ describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 
       const token = await login(user.email);
       const res = await request(app.getHttpServer()).get('/products?search=inexistente').set('Authorization', `Bearer ${token}`).expect(200);
       expect(res.body).toEqual([]);
+    });
+  });
+
+  describe('GET /products/:id y PATCH /products/:id (spec 036, H2-H3)', () => {
+    it('GET /products/:id devuelve la ficha del producto', async () => {
+      const user = await createUser('prod-get-1@example.com');
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Chocolate Classic' }).returning();
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer()).get(`/products/${product.id}`).set('Authorization', `Bearer ${token}`).expect(200);
+      expect(res.body).toMatchObject({ id: product.id, name: 'Chocolate Classic' });
+    });
+
+    it('GET /products/:id de otro usuario responde 404', async () => {
+      const owner = await createUser('prod-get-owner@example.com');
+      const [product] = await db.insert(products).values({ userId: owner.id, name: 'Chocolate Classic' }).returning();
+      const other = await createUser('prod-get-otro@example.com');
+      const token = await login(other.email);
+
+      await request(app.getHttpServer()).get(`/products/${product.id}`).set('Authorization', `Bearer ${token}`).expect(404);
+    });
+
+    it('PATCH /products/:id cambia el nombre, sin afectar a las líneas ya guardadas', async () => {
+      const user = await createUser('prod-patch-1@example.com');
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Chocolate Classic' }).returning();
+      const [supermarket] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+      const [receipt] = await db.insert(receipts).values({ userId: user.id, supermarketId: supermarket.id, date: '2026-04-01' }).returning();
+      await db.insert(receiptLines).values({ receiptId: receipt.id, productId: product.id, description: 'CHOCOLATE CLASSIC', quantity: '1', unit: 'unidad', pricePerUnit: '1.30', amount: '1.30' });
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/products/${product.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Chocolate Classic Corregido' })
+        .expect(200);
+      expect(res.body.name).toBe('Chocolate Classic Corregido');
+
+      const [line] = await db.select().from(receiptLines).where(eq(receiptLines.receiptId, receipt.id));
+      expect(line.description).toBe('CHOCOLATE CLASSIC');
+    });
+
+    it('PATCH /products/:id a un nombre que coincide (normalizado) con otro producto propio responde 409, sin cambiar nada', async () => {
+      const user = await createUser('prod-patch-dup@example.com');
+      await db.insert(products).values({ userId: user.id, name: 'Nachos' }).returning();
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Chocolate Classic' }).returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer()).patch(`/products/${product.id}`).set('Authorization', `Bearer ${token}`).send({ name: '  NACHOS  ' }).expect(409);
+
+      const [unchanged] = await db.select().from(products).where(eq(products.id, product.id));
+      expect(unchanged.name).toBe('Chocolate Classic');
+    });
+
+    it('PATCH /products/:id de otro usuario responde 404, nada cambia', async () => {
+      const owner = await createUser('prod-patch-owner@example.com');
+      const [product] = await db.insert(products).values({ userId: owner.id, name: 'Chocolate Classic' }).returning();
+      const other = await createUser('prod-patch-otro@example.com');
+      const token = await login(other.email);
+
+      await request(app.getHttpServer()).patch(`/products/${product.id}`).set('Authorization', `Bearer ${token}`).send({ name: 'Otro nombre' }).expect(404);
+
+      const [unchanged] = await db.select().from(products).where(eq(products.id, product.id));
+      expect(unchanged.name).toBe('Chocolate Classic');
     });
   });
 
