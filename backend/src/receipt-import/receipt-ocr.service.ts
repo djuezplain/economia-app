@@ -1,4 +1,4 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 const VISION_ANNOTATE_URL = 'https://vision.googleapis.com/v1/images:annotate';
@@ -23,9 +23,16 @@ interface VisionAnnotateResponse {
  */
 @Injectable()
 export class ReceiptOcrService {
+  private readonly logger = new Logger(ReceiptOcrService.name);
+
   constructor(private readonly config: ConfigService) {}
 
   async extractText(imageBuffer: Buffer): Promise<string> {
+    // Log temporal de diagnóstico (Diego: "casi no reconoce texto" con un
+    // ticket real) — quitar en cuanto se confirme la causa real. El texto
+    // de un ticket de supermercado no es dato sensible.
+    this.logger.debug(`Enviando imagen a Vision: ${imageBuffer.length} bytes`);
+
     const apiKey = this.config.get<string>('GOOGLE_CLOUD_VISION_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -64,6 +71,8 @@ export class ReceiptOcrService {
     // Cadena única con saltos de línea — misma forma que la salida de
     // `tesseract ... stdout` que ya esperaba el parseo (H1 criterio 4: ''
     // si Vision no reconoce ningún texto, no lanza).
-    return result?.fullTextAnnotation?.text ?? '';
+    const text = result?.fullTextAnnotation?.text ?? '';
+    this.logger.debug(`Vision reconoció ${text.length} caracteres:\n${text}`);
+    return text;
   }
 }
