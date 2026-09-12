@@ -6,7 +6,28 @@ import { getProduct, getProductPrices, updateProduct } from '../api/groceries';
 import type { Product, ProductPrice } from '../api/groceries';
 import { ApiError } from '../api/client';
 
-/** Spec 036 (H2-H3), plan.md §3: nombre editable + precio por supermercado (spec 034 H4 criterio 3, sin cambios). */
+/**
+ * Petición de Diego: por defecto solo el precio más reciente por
+ * supermercado (no cada línea histórica) — el botón "Historial" muestra
+ * todo. Cálculo en el cliente sobre la respuesta ya existente de
+ * `GET /products/:id/prices` (spec 034 H4 criterio 3): a esta escala no
+ * hace falta un parámetro nuevo en el backend para esto.
+ */
+function latestPricePerSupermarket(prices: ProductPrice[]): ProductPrice[] {
+  const latestBySupermarket = new Map<string, ProductPrice>();
+  for (const price of prices) {
+    const current = latestBySupermarket.get(price.supermarketId);
+    if (!current || price.date > current.date) latestBySupermarket.set(price.supermarketId, price);
+  }
+  return [...latestBySupermarket.values()].sort((a, b) => Number(a.pricePerUnit) - Number(b.pricePerUnit));
+}
+
+/** Historial completo, agrupado por supermercado y en orden cronológico dentro de cada uno — más fácil de leer la evolución que una lista plana por precio. */
+function sortHistory(prices: ProductPrice[]): ProductPrice[] {
+  return [...prices].sort((a, b) => a.supermarketName.localeCompare(b.supermarketName) || a.date.localeCompare(b.date));
+}
+
+/** Spec 036 (H2-H3), plan.md §3: nombre editable + precio por supermercado (spec 034 H4 criterio 3, revisado: solo el más reciente por defecto, con historial completo bajo un botón). */
 export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -17,6 +38,7 @@ export function ProductDetailPage() {
 
   const [prices, setPrices] = useState<ProductPrice[] | null>(null);
   const [pricesError, setPricesError] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const [name, setName] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -78,6 +100,8 @@ export function ProductDetailPage() {
     );
   }
 
+  const visiblePrices = prices ? (showHistory ? sortHistory(prices) : latestPricePerSupermarket(prices)) : null;
+
   return (
     <main>
       <p>
@@ -99,12 +123,17 @@ export function ProductDetailPage() {
             {isSaving ? 'Guardando…' : 'Guardar'}
           </button>
 
-          <h2>Precio por supermercado</h2>
+          <h2>{showHistory ? 'Historial de precios' : 'Precio por supermercado'}</h2>
           {pricesError && <p role="alert">{pricesError}</p>}
-          {prices && prices.length === 0 && <p>Todavía no tienes ningún ticket con este producto.</p>}
           {prices && prices.length > 0 && (
+            <button type="button" className="btn btn-secondary" onClick={() => setShowHistory((current) => !current)}>
+              {showHistory ? 'Ver solo el precio más reciente' : 'Historial'}
+            </button>
+          )}
+          {prices && prices.length === 0 && <p>Todavía no tienes ningún ticket con este producto.</p>}
+          {visiblePrices && visiblePrices.length > 0 && (
             <table className="table">
-              <caption>Precio por supermercado</caption>
+              <caption>{showHistory ? 'Historial de precios' : 'Precio más reciente por supermercado'}</caption>
               <thead>
                 <tr>
                   <th scope="col">Supermercado</th>
@@ -114,7 +143,7 @@ export function ProductDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {prices.map((price, index) => (
+                {visiblePrices.map((price, index) => (
                   <tr key={`${price.receiptId}-${index}`}>
                     <td>{price.supermarketName}</td>
                     <td>{price.date}</td>
