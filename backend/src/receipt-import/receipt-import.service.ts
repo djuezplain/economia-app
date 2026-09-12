@@ -1,16 +1,15 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { products, receiptLines, receipts, supermarkets } from '../db/schema/index.js';
-import { ConfirmReceiptDto, EntityRefDto } from './dto/confirm-receipt.dto.js';
+import { ConfirmReceiptDto } from './dto/confirm-receipt.dto.js';
 import { detectDate, detectPrintedTotal, extractProductLines, guessSupermarketName, matchByNormalizedName } from './receipt-import.parsing.js';
 import type { NamedEntity } from './receipt-import.parsing.js';
 import { ReceiptOcrService } from './receipt-ocr.service.js';
+import { resolveEntityRef } from './resolve-entity-ref.util.js';
 import type { ReceiptPreview, ReceiptPreviewLine } from './receipt-import.types.js';
-
-type Executor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
 
 /**
  * Spec 034 (H1-H5). A diferencia de `StockImportService` (spec 033),
@@ -79,14 +78,14 @@ export class ReceiptImportService {
   async confirm(userId: string, dto: ConfirmReceiptDto): Promise<{ receiptId: string }> {
     try {
       return await this.db.transaction(async (tx) => {
-        const supermarketId = await this.resolveRef(tx, supermarkets, userId, dto.supermarket, 'El supermercado indicado no existe.');
+        const supermarketId = await resolveEntityRef(tx, supermarkets, userId, dto.supermarket, 'El supermercado indicado no existe.');
         const [receipt] = await tx
           .insert(receipts)
           .values({ userId, supermarketId, date: dto.date, printedTotal: dto.printedTotal ?? null })
           .returning();
 
         for (const line of dto.lines) {
-          const productId = await this.resolveRef(tx, products, userId, line.product, 'El producto indicado no existe.');
+          const productId = await resolveEntityRef(tx, products, userId, line.product, 'El producto indicado no existe.');
           await tx.insert(receiptLines).values({
             receiptId: receipt.id,
             productId,
@@ -114,26 +113,5 @@ export class ReceiptImportService {
       .from(table as typeof supermarkets)
       .where(eq((table as typeof supermarkets).userId, userId));
     return rows;
-  }
-
-  /** plan.md §8-§9: `{ id }` existente (verificado que pertenece al usuario) o `{ name }` nuevo. */
-  private async resolveRef(
-    tx: Executor,
-    table: typeof supermarkets | typeof products,
-    userId: string,
-    ref: EntityRefDto,
-    notFoundMessage: string,
-  ): Promise<string> {
-    const t = table as typeof supermarkets;
-    if (ref.id) {
-      const [row] = await tx.select({ id: t.id }).from(t).where(and(eq(t.id, ref.id), eq(t.userId, userId)));
-      if (!row) throw new NotFoundException(notFoundMessage);
-      return row.id;
-    }
-    if (ref.name) {
-      const [created] = await tx.insert(t).values({ userId, name: ref.name }).returning({ id: t.id });
-      return created.id;
-    }
-    throw new BadRequestException('Falta el id o el nombre de la entidad indicada.');
   }
 }
