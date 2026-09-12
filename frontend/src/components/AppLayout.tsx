@@ -65,6 +65,17 @@ const NAV_ITEMS = [
       { to: '/patrimonio#wealth-efectivo', end: false, label: 'Efectivo', icon: '💵' },
     ],
   },
+  {
+    to: '/tickets',
+    end: false,
+    label: 'Tickets de supermercado',
+    icon: '🧾',
+    children: [
+      { to: '/tickets/importar', end: true, label: 'Importar ticket', icon: '📷' },
+      { to: '/tickets', end: true, label: 'Historial', icon: '📋' },
+      { to: '/tickets/productos', end: false, label: 'Comparar precios', icon: '⚖️' },
+    ],
+  },
   { to: '/import', end: false, label: 'Importar Excel', icon: '📥' },
   { to: '/goals', end: false, label: 'Objetivos y presupuestos', icon: '🎯' },
   { to: '/backup', end: false, label: 'Copia de seguridad', icon: '🗄️' },

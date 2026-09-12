@@ -17,6 +17,8 @@ import { WealthModule } from './wealth/wealth.module.js';
 import { DataImportModule } from './data-import/data-import.module.js';
 import { GoogleDriveModule } from './google-drive/google-drive.module.js';
 import { StockImportModule } from './stock-import/stock-import.module.js';
+import { ReceiptImportModule } from './receipt-import/receipt-import.module.js';
+import { GroceriesModule } from './groceries/groceries.module.js';
 
 @Module({
   imports: [
@@ -37,6 +39,8 @@ import { StockImportModule } from './stock-import/stock-import.module.js';
     DataImportModule,
     GoogleDriveModule,
     StockImportModule,
+    ReceiptImportModule,
+    GroceriesModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

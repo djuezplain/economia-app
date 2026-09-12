@@ -8,8 +8,14 @@ FROM node:22-bookworm-slim
 # de plataforma/arquitectura (p. ej. ARM64), lo compila él solo. Estas
 # herramientas son la red de seguridad para que esa compilación funcione en
 # vez de fallar el build.
+#
+# `tesseract-ocr`/`tesseract-ocr-spa` (spec 034, plan.md §2/§10): no es un
+# paquete npm, es el binario que `ReceiptOcrService` invoca como subproceso
+# — tiene que estar en la imagen del backend, no solo en la máquina de
+# desarrollo.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 build-essential \
+    tesseract-ocr tesseract-ocr-spa \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -23,6 +23,10 @@ import { WealthPage } from './pages/WealthPage';
 import { StockDetailPage } from './pages/StockDetailPage';
 import { StockImportPage } from './pages/StockImportPage';
 import { BackupPage } from './pages/BackupPage';
+import { ReceiptImportPage } from './pages/ReceiptImportPage';
+import { ReceiptsPage } from './pages/ReceiptsPage';
+import { ReceiptDetailPage } from './pages/ReceiptDetailPage';
+import { ProductPricesPage } from './pages/ProductPricesPage';
 
 function App() {
   return (
@@ -46,6 +50,10 @@ function App() {
             <Route path="/patrimonio" element={<WealthPage />} />
             <Route path="/patrimonio/acciones/importar" element={<StockImportPage />} />
             <Route path="/patrimonio/acciones/:id" element={<StockDetailPage />} />
+            <Route path="/tickets/importar" element={<ReceiptImportPage />} />
+            <Route path="/tickets/productos" element={<ProductPricesPage />} />
+            <Route path="/tickets/:id" element={<ReceiptDetailPage />} />
+            <Route path="/tickets" element={<ReceiptsPage />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/goals" element={<GoalsPage />} />
             <Route path="/backup" element={<BackupPage />} />
