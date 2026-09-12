@@ -110,6 +110,7 @@ describe('AppLayout', () => {
       'Categorías',
       'Ingresos y gastos',
       'Dashboard',
+      'Tickets de supermercado',
       'Importar Excel',
       'Objetivos y presupuestos',
       'Tu perfil',
