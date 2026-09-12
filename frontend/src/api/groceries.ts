@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ConfirmReceiptPayload } from './receipt-import';
 
 // Spec 034, plan.md §3 (grupo 5, lado de consulta).
 export interface Supermarket {
@@ -62,4 +63,14 @@ export function listReceipts(): Promise<ReceiptSummary[]> {
 
 export function getReceipt(id: string): Promise<ReceiptDetail> {
   return api.get<ReceiptDetail>(`/receipts/${id}`);
+}
+
+/** Spec 035, plan.md §1 (H2-H3): mismo cuerpo que `confirmReceiptImport`, reutilizado tal cual. */
+export function updateReceipt(id: string, payload: ConfirmReceiptPayload): Promise<ReceiptDetail> {
+  return api.put<ReceiptDetail>(`/receipts/${id}`, payload);
+}
+
+/** Spec 035, plan.md §4 (H1). */
+export function deleteReceipt(id: string): Promise<void> {
+  return api.delete<void>(`/receipts/${id}`);
 }

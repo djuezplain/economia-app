@@ -4,29 +4,13 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { confirmReceiptImport, previewReceiptImport } from '../api/receipt-import';
-import type { ConfirmReceiptLine, ConfirmReceiptPayload, ReceiptPreview, ReceiptUnit } from '../api/receipt-import';
+import type { ConfirmReceiptLine, ConfirmReceiptPayload, ReceiptPreview } from '../api/receipt-import';
 import { listSupermarkets, searchProducts } from '../api/groceries';
 import type { Product, Supermarket } from '../api/groceries';
 import { ApiError } from '../api/client';
-
-const NEW_OPTION_VALUE = '';
-
-interface EditableLine {
-  key: string;
-  description: string;
-  quantity: string;
-  unit: ReceiptUnit;
-  pricePerUnit: string;
-  amount: string;
-  productId: string;
-  productName: string;
-}
-
-let nextLineKey = 0;
-function newLineKey(): string {
-  nextLineKey += 1;
-  return `line-${nextLineKey}`;
-}
+import { ReceiptFieldsEditor } from '../components/ReceiptFieldsEditor';
+import { NEW_OPTION_VALUE, newLineKey } from '../components/receipt-line.types';
+import type { EditableLine } from '../components/receipt-line.types';
 
 function toEditableLines(preview: ReceiptPreview): EditableLine[] {
   return preview.lines.map((line) => ({
@@ -41,16 +25,13 @@ function toEditableLines(preview: ReceiptPreview): EditableLine[] {
   }));
 }
 
-function sumAmounts(lines: EditableLine[]): number {
-  return lines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
-}
-
 /**
  * Spec 034 (H1-H5), plan.md §11: subir foto → vista previa editable
  * (obligatoria, H2 — ninguna línea se guarda sin que Diego la vea) →
  * confirmar. A diferencia de `StockImportPage`, `confirm` no reenvía el
  * fichero (plan.md §7): construye el JSON ya corregido a partir del estado
- * editable.
+ * editable. El editor de campos/líneas en sí vive en `ReceiptFieldsEditor`
+ * (spec 035, compartido con la edición de un ticket ya guardado).
  */
 export function ReceiptImportPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -187,10 +168,6 @@ export function ReceiptImportPage() {
     );
   }
 
-  const linesTotal = lines ? sumAmounts(lines) : 0;
-  const printedTotalNumber = printedTotal ? Number(printedTotal) : null;
-  const totalsMismatch = lines !== null && printedTotalNumber !== null && Math.abs(linesTotal - printedTotalNumber) > 0.01;
-
   return (
     <main>
       <h1>Importar ticket</h1>
@@ -223,157 +200,22 @@ export function ReceiptImportPage() {
         <section>
           <h2>2. Revisar y corregir</h2>
 
-          <div className="field">
-            <label htmlFor="receipt-supermarket">Supermercado</label>
-            <select
-              id="receipt-supermarket"
-              className="input"
-              value={supermarketId}
-              onChange={(e) => setSupermarketId(e.target.value)}
-            >
-              <option value={NEW_OPTION_VALUE}>+ Nuevo supermercado</option>
-              {supermarkets.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            {!supermarketId && (
-              <input
-                type="text"
-                className="input"
-                aria-label="Nombre del nuevo supermercado"
-                value={supermarketName}
-                onChange={(e) => setSupermarketName(e.target.value)}
-              />
-            )}
-          </div>
-
-          <div className="field">
-            <label htmlFor="receipt-date">Fecha</label>
-            <input id="receipt-date" type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
-
-          <div className="field">
-            <label htmlFor="receipt-printed-total">Total impreso en el ticket</label>
-            <input
-              id="receipt-printed-total"
-              type="text"
-              className="input"
-              value={printedTotal}
-              onChange={(e) => setPrintedTotal(e.target.value)}
-            />
-          </div>
-
-          <table className="table">
-            <caption>Líneas del ticket</caption>
-            <thead>
-              <tr>
-                <th scope="col">Descripción</th>
-                <th scope="col">Cantidad</th>
-                <th scope="col">Unidad</th>
-                <th scope="col">Precio/unidad</th>
-                <th scope="col">Importe</th>
-                <th scope="col">Producto</th>
-                <th scope="col">
-                  <span className="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line) => (
-                <tr key={line.key}>
-                  <td>
-                    <input
-                      type="text"
-                      className="input"
-                      aria-label="Descripción"
-                      value={line.description}
-                      onChange={(e) => updateLine(line.key, { description: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="text"
-                      className="input"
-                      aria-label="Cantidad"
-                      value={line.quantity}
-                      onChange={(e) => updateLine(line.key, { quantity: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      className="input"
-                      aria-label="Unidad"
-                      value={line.unit}
-                      onChange={(e) => updateLine(line.key, { unit: e.target.value as ReceiptUnit })}
-                    >
-                      <option value="unidad">unidad</option>
-                      <option value="kg">kg</option>
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      type="text"
-                      className="input"
-                      aria-label="Precio por unidad"
-                      value={line.pricePerUnit}
-                      onChange={(e) => updateLine(line.key, { pricePerUnit: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="text"
-                      className="input"
-                      aria-label="Importe"
-                      value={line.amount}
-                      onChange={(e) => updateLine(line.key, { amount: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      className="input"
-                      aria-label="Producto"
-                      value={line.productId}
-                      onChange={(e) => updateLine(line.key, { productId: e.target.value })}
-                    >
-                      <option value={NEW_OPTION_VALUE}>+ Nuevo: {line.productName}</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                    {!line.productId && (
-                      <input
-                        type="text"
-                        className="input"
-                        aria-label="Nombre del nuevo producto"
-                        value={line.productName}
-                        onChange={(e) => updateLine(line.key, { productName: e.target.value })}
-                      />
-                    )}
-                  </td>
-                  <td>
-                    <button type="button" className="btn btn-ghost" onClick={() => removeLine(line.key)}>
-                      Eliminar línea
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <button type="button" className="btn btn-secondary" onClick={addLine}>
-            Añadir línea
-          </button>
-
-          <p>
-            Suma de las líneas: {linesTotal.toFixed(2)} €{printedTotal && <> · Total impreso: {printedTotal} €</>}
-          </p>
-          {totalsMismatch && (
-            <p role="alert">La suma de las líneas no coincide con el total impreso — revisa antes de confirmar.</p>
-          )}
+          <ReceiptFieldsEditor
+            supermarkets={supermarkets}
+            products={products}
+            supermarketId={supermarketId}
+            onSupermarketIdChange={setSupermarketId}
+            supermarketName={supermarketName}
+            onSupermarketNameChange={setSupermarketName}
+            date={date}
+            onDateChange={setDate}
+            printedTotal={printedTotal}
+            onPrintedTotalChange={setPrintedTotal}
+            lines={lines}
+            onUpdateLine={updateLine}
+            onRemoveLine={removeLine}
+            onAddLine={addLine}
+          />
 
           {confirmError && <p role="alert">{confirmError}</p>}
 
