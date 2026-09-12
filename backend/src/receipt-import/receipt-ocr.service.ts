@@ -1,117 +1,69 @@
-import { execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { unlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { promisify } from 'node:util';
-import { Injectable } from '@nestjs/common';
-import sharp from 'sharp';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
-const execFileAsync = promisify(execFile);
+const VISION_ANNOTATE_URL = 'https://vision.googleapis.com/v1/images:annotate';
 
-/**
- * Spec 034, plan.md §4: receta de preprocesado verificada a mano en
- * `spec.md` §1 (Pillow) — recorte del papel + escala de grises + upscale
- * x3 + autocontraste, **sin binarizar** (un umbral fijo empeoró el
- * resultado en la prueba real, destruye los trazos finos de la impresora
- * térmica). Aquí mismo con `sharp`.
- */
-const BRIGHTNESS_THRESHOLD = 140; // 0-255, mismo umbral que la prueba con Pillow
-const MIN_CROP_AREA_RATIO = 0.05; // plan.md §4.1: recorte que da menos del 5% del área se descarta
-const UPSCALE_FACTOR = 3;
-
-interface CropBox {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
+interface VisionAnnotateResponse {
+  responses?: Array<{
+    fullTextAnnotation?: { text: string };
+    error?: { message: string };
+  }>;
 }
 
 /**
- * Columnas/filas cuyo brillo medio supera el umbral delimitan el papel del
- * ticket frente al fondo (mesa, tela...) — mismo método que el script de
- * prueba de `spec.md` §1 (`col_means > 140`). Si el recorte resultante es
- * casi toda la imagen o casi nada (fallo de detección — p. ej. una foto ya
- * recortada, o un fondo tan claro como el papel), se devuelve `null` y se
- * usa la imagen completa en vez de un recorte absurdo (plan.md §4.1).
- */
-function computeCropBox(pixels: Buffer, width: number, height: number): CropBox | null {
-  const colSums = new Float64Array(width);
-  const rowSums = new Float64Array(height);
-  for (let y = 0; y < height; y++) {
-    const rowOffset = y * width;
-    for (let x = 0; x < width; x++) {
-      const value = pixels[rowOffset + x];
-      colSums[x] += value;
-      rowSums[y] += value;
-    }
-  }
-
-  let left = -1;
-  let right = -1;
-  for (let x = 0; x < width; x++) {
-    if (colSums[x] / height <= BRIGHTNESS_THRESHOLD) continue;
-    if (left === -1) left = x;
-    right = x;
-  }
-  let top = -1;
-  let bottom = -1;
-  for (let y = 0; y < height; y++) {
-    if (rowSums[y] / width <= BRIGHTNESS_THRESHOLD) continue;
-    if (top === -1) top = y;
-    bottom = y;
-  }
-
-  if (left === -1 || top === -1) return null; // ninguna columna/fila supera el umbral
-
-  const cropWidth = right - left + 1;
-  const cropHeight = bottom - top + 1;
-  const ratio = (cropWidth * cropHeight) / (width * height);
-  if (ratio < MIN_CROP_AREA_RATIO) return null;
-
-  return { left, top, width: cropWidth, height: cropHeight };
-}
-
-/**
- * Única pieza que toca `sharp`/el binario de Tesseract/el sistema de
- * ficheros temporal (plan.md §12) — sin lógica de parseo de texto, eso vive
- * en `receipt-import.parsing.ts` como funciones puras testeables sin
- * invocar Tesseract de verdad.
+ * Spec 034, plan.md §2/§4 (revisado — cambio de motor de OCR pedido por
+ * Diego, de Tesseract a Google Cloud Vision, después de la implementación
+ * inicial ya cerrada). Única pieza que toca la red/la API de Vision — el
+ * parseo del texto reconocido vive aparte, en funciones puras
+ * (`receipt-import.parsing.ts`), agnósticas al motor.
+ *
+ * Sin preprocesado de imagen (a diferencia de la versión con Tesseract):
+ * Vision es robusto contra fondo, rotación e iluminación variable sin
+ * ayuda adicional — la ventaja real de pasar a un motor en la nube.
  */
 @Injectable()
 export class ReceiptOcrService {
+  constructor(private readonly config: ConfigService) {}
+
   async extractText(imageBuffer: Buffer): Promise<string> {
-    const preprocessed = await this.preprocess(imageBuffer);
-    return this.runTesseract(preprocessed);
-  }
-
-  private async preprocess(imageBuffer: Buffer): Promise<Buffer> {
-    // `.rotate()` sin argumentos aplica la orientación EXIF de la foto
-    // (una foto de móvil casi siempre trae orientación EXIF, no rotación
-    // real de los píxeles) antes de calcular nada sobre las dimensiones.
-    const base = sharp(imageBuffer).rotate();
-    const { data, info } = await base.clone().greyscale().raw().toBuffer({ resolveWithObject: true });
-    const crop = computeCropBox(data, info.width, info.height);
-
-    let pipeline = base.greyscale();
-    if (crop) pipeline = pipeline.extract(crop);
-
-    const cropWidth = crop?.width ?? info.width;
-    return pipeline
-      .resize({ width: cropWidth * UPSCALE_FACTOR, kernel: 'lanczos3' })
-      .normalise() // autocontraste — plan.md §4.2, sin binarizar
-      .png()
-      .toBuffer();
-  }
-
-  private async runTesseract(imageBuffer: Buffer): Promise<string> {
-    const tmpFile = join(tmpdir(), `receipt-ocr-${randomUUID()}.png`);
-    await writeFile(tmpFile, imageBuffer);
-    try {
-      const { stdout } = await execFileAsync('tesseract', [tmpFile, 'stdout', '-l', 'spa', '--psm', '6']);
-      return stdout;
-    } finally {
-      await unlink(tmpFile).catch(() => {});
+    const apiKey = this.config.get<string>('GOOGLE_CLOUD_VISION_API_KEY');
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'El reconocimiento de tickets no está configurado (falta GOOGLE_CLOUD_VISION_API_KEY).',
+      );
     }
+
+    const response = await fetch(`${VISION_ANNOTATE_URL}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requests: [
+          {
+            image: { content: imageBuffer.toString('base64') },
+            // DOCUMENT_TEXT_DETECTION, no TEXT_DETECTION: pensado para
+            // bloques densos de texto (documentos, recibos), no para texto
+            // disperso en una foto general.
+            features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+            imageContext: { languageHints: ['es'] },
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Google Cloud Vision respondió ${response.status}: ${body}`);
+    }
+
+    const json = (await response.json()) as VisionAnnotateResponse;
+    const result = json.responses?.[0];
+    if (result?.error) {
+      throw new Error(`Google Cloud Vision: ${result.error.message}`);
+    }
+
+    // Cadena única con saltos de línea — misma forma que la salida de
+    // `tesseract ... stdout` que ya esperaba el parseo (H1 criterio 4: ''
+    // si Vision no reconoce ningún texto, no lanza).
+    return result?.fullTextAnnotation?.text ?? '';
   }
 }
