@@ -76,8 +76,19 @@ describe('Importar acciones desde CSV (e2e) — spec 033', () => {
     return res.body.accessToken as string;
   }
 
-  function attach(url: string, token: string, csv: Buffer) {
-    return request(app.getHttpServer()).post(url).set('Authorization', `Bearer ${token}`).attach('file', csv, 'cartera.csv');
+  interface ImportOptions {
+    includePurchases?: boolean;
+    includeSales?: boolean;
+    includeValuations?: boolean;
+  }
+
+  /** H6: sin `options`, no se manda ningún campo — mismo comportamiento por defecto que antes de H6 (los 3 a `true`). */
+  function attach(url: string, token: string, csv: Buffer, options?: ImportOptions) {
+    let req = request(app.getHttpServer()).post(url).set('Authorization', `Bearer ${token}`);
+    for (const [key, value] of Object.entries(options ?? {})) {
+      req = req.field(key, String(value));
+    }
+    return req.attach('file', csv, 'cartera.csv');
   }
 
   it('sin autenticar, responde 401 en preview y confirm', async () => {
@@ -262,5 +273,65 @@ describe('Importar acciones desde CSV (e2e) — spec 033', () => {
     expect(ownerStocks).toHaveLength(1);
     const otherStocks = await db.select().from(stocks).where(eq(stocks.userId, other.id));
     expect(otherStocks).toHaveLength(1); // sin cambios
+  });
+
+  describe('H6 — elegir qué historiales importar', () => {
+    it('las tres opciones desmarcadas → 400, nada escrito', async () => {
+      const user = await createUser('h6-ninguna-marcada@example.com');
+      const token = await login(user.email);
+      const csv = buildCsv({ open: [['Repsol', 'REP', '09/04/2025', '260.00000000', '9,607']] });
+
+      const res = await attach('/stock-import/confirm', token, csv, {
+        includePurchases: false,
+        includeSales: false,
+        includeValuations: false,
+      }).expect(400);
+      expect(res.body.message).toMatch(/al menos un historial/);
+
+      const rows = await db.select().from(stocks).where(eq(stocks.userId, user.id));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('desmarcar "Valoraciones" no las importa ni las consulta, pero sí importa compras — total sigue siendo el real', async () => {
+      const user = await createUser('h6-sin-valoraciones@example.com');
+      const token = await login(user.email);
+      await db.insert(stocks).values({ userId: user.id, custodyBank: 'MyInvestor', stock: 'Repsol' });
+      const csv = buildCsv({
+        summary: [['Repsol', 'REP', '29,120']],
+        open: [['Repsol', 'REP', '09/04/2025', '260.00000000', '9,607']],
+      });
+
+      const res = await attach('/stock-import/confirm', token, csv, { includeValuations: false }).expect(201);
+      const repsolRow = res.body.stocks.find((r: { name: string }) => r.name === 'Repsol');
+      expect(repsolRow.purchases).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
+      expect(repsolRow.valuations).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+
+      const repsol = await db.query.stocks.findFirst({ where: eq(stocks.stock, 'Repsol') });
+      const purchases = await db.select().from(stockPurchases).where(eq(stockPurchases.stockId, repsol!.id));
+      expect(purchases).toHaveLength(1);
+      const valuations = await db.select().from(stockValuations).where(eq(stockValuations.stockId, repsol!.id));
+      expect(valuations).toHaveLength(0);
+    });
+
+    it('una acción nueva que, tras desmarcar historiales, no tendría nada que importar no se crea (H6 criterio 6)', async () => {
+      const user = await createUser('h6-nada-que-importar@example.com');
+      const token = await login(user.email);
+      // "Amadeus" solo aparece en "Posiciones cerradas" (compra + venta, sin valoración) — si se
+      // desmarcan Compras y Ventas, no le queda ninguna fila que traer.
+      const csv = buildCsv({
+        closed: [['Amadeus', 'AMA', '08/07/2026', '50.00000000', '50,160', '08/09/2026', '55,720']],
+      });
+
+      const res = await attach('/stock-import/confirm', token, csv, { includePurchases: false, includeSales: false }).expect(201);
+      const amadeusRow = res.body.stocks.find((r: { name: string }) => r.name === 'Amadeus');
+      expect(amadeusRow).toMatchObject({ status: 'new', custodyBank: '-' });
+      expect(amadeusRow.purchases).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      expect(amadeusRow.sales).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      // La clasificación (H3) sigue contando "Amadeus" como acción nueva, aunque no llegue a crearse (plan.md §15.4).
+      expect(res.body.totals).toEqual({ newStocks: 1, existingStocks: 0, ambiguousStocks: 0 });
+
+      const amadeus = await db.select().from(stocks).where(eq(stocks.stock, 'Amadeus'));
+      expect(amadeus).toHaveLength(0);
+    });
   });
 });

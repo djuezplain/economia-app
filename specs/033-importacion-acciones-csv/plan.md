@@ -154,13 +154,15 @@ Igual que `spec.md` §4: sin conversión de divisa, sin importar dividendos, sin
 ```ts
 // backend/src/stock-import/dto/stock-import-options.dto.ts
 export class StockImportOptionsDto {
-  @Transform(toBoolean) @IsBoolean() includePurchases!: boolean;
-  @Transform(toBoolean) @IsBoolean() includeSales!: boolean;
-  @Transform(toBoolean) @IsBoolean() includeValuations!: boolean;
+  @Transform(toBoolean) @IsBoolean() includePurchases: boolean = true;
+  @Transform(toBoolean) @IsBoolean() includeSales: boolean = true;
+  @Transform(toBoolean) @IsBoolean() includeValuations: boolean = true;
 }
 ```
 
-`toBoolean` interpreta el valor tal como llega de un formulario (siempre texto): `undefined` → `true` (H6 criterio 1, las tres marcadas por defecto — mantiene el comportamiento de H1-H5 si algún cliente no manda estos campos), `'true'`/`true` → `true`, cualquier otra cosa (`'false'`, auscode) → `false`. `ValidationPipe` global ya tiene `transform: true` (`main.ts`), así que el `@Transform` se aplica solo.
+`toBoolean` interpreta el valor tal como llega de un formulario (siempre texto): `'true'`/`true` → `true`, cualquier otra cosa (`'false'`, etc.) → `false`. `ValidationPipe` global ya tiene `transform: true` (`main.ts`), así que el `@Transform` se aplica solo.
+
+**Encontrado al implementar (no asumido en el diseño inicial de este plan):** un campo ausente del todo en el `multipart/form-data` (un cliente que no manda estos 3 campos, comportamiento de H1-H5 antes de esta revisión) **no llega a invocar `@Transform`** — `class-transformer` solo aplica `@Transform` a las claves presentes en el cuerpo recibido, no a las declaradas en la clase. Con `includePurchases!: boolean` (sin valor por defecto) esto producía `undefined`, y `@IsBoolean()` lo rechazaba con 400 ("must be a boolean value") en vez de asumir "incluir todo" — verificado con un test directo de `plainToInstance`/`validate` antes de corregirlo. Se soluciona con el valor por defecto de la propia propiedad (`= true`): `plainToInstance` no toca una propiedad ausente en el origen, así que conserva el valor con el que se instanció la clase.
 
 ### 15.2 Validación "al menos uno marcado" (H6 criterio 4)
 
