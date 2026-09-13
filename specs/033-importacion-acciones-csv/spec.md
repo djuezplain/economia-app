@@ -86,3 +86,18 @@ Como usuario quiero que las posiciones abiertas importadas ya tengan una valorac
 
 ---
 **Siguiente paso:** revisar esta spec con Diego; con su aprobación (o los ajustes que pida), se escribe `plan.md` con el diseño técnico (endpoint, parseo del CSV, algoritmo de emparejamiento/detección de duplicados, forma de la vista previa).
+
+## 6. Revisión: elegir qué historiales importar (H6)
+
+Tras usar la importación (H1-H5) ya en producción, Diego pidió poder elegir qué traer del CSV en vez de traer siempre compras, ventas y valoraciones a la vez.
+
+**H6 — Elegir qué historiales importar**
+
+Como usuario quiero poder marcar, antes de importar, si quiero traer compras, ventas y valoraciones a la vez o solo alguno de esos tres historiales — por ejemplo, solo compras y ventas si ya llevo las valoraciones aparte, o solo valoraciones si quiero actualizar el precio actual de mis posiciones sin tocar el histórico de compraventa.
+
+- Criterio 1: antes de validar el fichero, se pueden marcar/desmarcar de forma independiente "Compras", "Ventas" y "Valoraciones" — las tres marcadas por defecto (equivale a "todo", el comportamiento de H1-H5 sin cambios).
+- Criterio 2: la vista previa (H1 criterio 1) refleja la selección — un historial desmarcado se muestra con 0 filas a importar, pero se sigue informando de cuántas trae el fichero en total para ese historial, para que quede claro qué se está dejando fuera a propósito y no por un error.
+- Criterio 3: al confirmar, solo se insertan los historiales marcados; un historial desmarcado no toca la base de datos en absoluto (ni siquiera para comprobar duplicados, H2).
+- Criterio 4: hay que marcar al menos uno de los tres — desmarcar los tres a la vez no importaría nada, así que se bloquea desde la propia pantalla sin necesidad de llamar al servidor (el servidor también lo rechaza si se llama directamente a la API, por si acaso).
+- Criterio 5: cambiar la selección después de haber generado una vista previa la descarta — mismo criterio que elegir un fichero nuevo (H1), hay que volver a validar antes de poder confirmar.
+- Criterio 6: si, tras aplicar la selección, una acción nueva (H3 criterio 3) se queda sin ninguna compra, venta ni valoración que importar (p. ej. una acción que en el CSV solo tiene posiciones cerradas y se desmarcan "Compras" y "Ventas"), no se crea esa acción vacía — se sigue informando en el resumen con sus totales reales, pero no se inserta ningún registro.

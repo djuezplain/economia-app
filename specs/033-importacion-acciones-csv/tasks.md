@@ -89,3 +89,13 @@ Todos los criterios de aceptación de H1-H5 quedan cubiertos por al menos un tes
 Verificación manual contra el servidor de desarrollo real (`backend-dev`/`frontend-dev`, base de datos `economia_dev`, usuario de prueba creado y eliminado al terminar): CSV sintético con Repsol/BBVA (abiertas) y Amadeus (solo cerrada) → `preview` no escribe nada, `confirm` inserta las 3 acciones con `custodyBank: '-'`, sus compras/venta y las 2 valoraciones; verificado en `psql` fila a fila (fechas, cantidades — `1420.00000000` correctamente distinto de un precio con el mismo nº de dígitos — y precios) y en la UI (`WealthPage` renderiza el Total, la composición y cada acción con el coste/valor correctos; el redondeo a 2 decimales de `pricePerShare`, `25,045` → `25.05`, se refleja fielmente en el total mostrado). Sin errores de consola relacionados con la importación.
 
 Con esto, **spec 033 queda cerrada**.
+
+## Grupo 5 — Revisión: selección de historiales a importar (H6)
+
+- **T5.1** — `StockImportOptionsDto` (plan.md §15.1) + `assertAtLeastOneSelected` (§15.2). `StockImportController`/`Service` (`preview`/`confirm`) aceptan el DTO junto al fichero.
+  Tests: unit del DTO/transform (ausente → `true`, `'false'` → `false`); e2e — 400 con las tres desmarcadas, sin tocar el fichero.
+- **T5.2** — `computeSummary` aplica la selección (§15.3): no consulta el historial ya existente de un tipo desmarcado, `toImport: []` para ese tipo, `total` sigue siendo el real. No crear una acción nueva vacía si los 3 `toImport` quedan a 0 (§15.4).
+  Tests e2e: desmarcar cada historial por separado dentro de un fichero con los 3 tipos → ese `toImport` a 0, `total` real, nada escrito de ese tipo en la base de datos; acción nueva que solo tendría filas de un historial desmarcado no se crea (`db.select().from(stocks)` no la encuentra); acción existente no se ve afectada por lo desmarcado (sigue estando, solo no recibe ese historial).
+- **T5.3** — Frontend: 3 checkboxes (Compras/Ventas/Valoraciones, marcadas por defecto) en `StockImportPage.tsx`, antes de "Validar"; "Validar" deshabilitado con las tres desmarcadas; cambiar cualquiera descarta la vista previa/resultado actuales (mismo criterio que cambiar de fichero). `api/stock-import.ts` manda las 3 opciones en el mismo `FormData`.
+  Tests: checkboxes marcados por defecto; desmarcar una y validar llama a la API con esa opción en `false`; las tres desmarcadas deshabilitan "Validar"; cambiar un checkbox tras una vista previa la descarta.
+- **T5.4** — Cierre: repasar H6 criterio a criterio (checklist igual que T4.1), `npm run lint`/`build`/`test` en verde en ambos paquetes, verificación manual con un CSV sintético desmarcando cada historial por separado.
