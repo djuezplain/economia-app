@@ -19,6 +19,7 @@ export interface ProductPrice {
   date: string;
   unit: string;
   pricePerUnit: string;
+  amount: string;
 }
 
 export interface ReceiptSummary {
