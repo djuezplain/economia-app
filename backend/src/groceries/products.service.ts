@@ -15,6 +15,8 @@ export interface ProductPrice {
   date: string;
   unit: string;
   pricePerUnit: string;
+  /** Spec 037, plan.md §1: importe de la línea — para "gasto total" (H1 criterio 3). */
+  amount: string;
 }
 
 /**
@@ -87,6 +89,7 @@ export class ProductsService {
         date: receipt.date,
         unit: line.unit,
         pricePerUnit: line.pricePerUnit,
+        amount: line.amount,
       };
     });
 

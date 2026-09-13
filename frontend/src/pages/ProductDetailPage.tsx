@@ -1,33 +1,75 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { getProduct, getProductPrices, updateProduct } from '../api/groceries';
 import type { Product, ProductPrice } from '../api/groceries';
 import { ApiError } from '../api/client';
 
-/**
- * Petición de Diego: por defecto solo el precio más reciente por
- * supermercado (no cada línea histórica) — el botón "Historial" muestra
- * todo. Cálculo en el cliente sobre la respuesta ya existente de
- * `GET /products/:id/prices` (spec 034 H4 criterio 3): a esta escala no
- * hace falta un parámetro nuevo en el backend para esto.
- */
-function latestPricePerSupermarket(prices: ProductPrice[]): ProductPrice[] {
-  const latestBySupermarket = new Map<string, ProductPrice>();
+const CHART_TICK_STYLE = { fontFamily: 'var(--font-body)', fontSize: 12, fill: 'var(--text)' };
+const CHART_TOOLTIP_STYLE = { fontFamily: 'var(--font-body)', fontSize: 13 };
+/** Sin un color fijo por supermercado en el resto de la app — se asigna por posición (orden alfabético, estable entre renders), cíclico si hay más supermercados que colores. */
+const CHART_LINE_COLORS = ['var(--accent-500)', 'var(--accent-2-500)', 'var(--neutral-700)', 'var(--accent-300)', 'var(--accent-2-300)', 'var(--neutral-500)'];
+
+interface ProductStats {
+  minPrice: number;
+  maxPrice: number;
+  avgPrice: number;
+  totalSpent: number;
+  purchaseCount: number;
+  cheapestSupermarket: { name: string; avgPrice: number };
+}
+
+/** Spec 037, plan.md §2: sobre todo el histórico (H1 criterio 1-3), no solo lo visible en la tabla filtrada. */
+function computeStats(prices: ProductPrice[]): ProductStats | null {
+  if (prices.length === 0) return null;
+
+  const priceValues = prices.map((p) => Number(p.pricePerUnit));
+  const totalSpent = prices.reduce((sum, p) => sum + Number(p.amount), 0);
+
+  const pricesBySupermarket = new Map<string, number[]>();
   for (const price of prices) {
-    const current = latestBySupermarket.get(price.supermarketId);
-    if (!current || price.date > current.date) latestBySupermarket.set(price.supermarketId, price);
+    const values = pricesBySupermarket.get(price.supermarketName) ?? [];
+    values.push(Number(price.pricePerUnit));
+    pricesBySupermarket.set(price.supermarketName, values);
   }
-  return [...latestBySupermarket.values()].sort((a, b) => Number(a.pricePerUnit) - Number(b.pricePerUnit));
+  let cheapestSupermarket = { name: '', avgPrice: Infinity };
+  for (const [name, values] of pricesBySupermarket) {
+    const avgPrice = values.reduce((sum, v) => sum + v, 0) / values.length;
+    if (avgPrice < cheapestSupermarket.avgPrice) cheapestSupermarket = { name, avgPrice };
+  }
+
+  return {
+    minPrice: Math.min(...priceValues),
+    maxPrice: Math.max(...priceValues),
+    avgPrice: priceValues.reduce((sum, v) => sum + v, 0) / priceValues.length,
+    totalSpent,
+    purchaseCount: prices.length,
+    cheapestSupermarket,
+  };
 }
 
-/** Historial completo, agrupado por supermercado y en orden cronológico dentro de cada uno — más fácil de leer la evolución que una lista plana por precio. */
-function sortHistory(prices: ProductPrice[]): ProductPrice[] {
-  return [...prices].sort((a, b) => a.supermarketName.localeCompare(b.supermarketName) || a.date.localeCompare(b.date));
+/** Spec 037, plan.md §3: pivota a formato ancho (una fila por fecha, una columna por supermercado) para que Recharts dibuje una serie por supermercado. */
+function buildChartData(prices: ProductPrice[]): Array<Record<string, string | number>> {
+  const rowByDate = new Map<string, Record<string, string | number>>();
+  for (const price of prices) {
+    const row = rowByDate.get(price.date) ?? { date: price.date };
+    row[price.supermarketName] = Number(price.pricePerUnit);
+    rowByDate.set(price.date, row);
+  }
+  return [...rowByDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 
-/** Spec 036 (H2-H3), plan.md §3: nombre editable + precio por supermercado (spec 034 H4 criterio 3, revisado: solo el más reciente por defecto, con historial completo bajo un botón). */
+function uniqueSupermarketNames(prices: ProductPrice[]): string[] {
+  return [...new Set(prices.map((p) => p.supermarketName))].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Spec 036 (H2-H3), plan.md §3 + spec 037 (H1-H2): estadísticas sobre todo
+ * el histórico, gráfico de evolución por supermercado, y cada fila de
+ * precio enlaza a su ticket real.
+ */
 export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -100,6 +142,9 @@ export function ProductDetailPage() {
     );
   }
 
+  const stats = prices ? computeStats(prices) : null;
+  const chartData = prices ? buildChartData(prices) : [];
+  const supermarketNames = prices ? uniqueSupermarketNames(prices) : [];
   const visiblePrices = prices ? (showHistory ? sortHistory(prices) : latestPricePerSupermarket(prices)) : null;
 
   return (
@@ -123,8 +168,55 @@ export function ProductDetailPage() {
             {isSaving ? 'Guardando…' : 'Guardar'}
           </button>
 
-          <h2>{showHistory ? 'Historial de precios' : 'Precio por supermercado'}</h2>
           {pricesError && <p role="alert">{pricesError}</p>}
+
+          {stats && (
+            <>
+              <h2>Estadísticas</h2>
+              <ul>
+                <li>
+                  Precio mínimo / medio / máximo: {stats.minPrice.toFixed(2)} € / {stats.avgPrice.toFixed(2)} € / {stats.maxPrice.toFixed(2)} €
+                </li>
+                <li>
+                  Supermercado más barato de media: {stats.cheapestSupermarket.name} ({stats.cheapestSupermarket.avgPrice.toFixed(2)} €)
+                </li>
+                <li>
+                  Gasto total: {stats.totalSpent.toFixed(2)} € en {stats.purchaseCount} compra{stats.purchaseCount === 1 ? '' : 's'}
+                </li>
+              </ul>
+            </>
+          )}
+
+          {chartData.length >= 2 && (
+            <>
+              <h2>Evolución del precio</h2>
+              <div style={{ width: '100%', height: 280 }}>
+                <ResponsiveContainer>
+                  <LineChart data={chartData} margin={{ left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={CHART_TICK_STYLE} />
+                    <YAxis tickFormatter={(value: number) => `${value.toFixed(2)} €`} tick={CHART_TICK_STYLE} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value) => `${Number(value).toFixed(2)} €`} />
+                    <Legend wrapperStyle={CHART_TOOLTIP_STYLE} />
+                    {supermarketNames.map((name, index) => (
+                      <Line
+                        key={name}
+                        type="monotone"
+                        dataKey={name}
+                        name={name}
+                        stroke={CHART_LINE_COLORS[index % CHART_LINE_COLORS.length]}
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                        connectNulls
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
+
+          <h2>{showHistory ? 'Historial de precios' : 'Precio por supermercado'}</h2>
           {prices && prices.length > 0 && (
             <button type="button" className="btn btn-secondary" onClick={() => setShowHistory((current) => !current)}>
               {showHistory ? 'Ver solo el precio más reciente' : 'Historial'}
@@ -140,6 +232,7 @@ export function ProductDetailPage() {
                   <th scope="col">Fecha</th>
                   <th scope="col">Precio</th>
                   <th scope="col">Unidad</th>
+                  <th scope="col">Ticket</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,6 +242,9 @@ export function ProductDetailPage() {
                     <td>{price.date}</td>
                     <td>{price.pricePerUnit} €</td>
                     <td>{price.unit}</td>
+                    <td>
+                      <Link to={`/tickets/${price.receiptId}`}>Ver ticket</Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -158,4 +254,19 @@ export function ProductDetailPage() {
       )}
     </main>
   );
+}
+
+/** Spec 036, cambio posterior: por defecto solo el más reciente de cada supermercado. */
+function latestPricePerSupermarket(prices: ProductPrice[]): ProductPrice[] {
+  const latestBySupermarket = new Map<string, ProductPrice>();
+  for (const price of prices) {
+    const current = latestBySupermarket.get(price.supermarketId);
+    if (!current || price.date > current.date) latestBySupermarket.set(price.supermarketId, price);
+  }
+  return [...latestBySupermarket.values()].sort((a, b) => Number(a.pricePerUnit) - Number(b.pricePerUnit));
+}
+
+/** Historial completo, agrupado por supermercado y en orden cronológico dentro de cada uno. */
+function sortHistory(prices: ProductPrice[]): ProductPrice[] {
+  return [...prices].sort((a, b) => a.supermarketName.localeCompare(b.supermarketName) || a.date.localeCompare(b.date));
 }
