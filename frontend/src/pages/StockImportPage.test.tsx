@@ -107,7 +107,7 @@ describe('StockImportPage', () => {
     expect(within(table).getByRole('row', { name: /Repsol/ })).toHaveTextContent('MyInvestor');
     expect(within(table).getByRole('row', { name: /Santander/ })).toHaveTextContent('Ambigua');
 
-    expect(previewSpy).toHaveBeenCalledWith(file);
+    expect(previewSpy).toHaveBeenCalledWith(file, { includePurchases: true, includeSales: true, includeValuations: true });
     expect(confirmSpy).not.toHaveBeenCalled();
   });
 
@@ -124,7 +124,7 @@ describe('StockImportPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Confirmar importación' }));
 
     expect(await screen.findByRole('heading', { name: 'Importación completada' })).toBeInTheDocument();
-    expect(confirmSpy).toHaveBeenCalledWith(file);
+    expect(confirmSpy).toHaveBeenCalledWith(file, { includePurchases: true, includeSales: true, includeValuations: true });
   });
 
   it('un fichero inválido (400) muestra el motivo del backend, sin ofrecer confirmar', async () => {
@@ -164,5 +164,54 @@ describe('StockImportPage', () => {
     await userEvent.upload(screen.getByLabelText('Fichero .csv'), buildCsvFile('otro.csv'));
 
     expect(screen.queryByRole('heading', { name: '2. Vista previa' })).not.toBeInTheDocument();
+  });
+
+  describe('H6 — elegir qué historiales importar', () => {
+    it('las 3 casillas (Compras/Ventas/Valoraciones) están marcadas por defecto', async () => {
+      renderPage();
+
+      expect(await screen.findByLabelText('Compras')).toBeChecked();
+      expect(screen.getByLabelText('Ventas')).toBeChecked();
+      expect(screen.getByLabelText('Valoraciones')).toBeChecked();
+    });
+
+    it('desmarcar "Valoraciones" y validar llama a la API con esa opción a false', async () => {
+      const previewSpy = vi.spyOn(stockImportApi, 'previewStockImport').mockResolvedValue(SUMMARY_TRES_ESTADOS);
+      const file = buildCsvFile();
+
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Fichero .csv'), file);
+      await userEvent.click(screen.getByLabelText('Valoraciones'));
+      await userEvent.click(screen.getByRole('button', { name: 'Validar' }));
+
+      expect(previewSpy).toHaveBeenCalledWith(file, { includePurchases: true, includeSales: true, includeValuations: false });
+    });
+
+    it('desmarcar las 3 casillas deshabilita "Validar" y avisa, sin llamar a la API', async () => {
+      const previewSpy = vi.spyOn(stockImportApi, 'previewStockImport');
+
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Fichero .csv'), buildCsvFile());
+      await userEvent.click(screen.getByLabelText('Compras'));
+      await userEvent.click(screen.getByLabelText('Ventas'));
+      await userEvent.click(screen.getByLabelText('Valoraciones'));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Selecciona al menos un historial');
+      expect(screen.getByRole('button', { name: 'Validar' })).toBeDisabled();
+      expect(previewSpy).not.toHaveBeenCalled();
+    });
+
+    it('cambiar un checkbox después de generar una vista previa la descarta (mismo criterio que cambiar de fichero)', async () => {
+      vi.spyOn(stockImportApi, 'previewStockImport').mockResolvedValue(SUMMARY_TRES_ESTADOS);
+
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Fichero .csv'), buildCsvFile());
+      await userEvent.click(screen.getByRole('button', { name: 'Validar' }));
+      await screen.findByRole('heading', { name: '2. Vista previa' });
+
+      await userEvent.click(screen.getByLabelText('Ventas'));
+
+      expect(screen.queryByRole('heading', { name: '2. Vista previa' })).not.toBeInTheDocument();
+    });
   });
 });

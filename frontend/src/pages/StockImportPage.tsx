@@ -4,20 +4,22 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { confirmStockImport, previewStockImport } from '../api/stock-import';
-import type { StockImportRowSummary, StockImportSummary } from '../api/stock-import';
+import type { StockImportOptions, StockImportRowSummary, StockImportSummary } from '../api/stock-import';
 import { ApiError } from '../api/client';
 
 /**
- * Spec 033 (H1-H5), plan.md §10: seleccionar fichero → validar (vista
- * previa) → confirmar (mismo fichero, sin volver a pedirlo) → resultado
- * final con enlace a `/patrimonio`. Mismo criterio del resto de la app:
- * HTML semántico plano, sin CSS.
+ * Spec 033 (H1-H6), plan.md §10/§15.5: seleccionar fichero y qué
+ * historiales traer → validar (vista previa) → confirmar (mismo fichero y
+ * misma selección, sin volver a pedirlos) → resultado final con enlace a
+ * `/patrimonio`. Mismo criterio del resto de la app: HTML semántico plano,
+ * sin CSS.
  */
 export function StockImportPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const isOnline = useConnectivity();
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [options, setOptions] = useState<StockImportOptions>({ includePurchases: true, includeSales: true, includeValuations: true });
   const [preview, setPreview] = useState<StockImportSummary | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
@@ -26,23 +28,36 @@ export function StockImportPage() {
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
 
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    // Un fichero nuevo invalida cualquier vista previa/resultado anterior —
-    // hay que volver a validar antes de poder confirmar de nuevo.
-    setSelectedFile(event.target.files?.[0] ?? null);
+  // H6 criterio 4: al menos un historial marcado.
+  const hasAnySelected = options.includePurchases || options.includeSales || options.includeValuations;
+
+  function discardPreview() {
+    // H6 criterio 5 / mismo criterio que cambiar de fichero: hay que volver a validar.
     setPreview(null);
     setPreviewError(null);
     setConfirmResult(null);
     setConfirmError(null);
   }
 
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setSelectedFile(event.target.files?.[0] ?? null);
+    discardPreview();
+  }
+
+  function handleOptionChange(key: keyof StockImportOptions) {
+    return (event: ChangeEvent<HTMLInputElement>) => {
+      setOptions((prev) => ({ ...prev, [key]: event.target.checked }));
+      discardPreview();
+    };
+  }
+
   async function handlePreview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedFile) return;
+    if (!selectedFile || !hasAnySelected) return;
     setPreviewError(null);
     setIsPreviewing(true);
     try {
-      const result = await previewStockImport(selectedFile);
+      const result = await previewStockImport(selectedFile, options);
       setPreview(result);
     } catch (err) {
       setPreviewError(err instanceof ApiError ? err.message : 'No se ha podido validar el fichero.');
@@ -56,7 +71,7 @@ export function StockImportPage() {
     setConfirmError(null);
     setIsConfirming(true);
     try {
-      const result = await confirmStockImport(selectedFile);
+      const result = await confirmStockImport(selectedFile, options);
       setConfirmResult(result);
     } catch (err) {
       setConfirmError(err instanceof ApiError ? err.message : 'No se ha podido confirmar la importación.');
@@ -109,9 +124,36 @@ export function StockImportPage() {
           <label htmlFor="stock-import-file">Fichero .csv</label>
           <input id="stock-import-file" type="file" accept=".csv" className="input" onChange={handleFileChange} />
 
+          <fieldset>
+            <legend>Qué importar</legend>
+            <label htmlFor="stock-import-purchases">
+              <input
+                id="stock-import-purchases"
+                type="checkbox"
+                checked={options.includePurchases}
+                onChange={handleOptionChange('includePurchases')}
+              />{' '}
+              Compras
+            </label>
+            <label htmlFor="stock-import-sales">
+              <input id="stock-import-sales" type="checkbox" checked={options.includeSales} onChange={handleOptionChange('includeSales')} />{' '}
+              Ventas
+            </label>
+            <label htmlFor="stock-import-valuations">
+              <input
+                id="stock-import-valuations"
+                type="checkbox"
+                checked={options.includeValuations}
+                onChange={handleOptionChange('includeValuations')}
+              />{' '}
+              Valoraciones
+            </label>
+            {!hasAnySelected && <p role="alert">Selecciona al menos un historial a importar.</p>}
+          </fieldset>
+
           {previewError && <p role="alert">{previewError}</p>}
 
-          <button type="submit" className="btn btn-primary" disabled={!selectedFile || isPreviewing}>
+          <button type="submit" className="btn btn-primary" disabled={!selectedFile || !hasAnySelected || isPreviewing}>
             {isPreviewing ? 'Validando…' : 'Validar'}
           </button>
         </form>
