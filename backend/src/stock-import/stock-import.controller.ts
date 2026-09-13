@@ -1,15 +1,16 @@
-import { BadRequestException, Controller, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { AuthGuard } from '../auth/guards/auth.guard.js';
 import { RequireActiveUserGuard } from '../auth/guards/require-active-user.guard.js';
 import type { RequestUser } from '../auth/guards/require-active-user.guard.js';
+import { StockImportOptionsDto } from './dto/stock-import-options.dto.js';
 import { StockImportService } from './stock-import.service.js';
 
 /** Plan.md §3: mismo límite que `ImportController`/`DataImportController`. */
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
-/** Spec 033 (H1-H5). Mismo guard que el resto de rutas de datos económicos. */
+/** Spec 033 (H1-H6). Mismo guard que el resto de rutas de datos económicos. */
 @Controller('stock-import')
 @UseGuards(AuthGuard, RequireActiveUserGuard)
 export class StockImportController {
@@ -17,16 +18,24 @@ export class StockImportController {
 
   @Post('preview')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE_BYTES } }))
-  preview(@UploadedFile() file: Express.Multer.File | undefined, @Req() req: Request & { user: RequestUser }) {
+  preview(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() options: StockImportOptionsDto,
+    @Req() req: Request & { user: RequestUser },
+  ) {
     assertCsvFile(file);
-    return this.stockImportService.preview(req.user.id, file.buffer);
+    return this.stockImportService.preview(req.user.id, file.buffer, options);
   }
 
   @Post('confirm')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE_BYTES } }))
-  confirm(@UploadedFile() file: Express.Multer.File | undefined, @Req() req: Request & { user: RequestUser }) {
+  confirm(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() options: StockImportOptionsDto,
+    @Req() req: Request & { user: RequestUser },
+  ) {
     assertCsvFile(file);
-    return this.stockImportService.confirm(req.user.id, file.buffer);
+    return this.stockImportService.confirm(req.user.id, file.buffer, options);
   }
 }
 

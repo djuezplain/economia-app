@@ -6,6 +6,7 @@ import type { Database } from '../db/db.module.js';
 import { stocks, stockPurchases, stockSales, stockValuations } from '../db/schema/index.js';
 import { InvalidStockCsvError, matchStockNames, parseStockCsv } from './stock-import.parsing.js';
 import type { ExistingStockRef, ParsedStockCsv } from './stock-import.parsing.js';
+import type { StockImportOptionsDto } from './dto/stock-import-options.dto.js';
 import type { StockImportRowSummary, StockImportSummary } from './stock-import.types.js';
 
 type Executor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -16,10 +17,15 @@ interface AmountRow {
   price: Decimal;
 }
 
+interface DedupeResult {
+  toImport: AmountRow[];
+  alreadyExisting: number;
+}
+
 /**
- * Spec 033 (H1-H5). Import aditivo de un CSV de Investing.com — nunca borra
+ * Spec 033 (H1-H6). Import aditivo de un CSV de Investing.com — nunca borra
  * ni sobrescribe nada, solo añade acciones/compras/ventas/valoraciones que
- * falten (plan.md §6-§8). Mismo patrón `preview`/`confirm` que
+ * falten (plan.md §6-§8, §15). Mismo patrón `preview`/`confirm` que
  * `DataImportService` (spec 032): la misma función calcula el resumen,
  * escribiendo o no según el flag `write`.
  */
@@ -28,21 +34,30 @@ export class StockImportService {
   constructor(@Inject(DB) private readonly db: Database) {}
 
   /** H1: no escribe nada — solo calcula qué se importaría. */
-  async preview(userId: string, buffer: Buffer): Promise<StockImportSummary> {
+  async preview(userId: string, buffer: Buffer, options: StockImportOptionsDto): Promise<StockImportSummary> {
+    this.assertAtLeastOneSelected(options);
     const csv = this.parseFile(buffer);
-    return this.computeSummary(this.db, userId, csv, false);
+    return this.computeSummary(this.db, userId, csv, options, false);
   }
 
-  /** H1-H5: todo dentro de una única transacción — mismo criterio "todo o nada" que spec 003/032. */
-  async confirm(userId: string, buffer: Buffer): Promise<StockImportSummary> {
+  /** H1-H6: todo dentro de una única transacción — mismo criterio "todo o nada" que spec 003/032. */
+  async confirm(userId: string, buffer: Buffer, options: StockImportOptionsDto): Promise<StockImportSummary> {
+    this.assertAtLeastOneSelected(options);
     const csv = this.parseFile(buffer);
     try {
-      return await this.db.transaction((tx) => this.computeSummary(tx, userId, csv, true));
+      return await this.db.transaction((tx) => this.computeSummary(tx, userId, csv, options, true));
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
       const cause = err instanceof Error && err.cause instanceof Error ? err.cause : err;
       const message = cause instanceof Error ? cause.message : String(cause);
       throw new BadRequestException(`No se ha podido importar el fichero: ${message}`);
+    }
+  }
+
+  /** H6 criterio 4: red de seguridad del lado servidor — la pantalla ya bloquea este caso sin llamar a la API. */
+  private assertAtLeastOneSelected(options: StockImportOptionsDto): void {
+    if (!options.includePurchases && !options.includeSales && !options.includeValuations) {
+      throw new BadRequestException('Selecciona al menos un historial a importar (compras, ventas o valoraciones).');
     }
   }
 
@@ -55,7 +70,13 @@ export class StockImportService {
     }
   }
 
-  private async computeSummary(executor: Executor, userId: string, csv: ParsedStockCsv, write: boolean): Promise<StockImportSummary> {
+  private async computeSummary(
+    executor: Executor,
+    userId: string,
+    csv: ParsedStockCsv,
+    options: StockImportOptionsDto,
+    write: boolean,
+  ): Promise<StockImportSummary> {
     const existingStockRows = await executor.select().from(stocks).where(eq(stocks.userId, userId));
     const existingStocks: ExistingStockRef[] = existingStockRows.map((s) => ({ id: s.id, custodyBank: s.custodyBank, stock: s.stock }));
 
@@ -95,33 +116,47 @@ export class StockImportService {
         continue;
       }
 
-      let stockId: string;
+      const hasExistingHistory = match.status === 'existing';
+      let existingId: string | undefined;
       let custodyBank: string;
-      if (match.status === 'existing') {
-        stockId = match.existingStock!.id;
+      if (hasExistingHistory) {
+        existingId = match.existingStock!.id;
         custodyBank = match.existingStock!.custodyBank;
         existingStocksCount++;
       } else {
         custodyBank = '-';
         newStocks++;
-        if (write) {
-          const [created] = await executor.insert(stocks).values({ userId, custodyBank, stock: match.nombre }).returning();
-          stockId = created.id;
-        } else {
-          stockId = ''; // solo se usa para consultar historial "existente" — una acción nueva nunca tiene, no hace falta un id real en preview
-        }
       }
 
-      const hasExistingHistory = match.status === 'existing';
-      const existingPurchaseKeys = hasExistingHistory ? await this.fetchPurchaseKeys(executor, stockId) : new Set<string>();
-      const existingSaleKeys = hasExistingHistory ? await this.fetchSaleKeys(executor, stockId) : new Set<string>();
-      const existingValuationKeys = hasExistingHistory ? await this.fetchValuationKeys(executor, stockId) : new Set<string>();
+      // H6 criterio 3: un historial desmarcado no toca la base de datos en absoluto, ni siquiera para comprobar duplicados.
+      const existingPurchaseKeys =
+        hasExistingHistory && options.includePurchases ? await this.fetchPurchaseKeys(executor, existingId!) : new Set<string>();
+      const existingSaleKeys = hasExistingHistory && options.includeSales ? await this.fetchSaleKeys(executor, existingId!) : new Set<string>();
+      const existingValuationKeys =
+        hasExistingHistory && options.includeValuations ? await this.fetchValuationKeys(executor, existingId!) : new Set<string>();
 
-      const purchaseResult = dedupeAgainstExisting(csvPurchases, existingPurchaseKeys, amountKey);
-      const saleResult = dedupeAgainstExisting(csvSales, existingSaleKeys, amountKey);
-      const valuationResult = dedupeAgainstExisting(csvValuations, existingValuationKeys, (r) => r.date);
+      // H6 criterio 2: `total` sigue siendo el nº real del CSV; un historial desmarcado siempre tiene `toImport: 0`.
+      const purchaseResult: DedupeResult = options.includePurchases
+        ? dedupeAgainstExisting(csvPurchases, existingPurchaseKeys, amountKey)
+        : { toImport: [], alreadyExisting: 0 };
+      const saleResult: DedupeResult = options.includeSales
+        ? dedupeAgainstExisting(csvSales, existingSaleKeys, amountKey)
+        : { toImport: [], alreadyExisting: 0 };
+      const valuationResult: DedupeResult = options.includeValuations
+        ? dedupeAgainstExisting(csvValuations, existingValuationKeys, (r) => r.date)
+        : { toImport: [], alreadyExisting: 0 };
 
-      if (write) {
+      const hasAnythingToImport = purchaseResult.toImport.length > 0 || saleResult.toImport.length > 0 || valuationResult.toImport.length > 0;
+
+      // H6 criterio 6: una acción nueva que, tras la selección, no traería ninguna fila no se crea vacía.
+      if (write && hasAnythingToImport) {
+        let stockId: string;
+        if (hasExistingHistory) {
+          stockId = existingId!;
+        } else {
+          const [created] = await executor.insert(stocks).values({ userId, custodyBank, stock: match.nombre }).returning();
+          stockId = created.id;
+        }
         if (purchaseResult.toImport.length > 0) {
           await executor
             .insert(stockPurchases)

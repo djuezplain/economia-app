@@ -144,3 +144,80 @@ Igual que `spec.md` §4: sin conversión de divisa, sin importar dividendos, sin
 
 ---
 **Siguiente paso:** revisar este plan con Diego (especialmente §5, la regla de parseo asimétrica, y §6, el criterio de emparejamiento) y aprobarlo. Al aprobarlo, se genera `tasks.md` con el desglose en tareas implementables una a una.
+
+## 15. Revisión: selección de historiales a importar (H6)
+
+### 15.1 Endpoints — nuevos campos en el mismo `multipart/form-data`
+
+`preview`/`confirm` no cambian de ruta ni de guard; se añaden 3 campos de formulario junto a `file`, leídos con `@Body()` (Nest/multer ya deja los campos de texto de un `multipart/form-data` en `req.body`, separados del fichero):
+
+```ts
+// backend/src/stock-import/dto/stock-import-options.dto.ts
+export class StockImportOptionsDto {
+  @Transform(toBoolean) @IsBoolean() includePurchases: boolean = true;
+  @Transform(toBoolean) @IsBoolean() includeSales: boolean = true;
+  @Transform(toBoolean) @IsBoolean() includeValuations: boolean = true;
+}
+```
+
+`toBoolean` interpreta el valor tal como llega de un formulario (siempre texto): `'true'`/`true` → `true`, cualquier otra cosa (`'false'`, etc.) → `false`. `ValidationPipe` global ya tiene `transform: true` (`main.ts`), así que el `@Transform` se aplica solo.
+
+**Encontrado al implementar (no asumido en el diseño inicial de este plan):** un campo ausente del todo en el `multipart/form-data` (un cliente que no manda estos 3 campos, comportamiento de H1-H5 antes de esta revisión) **no llega a invocar `@Transform`** — `class-transformer` solo aplica `@Transform` a las claves presentes en el cuerpo recibido, no a las declaradas en la clase. Con `includePurchases!: boolean` (sin valor por defecto) esto producía `undefined`, y `@IsBoolean()` lo rechazaba con 400 ("must be a boolean value") en vez de asumir "incluir todo" — verificado con un test directo de `plainToInstance`/`validate` antes de corregirlo. Se soluciona con el valor por defecto de la propia propiedad (`= true`): `plainToInstance` no toca una propiedad ausente en el origen, así que conserva el valor con el que se instanció la clase.
+
+### 15.2 Validación "al menos uno marcado" (H6 criterio 4)
+
+No es expresable con decoradores de campo (es una regla entre los tres campos) — se comprueba con una función pequeña al principio de `preview()`/`confirm()`, antes de tocar el fichero:
+
+```ts
+private assertAtLeastOneSelected(options: StockImportOptionsDto): void {
+  if (!options.includePurchases && !options.includeSales && !options.includeValuations) {
+    throw new BadRequestException('Selecciona al menos un historial a importar (compras, ventas o valoraciones).');
+  }
+}
+```
+
+La pantalla (§15.4) ya bloquea este caso sin llamar al servidor — esta comprobación es solo la red de seguridad del lado servidor (por si se llama a la API directamente).
+
+### 15.3 `computeSummary` — aplicar la selección sin tocar el resto del algoritmo
+
+`computeSummary` (plan.md §6-§8) recibe `options` y la usa en dos sitios, sin cambiar nada más de la lógica de emparejamiento (§6) ni de la forma del resumen (§3 — `TableImportCount.total` sigue siendo el nº real de filas del CSV, marcado o no, H6 criterio 2):
+
+1. **No se consulta el historial ya existente de un historial desmarcado** (evita una consulta que no hace falta, no solo una optimización — H6 criterio 3, "ni siquiera para comprobar duplicados"):
+   ```ts
+   const existingPurchaseKeys = hasExistingHistory && options.includePurchases ? await this.fetchPurchaseKeys(executor, stockId) : new Set<string>();
+   // ídem existingSaleKeys/existingValuationKeys con includeSales/includeValuations
+   ```
+2. **`toImport` es siempre `[]` para un historial desmarcado**, sin pasar por `dedupeAgainstExisting`:
+   ```ts
+   const purchaseResult = options.includePurchases ? dedupeAgainstExisting(csvPurchases, existingPurchaseKeys, amountKey) : { toImport: [], alreadyExisting: 0 };
+   ```
+   El bloque `if (write) { ... }` que inserta no cambia — al recibir `toImport: []` para un historial desmarcado, sencillamente no inserta nada de ese historial, sin necesitar una rama `if` adicional.
+
+### 15.4 No crear una acción nueva vacía (H6 criterio 6)
+
+Tras calcular `purchaseResult`/`saleResult`/`valuationResult` para un match `status: 'new'`, si los tres `toImport` están vacíos, no se inserta la fila de `stocks` — el resto del cálculo del resumen (totales reales, `status: 'new'`) sigue igual, solo cambia que no hay `INSERT` en `stocks` ni en sus historiales:
+
+```ts
+const nothingToImport = purchaseResult.toImport.length === 0 && saleResult.toImport.length === 0 && valuationResult.toImport.length === 0;
+if (write && match.status === 'new' && !nothingToImport) {
+  // INSERT en stocks (como ya hacía) y se usa su id para las 3 tablas hijas
+}
+```
+
+Nota: `totals.newStocks` (plan.md §3) sigue contando esta fila como "nueva" aunque no llegue a crearse — es la clasificación de la fila del CSV (H3), no si terminó insertándose; distinguir ambas cosas con un campo nuevo sería una precisión que hoy nadie necesita (el propio resumen de la fila, con sus 3 `TableImportCount` en 0, ya deja claro que no se creó nada).
+
+### 15.5 Frontend
+
+`StockImportPage.tsx`: 3 checkboxes ("Compras", "Ventas", "Valoraciones", las tres marcadas por defecto) en la sección "1. Seleccionar fichero", antes del botón "Validar". Botón "Validar" deshabilitado si las tres están desmarcadas (H6 criterio 4) — mismo `disabled` que ya usa cuando no hay fichero seleccionado. Cambiar cualquier checkbox descarta la vista previa/resultado actuales exactamente igual que `handleFileChange` (H6 criterio 5) — incluso se maneja con el mismo handler, generalizado.
+
+`frontend/src/api/stock-import.ts`: `previewStockImport`/`confirmStockImport` pasan a aceptar un segundo parámetro `options: StockImportOptions` (`{ includePurchases, includeSales, includeValuations }`), añadido al mismo `FormData` que ya lleva `file` (como texto: `String(value)`).
+
+### 15.6 Tests
+
+- Backend: unit — `assertAtLeastOneSelected` (o el 400 correspondiente desde el endpoint); e2e — desmarcar cada historial por separado deja su `toImport` a 0 sin tocar la base de datos (comprobado con `db.select`), `total` sigue mostrando el nº real; las tres desmarcadas → 400; una acción nueva que solo tendría filas de un historial desmarcado no se crea (`db.select().from(stocks)` no la encuentra).
+- Frontend: checkboxes marcados por defecto; desmarcar una y validar llama a `previewStockImport` con esa opción en `false`; las tres desmarcadas deshabilitan "Validar"; cambiar un checkbox tras una vista previa la descarta.
+
+### 15.7 Fuera de esta revisión
+
+- Selección fila a fila (por acción individual) — H6 es una selección global por tipo de historial (compras/ventas/valoraciones), no por acción; seleccionar solo algunas acciones del CSV sigue sin existir (fuera de alcance, spec.md §4).
+- Recordar la última selección usada (p. ej. en `localStorage`) — cada importación empieza con las tres marcadas por defecto.

@@ -89,3 +89,28 @@ Todos los criterios de aceptación de H1-H5 quedan cubiertos por al menos un tes
 Verificación manual contra el servidor de desarrollo real (`backend-dev`/`frontend-dev`, base de datos `economia_dev`, usuario de prueba creado y eliminado al terminar): CSV sintético con Repsol/BBVA (abiertas) y Amadeus (solo cerrada) → `preview` no escribe nada, `confirm` inserta las 3 acciones con `custodyBank: '-'`, sus compras/venta y las 2 valoraciones; verificado en `psql` fila a fila (fechas, cantidades — `1420.00000000` correctamente distinto de un precio con el mismo nº de dígitos — y precios) y en la UI (`WealthPage` renderiza el Total, la composición y cada acción con el coste/valor correctos; el redondeo a 2 decimales de `pricePerShare`, `25,045` → `25.05`, se refleja fielmente en el total mostrado). Sin errores de consola relacionados con la importación.
 
 Con esto, **spec 033 queda cerrada**.
+
+## Grupo 5 — Revisión: selección de historiales a importar (H6)
+
+- **T5.1** — `StockImportOptionsDto` (plan.md §15.1) + `assertAtLeastOneSelected` (§15.2). `StockImportController`/`Service` (`preview`/`confirm`) aceptan el DTO junto al fichero.
+  Tests: unit del DTO/transform (ausente → `true`, `'false'` → `false`); e2e — 400 con las tres desmarcadas, sin tocar el fichero.
+- **T5.2** — `computeSummary` aplica la selección (§15.3): no consulta el historial ya existente de un tipo desmarcado, `toImport: []` para ese tipo, `total` sigue siendo el real. No crear una acción nueva vacía si los 3 `toImport` quedan a 0 (§15.4).
+  Tests e2e: desmarcar cada historial por separado dentro de un fichero con los 3 tipos → ese `toImport` a 0, `total` real, nada escrito de ese tipo en la base de datos; acción nueva que solo tendría filas de un historial desmarcado no se crea (`db.select().from(stocks)` no la encuentra); acción existente no se ve afectada por lo desmarcado (sigue estando, solo no recibe ese historial).
+- **T5.3** — Frontend: 3 checkboxes (Compras/Ventas/Valoraciones, marcadas por defecto) en `StockImportPage.tsx`, antes de "Validar"; "Validar" deshabilitado con las tres desmarcadas; cambiar cualquiera descarta la vista previa/resultado actuales (mismo criterio que cambiar de fichero). `api/stock-import.ts` manda las 3 opciones en el mismo `FormData`.
+  Tests: checkboxes marcados por defecto; desmarcar una y validar llama a la API con esa opción en `false`; las tres desmarcadas deshabilitan "Validar"; cambiar un checkbox tras una vista previa la descarta.
+- **T5.4** — Cierre: repasar H6 criterio a criterio (checklist igual que T4.1), `npm run lint`/`build`/`test` en verde en ambos paquetes, verificación manual con un CSV sintético desmarcando cada historial por separado.
+
+---
+
+## Checklist de cierre — H6 (T5.4)
+
+- [x] Criterio 1 (checkboxes independientes, marcadas por defecto): `StockImportOptionsDto` (unit) — campo ausente → `true`; `StockImportPage.test.tsx` — "las 3 casillas... están marcadas por defecto".
+- [x] Criterio 2 (vista previa refleja la selección, `total` real): `stock-import.e2e-spec.ts` — "desmarcar 'Valoraciones' no las importa ni las consulta, pero sí importa compras — total sigue siendo el real".
+- [x] Criterio 3 (confirmar solo inserta lo marcado; lo desmarcado no toca la base de datos, ni para duplicados): mismo test — 0 filas en `stock_valuations`, ninguna consulta de `existingValuationKeys` (por diseño, plan.md §15.3: la condición `hasExistingHistory && options.includeValuations` ni siquiera llama a `fetchValuationKeys`).
+- [x] Criterio 4 (al menos uno marcado; bloqueado en pantalla y por el servidor): e2e — "las tres opciones desmarcadas → 400"; `StockImportPage.test.tsx` — "desmarcar las 3 casillas deshabilita 'Validar' y avisa, sin llamar a la API".
+- [x] Criterio 5 (cambiar la selección tras una vista previa la descarta): `StockImportPage.test.tsx` — "cambiar un checkbox después de generar una vista previa la descarta".
+- [x] Criterio 6 (acción nueva sin nada que importar tras la selección no se crea): e2e — "una acción nueva que, tras desmarcar historiales, no tendría nada que importar no se crea (H6 criterio 6)".
+
+**Verificación final:** `npm run lint`/`build` en verde en ambos paquetes; backend 235 unitarios + 581 e2e en verde; frontend build (`tsc -b`) y 553/554 en verde (1 fallo pre-existente y no relacionado, el mismo de "Liquidez" en `WealthPage` ya documentado en el cierre de T4.2, ligado a la fecha del día). Verificación manual contra el servidor de desarrollo real: confirmé un CSV sintético (Repsol en abierta+resumen, Amadeus solo en cerrada) con Compras y Ventas desmarcadas y solo Valoraciones marcada — Repsol se creó con únicamente su valoración (sin compra), y Amadeus no se creó en absoluto (0 filas en `stocks`), verificado en `psql` y en la UI de `WealthPage`. Datos de prueba eliminados al terminar.
+
+Con esto, **la revisión H6 de spec 033 queda cerrada**.
