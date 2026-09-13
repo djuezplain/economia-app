@@ -185,8 +185,8 @@ describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 
 
       const res = await request(app.getHttpServer()).get(`/products/${product.id}/prices`).set('Authorization', `Bearer ${token}`).expect(200);
       expect(res.body).toHaveLength(2);
-      expect(res.body[0]).toMatchObject({ supermarketName: 'Mercadona', pricePerUnit: '0.950' });
-      expect(res.body[1]).toMatchObject({ supermarketName: 'Carrefour', pricePerUnit: '1.200' });
+      expect(res.body[0]).toMatchObject({ supermarketName: 'Mercadona', pricePerUnit: '0.950', amount: '0.95' });
+      expect(res.body[1]).toMatchObject({ supermarketName: 'Carrefour', pricePerUnit: '1.200', amount: '1.20' });
     });
 
     it('un producto de otro usuario responde 404', async () => {
