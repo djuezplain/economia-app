@@ -140,15 +140,22 @@ function SidebarSubLink({
 }
 
 // Barra de navegación inferior de móvil (ver index.css, #app-bottom-nav):
-// solo los 3 destinos más usados, no las 8 secciones — el menú lateral
-// completo sigue disponible en móvil vía "Abrir menú". `srLabel` es el
-// nombre accesible real de cada enlace (distinto del texto visible, ver
-// comentario en index.css): evita que coincida con el enlace equivalente
-// del menú lateral, que existe en el DOM a la vez aunque esté oculto.
+// 5 destinos (petición de Diego, captura de referencia tipo app de
+// portfolio) en vez de los 3 anteriores — el menú lateral completo sigue
+// disponible en móvil vía "Abrir menú". `srLabel` es el nombre accesible
+// real de cada enlace (distinto del texto visible, ver comentario en
+// index.css): evita que coincida con el enlace equivalente del menú
+// lateral, que existe en el DOM a la vez aunque esté oculto. `icon` reutiliza
+// los mismos emojis que sus entradas equivalentes en `NAV_ITEMS`. "Patrimonio"
+// va en el centro (3ª de 5), en la misma posición que "Portfolio" en la
+// captura de referencia — es la entrada que recibe el efecto de icono
+// elevado al estar activa (ver `.bottom-nav-icon` en index.css).
 const BOTTOM_NAV_ITEMS = [
-  { to: '/', end: true, label: 'Inicio', srLabel: 'Inicio (acceso rápido)' },
-  { to: '/movements', end: false, label: 'Movimientos', srLabel: 'Movimientos (acceso rápido)' },
-  { to: '/profile', end: false, label: 'Perfil', srLabel: 'Perfil (acceso rápido)' },
+  { to: '/', end: true, label: 'Inicio', srLabel: 'Inicio (acceso rápido)', icon: '🏠' },
+  { to: '/movements', end: false, label: 'Movimientos', srLabel: 'Movimientos (acceso rápido)', icon: '💳' },
+  { to: '/patrimonio', end: false, label: 'Patrimonio', srLabel: 'Patrimonio (acceso rápido)', icon: '💰' },
+  { to: '/dashboard', end: false, label: 'Dashboard', srLabel: 'Dashboard (acceso rápido)', icon: '📊' },
+  { to: '/profile', end: false, label: 'Perfil', srLabel: 'Perfil (acceso rápido)', icon: '👤' },
 ] as const;
 
 /**
@@ -376,9 +383,11 @@ export function AppLayout() {
       {showSidebar && (
         <>
           <nav id="app-bottom-nav" aria-label="Navegación rápida">
-            {BOTTOM_NAV_ITEMS.map(({ to, end, label, srLabel }) => (
+            {BOTTOM_NAV_ITEMS.map(({ to, end, label, srLabel, icon }) => (
               <NavLink key={to} to={to} end={end} aria-label={srLabel}>
-                <span className="dot" aria-hidden="true" />
+                <span className="bottom-nav-icon" aria-hidden="true">
+                  {icon}
+                </span>
                 {label}
               </NavLink>
             ))}

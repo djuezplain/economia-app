@@ -411,7 +411,13 @@ describe('AppLayout', () => {
       renderLayout();
 
       const bottomNav = await screen.findByRole('navigation', { name: 'Navegación rápida' });
-      for (const name of ['Inicio (acceso rápido)', 'Movimientos (acceso rápido)', 'Perfil (acceso rápido)']) {
+      for (const name of [
+        'Inicio (acceso rápido)',
+        'Movimientos (acceso rápido)',
+        'Patrimonio (acceso rápido)',
+        'Dashboard (acceso rápido)',
+        'Perfil (acceso rápido)',
+      ]) {
         expect(screen.getByRole('link', { name })).toBeInTheDocument();
       }
       expect(bottomNav).toBeInTheDocument();

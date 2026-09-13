@@ -18,6 +18,11 @@
   --accent-2: #d6006c;
   --card-bg: #eae9e9;
   --social-bg: rgba(244, 243, 236, 0.5);
+  /* Botón flotante "+" (petición de Diego, captura de referencia): en claro
+     sigue el acento de siempre; en oscuro pasa a círculo claro con icono
+     oscuro (ver bloque @media más abajo), como en la captura. */
+  --fab-bg: var(--accent);
+  --fab-fg: var(--bg);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
   --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
@@ -119,18 +124,22 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Fondo/tarjetas más neutros y oscuros que el rediseño editorial (spec
-       010, que los tenía con un matiz cálido/marrón): la captura de
-       referencia es un gris casi negro, sin tinte cálido. */
+    /* Pulido del tema oscuro (petición de Diego, nueva captura de
+       referencia tipo app de portfolio): fondo casi negro puro (antes
+       #121212, un gris ya visible) y tarjetas ligeramente más elevadas
+       sobre ese fondo, para que el contraste tarjeta/fondo se note más,
+       como en la captura. */
     --text: #d4d4d4;
     --text-h: #f5f5f5;
-    --bg: #121212;
-    --border: color-mix(in srgb, #f5f5f5 14%, transparent);
-    --code-bg: #1a1a1a;
+    --bg: #0a0a0a;
+    --border: color-mix(in srgb, #f5f5f5 12%, transparent);
+    --code-bg: #171717;
     --accent: #4ade80;
     --accent-2: #ff6fa8;
-    --card-bg: #1e1e1e;
-    --social-bg: rgba(30, 30, 30, 0.5);
+    --card-bg: #171717;
+    --social-bg: rgba(23, 23, 23, 0.5);
+    --fab-bg: #f5f5f5;
+    --fab-fg: #121212;
     --shadow:
       rgba(0, 0, 0, 0.5) 0 10px 15px -3px, rgba(0, 0, 0, 0.35) 0 4px 6px -2px;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -536,6 +545,12 @@ p {
 }
 
 @media (max-width: 768px) {
+  /* `overflow: visible` (a diferencia de un valor por defecto que lo
+     recortaría): el icono de la entrada activa sobresale por encima del
+     borde superior de la barra (ver `.bottom-nav-icon` más abajo, mismo
+     efecto de "burbuja elevada" que la captura de referencia para
+     "Portfolio"). Esquinas superiores redondeadas (petición de Diego, misma
+     captura) en vez de rectas. */
   #app-bottom-nav {
     display: flex;
     position: fixed;
@@ -544,22 +559,25 @@ p {
     z-index: 25;
     justify-content: space-around;
     align-items: center;
-    height: 64px;
+    height: 68px;
     padding-bottom: env(safe-area-inset-bottom, 0);
     background: var(--card-bg);
     border-top: 1px solid var(--border);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     box-shadow: var(--shadow-md);
+    overflow: visible;
   }
 
   #app-bottom-nav a {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: 3px;
     flex: 1;
-    padding: 6px 0;
-    font-size: 11px;
-    color: var(--text);
+    height: 100%;
+    justify-content: center;
+    font-size: 10px;
+    color: color-mix(in srgb, var(--text) 70%, transparent);
     text-decoration: none;
   }
 
@@ -568,13 +586,34 @@ p {
     font-weight: 700;
   }
 
-  #app-bottom-nav .dot {
-    width: 9px;
-    height: 9px;
+  /* Icono normal: sin fondo, en línea con el resto de la barra. Al estar
+     activo (regla siguiente) se agranda, se tiñe de acento y se eleva por
+     encima de la barra — la "burbuja" de la captura de referencia para la
+     pestaña activa ("Portfolio" en el original, "Patrimonio" aquí, ver
+     `BOTTOM_NAV_ITEMS`). */
+  .bottom-nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 15px;
+    transition:
+      transform 0.18s ease,
+      width 0.18s ease,
+      height 0.18s ease,
+      background 0.18s ease,
+      box-shadow 0.18s ease;
   }
 
-  #app-bottom-nav a[aria-current='page'] .dot {
+  #app-bottom-nav a[aria-current='page'] .bottom-nav-icon {
+    width: 46px;
+    height: 46px;
+    font-size: 21px;
+    transform: translateY(-16px);
     background: var(--accent);
+    box-shadow: var(--shadow-md);
   }
 
   #app-fab {
@@ -587,9 +626,9 @@ p {
     z-index: 26;
     width: 52px;
     height: 52px;
-    border-radius: var(--radius-lg);
-    background: var(--accent);
-    color: var(--bg);
+    border-radius: 50%;
+    background: var(--fab-bg);
+    color: var(--fab-fg);
     font-size: 26px;
     line-height: 1;
     text-decoration: none;
@@ -635,6 +674,16 @@ p {
      spec (H3, decisión "apilar en bloques"). */
   #home-summary {
     flex-direction: column;
+  }
+
+  /* Pulido del tema oscuro en móvil (petición de Diego, captura de
+     referencia): la cifra grande de cada tarjeta de resumen se acerca al
+     tratamiento "hero" del total de la captura — más grande y con el
+     interlineado más ajustado que en escritorio, donde conviven varias
+     tarjetas en fila y no hace falta tanto peso visual. */
+  .card-amount {
+    font-size: 32px;
+    letter-spacing: -0.02em;
   }
 }
 
