@@ -1,6 +1,6 @@
 # Plan — Spec 032 (Exportación e importación de todos los datos)
 
-**Fase:** 4 de 4. H4 (Google Drive) implementada — ver §9 y tasks.md Grupos 5-9.
+**Fase:** H1-H5: 4 de 4 — implementada (H4/Google Drive ver §9, tasks.md Grupos 5-9; H5/exportación programada ver §11, tasks.md Grupos 10-12).
 
 ## 1. Forma del fichero JSON
 
@@ -352,6 +352,218 @@ export class GoogleDriveModule {}
 
 ## 10. Fuera de este plan (H4)
 
-- Igual que spec.md §2 (Fuera de alcance de H4): sin importar desde Drive, sin selector de carpeta (Google Picker), sin copias periódicas/automáticas.
+- Igual que spec.md §2 (Fuera de alcance de H4): sin importar desde Drive, sin selector de carpeta (Google Picker). Las copias periódicas/automáticas, fuera de H4, pasan a cubrirlas H5 — ver §11.
 - Sin revocar el token en Google al desconectar (§9.10 decisión 6) — solo se borra la conexión local.
 - Sin refrescar/cachear el access token entre peticiones — cada `POST /drive/export` pide uno nuevo a Google con el refresh token (una operación manual, poco frecuente; no compensa la complejidad de cachear un token de 1h de vida para este volumen de uso).
+
+## 11. H5 — Programar exportaciones automáticas
+
+### 11.1 Tabla nueva `scheduled_exports`
+
+```ts
+// backend/src/db/schema/scheduled-export.schema.ts
+export const scheduleFrequencyEnum = pgEnum('schedule_frequency', ['DAILY', 'WEEKLY', 'MONTHLY']);
+export const scheduleDestinationEnum = pgEnum('schedule_destination', ['LOCAL', 'DRIVE']);
+
+export const scheduledExports = pgTable('scheduled_exports', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(false),
+  frequency: scheduleFrequencyEnum('frequency').notNull(),
+  // 0 (domingo) - 6 (sábado); solo relevante/obligatorio si frequency = WEEKLY.
+  dayOfWeek: smallint('day_of_week'),
+  // 1-28; solo relevante/obligatorio si frequency = MONTHLY — nunca 29-31 (§11.7 decisión 3).
+  dayOfMonth: smallint('day_of_month'),
+  // "HH:mm", zona horaria del servidor (spec.md §3 decisión 9). varchar, no el tipo
+  // `time` de Postgres — se compara como string contra la hora local ya formateada
+  // igual (§11.3), sin añadir el manejo de tipo `time` de drizzle/pg para esto.
+  timeOfDay: varchar('time_of_day', { length: 5 }).notNull(),
+  destination: scheduleDestinationEnum('destination').notNull(),
+  // Solo si destination = LOCAL: subcarpeta opcional dentro de la carpeta propia del
+  // usuario (§11.2) — nunca una ruta absoluta ni con `..` (saneada al guardar).
+  localSubfolder: varchar('local_subfolder', { length: 100 }),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  // `null` = la última ejecución fue bien (o no se ha ejecutado nunca todavía).
+  lastRunError: text('last_run_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const scheduledExportsRelations = relations(scheduledExports, ({ one }) => ({
+  user: one(users, { fields: [scheduledExports.userId], references: [users.id] }),
+}));
+```
+
+Una fila por usuario (`unique` en `userId`, upsert al guardar) — mismo criterio que `googleSheetsImportConfigs` (spec 026) y `googleDriveConnections` (§9.2): una única configuración activa (spec.md §3 decisión "varias programaciones simultáneas", fuera de alcance).
+
+### 11.2 Directorio local — namespaced por usuario, sin rutas arbitrarias (spec.md H5 criterio 7)
+
+Variable de entorno nueva:
+
+```
+# backend/.env.example
+SCHEDULED_EXPORT_LOCAL_DIR="./scheduled-exports"   # mismo criterio que backups/ de deploy/backup.sh; en producción, volumen de Docker
+```
+
+`env.validation.ts`: `SCHEDULED_EXPORT_LOCAL_DIR: Joi.string().default('./scheduled-exports')`.
+
+Cada export local se escribe en `path.join(SCHEDULED_EXPORT_LOCAL_DIR, userId, sanitizeSubfolder(localSubfolder), filename)`:
+
+```ts
+// backend/src/scheduled-exports/local-export-path.util.ts
+/** Solo letras/dígitos/espacio/guion/guion bajo/barra — sin `..`, sin barra inicial, colapsando barras repetidas. Vacío si `localSubfolder` es `null`/no pasa el filtro. */
+export function sanitizeSubfolder(input: string | null): string {
+  if (!input) return '';
+  return input
+    .replace(/[^a-zA-Z0-9\-_ /]/g, '')
+    .replace(/\.\./g, '')
+    .replace(/\/+/g, '/')
+    .replace(/^\/+/, '');
+}
+```
+
+`userId` es un UUID generado por la propia app (nunca por el usuario) — garantiza aislamiento por carpeta incluso a nivel de sistema de ficheros, con o sin `sanitizeSubfolder()`; `sanitizeSubfolder()` es la segunda capa (defensa en profundidad, constitution §2) para que tampoco se pueda escapar de la carpeta propia del usuario vía `localSubfolder`. `writeLocal()` hace `fs.mkdir(dir, { recursive: true })` antes de escribir (mismo criterio que `mkdir -p backups` de `deploy/backup.sh`).
+
+### 11.3 Scheduler — barrido periódico, "debido" por periodo, no por minuto exacto
+
+```ts
+// backend/src/scheduled-exports/scheduled-exports.scheduler.ts
+@Cron('*/15 * * * *')
+async runDue(): Promise<void> {
+  const configs = await this.db.query.scheduledExports.findMany({
+    where: eq(scheduledExports.enabled, true),
+    with: { user: true },
+  });
+  const now = new Date();
+
+  for (const config of configs) {
+    if (config.user.status !== 'ACTIVE') continue; // mismo criterio que GoogleSheetsImportScheduler
+    if (!isDue(config, now)) continue;
+
+    try {
+      await this.scheduledExportsService.run(config);
+    } catch (err) {
+      // `run()` ya deja el motivo en `lastRunError` de la propia fila — aquí solo
+      // constancia en el log del proceso, un fallo no interrumpe a los demás usuarios.
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Exportación programada fallida para el usuario ${config.userId}: ${message}`);
+    }
+  }
+}
+```
+
+```ts
+// backend/src/scheduled-exports/scheduled-exports.due.ts
+/**
+ * "Debido" = ya ha pasado la hora programada de hoy Y no se ha ejecutado
+ * todavía dentro del periodo actual (hoy/esta semana/este mes). No exige
+ * coincidencia exacta de minuto: un barrido cada 15 minutos es suficiente, y
+ * si el proceso estuvo caído justo a la hora programada, se recupera sola en
+ * el siguiente barrido en vez de saltarse el día — mismo espíritu de
+ * "recuperación automática" que ya tiene el cron de spec 026, sin ningún
+ * mecanismo nuevo (cola de reintentos, etc.).
+ */
+export function isDue(config: { frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'; dayOfWeek: number | null; dayOfMonth: number | null; timeOfDay: string; lastRunAt: Date | null }, now: Date): boolean {
+  if (formatHHmm(now) < config.timeOfDay) return false;
+  if (config.frequency === 'WEEKLY' && now.getDay() !== config.dayOfWeek) return false;
+  if (config.frequency === 'MONTHLY' && now.getDate() !== config.dayOfMonth) return false;
+  if (!config.lastRunAt) return true;
+  return !isSamePeriod(config.frequency, config.lastRunAt, now);
+}
+```
+
+`isSamePeriod()`: mismo día calendario (DAILY), misma semana ISO (WEEKLY), mismo mes+año (MONTHLY) — comparación de fecha del servidor entre `lastRunAt` y `now`, sin librería nueva (`date-fns` no está en el proyecto; un puñado de comparaciones directas de `Date` es suficiente para 3 casos).
+
+### 11.4 `ScheduledExportsService.run()`
+
+```ts
+async run(config: ScheduledExportRow): Promise<void> {
+  try {
+    if (config.destination === 'LOCAL') {
+      const file = await this.usersService.exportData(config.userId);
+      await this.writeLocal(config, file);
+    } else {
+      await this.googleDriveService.exportToDrive(config.userId); // MISMO método que ya usa H4 manual — sin recomponer nada
+    }
+    await this.markRun(config.id, null);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await this.markRun(config.id, message);
+    throw err; // el scheduler (§11.3) ya lo captura solo para el log de proceso
+  }
+}
+
+private async markRun(id: string, error: string | null): Promise<void> {
+  await this.db.update(scheduledExports).set({ lastRunAt: new Date(), lastRunError: error }).where(eq(scheduledExports.id, id));
+}
+
+private async writeLocal(config: ScheduledExportRow, file: AccountExport): Promise<void> {
+  const dir = path.join(this.localDir, config.userId, sanitizeSubfolder(config.localSubfolder));
+  await fs.mkdir(dir, { recursive: true });
+  const filename = `economia-app-datos-${new Date().toISOString().slice(0, 10)}.json`;
+  await fs.writeFile(path.join(dir, filename), JSON.stringify(file, null, 2), 'utf-8');
+  await this.purgeOldFiles(dir); // §11.5
+}
+```
+
+Si `destination = DRIVE` y no hay conexión, `GoogleDriveService.exportToDrive()` ya lanza `NotFoundException('Conecta Google Drive primero.')` (§9.7) — se captura aquí igual que cualquier otro error y queda en `lastRunError`, sin caso especial.
+
+### 11.5 Purga de ficheros locales antiguos
+
+Mismo criterio que `deploy/backup.sh` (`-mtime +14 -delete`): tras escribir el fichero nuevo, `purgeOldFiles(dir)` lista los ficheros `economia-app-datos-*.json` de esa misma carpeta (la del propio usuario, nunca fuera de `SCHEDULED_EXPORT_LOCAL_DIR`) y borra los de más de 14 días. Sin retención equivalente en Drive — H4 ya no gestiona el contenido del Drive del usuario más allá de subir un fichero (§9.10 decisión 6), fuera de alcance también aquí.
+
+### 11.6 Endpoints
+
+```
+GET    /scheduled-exports   → la config actual, o 200 con `null` si nunca se ha configurado   (AuthGuard, RequireActiveUserGuard)
+PUT    /scheduled-exports   → upsert de la config completa → 200 con la fila                  (ídem)
+DELETE /scheduled-exports   → enabled = false (no borra la fila — conserva la config, H5 criterio 4) → 204   (ídem)
+```
+
+`SaveScheduledExportDto` (`class-validator`): `frequency` (`IsIn(['DAILY','WEEKLY','MONTHLY'])`), `dayOfWeek`/`dayOfMonth` con `@ValidateIf` cruzado (`dayOfWeek` obligatorio y `IsInt({min:0,max:6})` solo si `frequency === 'WEEKLY'`; `dayOfMonth` obligatorio y `IsInt({min:1,max:28})` solo si `frequency === 'MONTHLY'`; el que no aplica debe venir ausente — evita guardar un `dayOfWeek` residual de una config anterior que ya no se usa), `timeOfDay` (`Matches(/^([01]\d|2[0-3]):[0-5]\d$/)`), `destination` (`IsIn(['LOCAL','DRIVE'])`), `localSubfolder` (opcional, `MaxLength(100)`), `enabled` (`IsBoolean`).
+
+`ScheduledExportsService.save()`: si `destination === 'DRIVE'`, comprueba `googleDriveService.isConnected(userId)` (método ya existente, §9) antes de guardar con `enabled: true` — si no está conectado, `BadRequestException('Conecta Google Drive antes de programar una exportación a Drive.')` (H5 criterio 3). Guardar con `enabled: false` (o `destination: 'LOCAL'`) nunca exige esa comprobación.
+
+### 11.7 Decisiones de este plan (H5)
+
+1. **Directorio local namespaced por `userId`, nunca una ruta que el usuario escriba a mano** — §11.2; única forma segura de ofrecer "ruta local" sin abrir una escritura arbitraria en el servidor (spec.md H5 criterio 7 / decisión 7).
+2. **Un único barrido cada 15 minutos, "debido" por comparación de periodo, no por coincidencia exacta de minuto** — §11.3; tolera que el proceso esté caído a la hora exacta programada sin perder la ejecución del día, sin necesitar un cron por usuario ni una cola de trabajos.
+3. **`dayOfMonth` limitado a 1-28** — evita la ambigüedad de "día 31 en un mes de 30 días"; límite explícito documentado, no un bug ni un TODO.
+4. **Sin reintento automático si falla, sin aviso por email** — spec.md §3 decisión 8, mismo criterio ya aceptado para el auto-import de Google Sheets (spec 026).
+5. **La hora programada se interpreta en la zona horaria del servidor** — spec.md §3 decisión 9.
+6. **Una única configuración activa por usuario** (`unique` en `userId`) — spec.md, "varias programaciones simultáneas" fuera de alcance.
+7. **`ScheduledExportsService.run()` reutiliza `UsersService.exportData()`/`GoogleDriveService.exportToDrive()` tal cual, sin ningún parámetro nuevo** — cuando `destination = DRIVE`, `exportToDrive()` recalcula el export internamente (una llamada extra a `Promise.all` de consultas por ejecución programada, volumen irrelevante para esta app) en vez de añadir una variante que acepte un `AccountExport` ya calculado — evita una rama de código nueva en H4 (ya cerrada y probada) solo para ahorrar una consulta.
+
+### 11.8 Módulo backend
+
+```ts
+// backend/src/scheduled-exports/scheduled-exports.module.ts
+@Module({
+  imports: [AuthGuardModule, UsersModule, GoogleDriveModule],
+  controllers: [ScheduledExportsController],
+  providers: [ScheduledExportsService, ScheduledExportsScheduler],
+})
+export class ScheduledExportsModule {}
+```
+
+`GoogleDriveModule` debe añadir `GoogleDriveService` a sus `exports` (no lo hace hoy — comprobar al implementar; mismo tipo de ajuste que ya hizo falta con `UsersService`/`UsersModule` en H4, T6.4). `app.module.ts` añade `ScheduledExportsModule`.
+
+### 11.9 Frontend
+
+- `frontend/src/api/scheduled-exports.ts`: `ScheduledExportConfig`, `getScheduledExport()` (`GET`), `saveScheduledExport(input)` (`PUT`), `disableScheduledExport()` (`DELETE`) — mismo patrón que `api/google-drive.ts`.
+- `BackupPage.tsx`: nueva sección "Exportación programada", después de la de Google Drive. Formulario: periodicidad (`<select>` Diaria/Semanal/Mensual), campo condicional (día de la semana si Semanal, día del mes 1-28 si Mensual), hora (`<input type="time">`), destino (radio: "Carpeta en el servidor", con un campo de texto opcional para la subcarpeta / "Google Drive", deshabilitado con aviso "Conecta Google Drive primero" si `!isDriveConnected`), checkbox/botón "Activada", botón "Guardar". Debajo, si hay una config guardada: estado de la última ejecución (fecha + "correcta"/el error, mismo patrón visual que la sección de auto-import de Google Sheets en `ImportPage.tsx`) y un botón "Desactivar" (mismo criterio que "Quitar hoja" de `ImportPage.tsx`: no borra la config, solo `enabled: false`).
+
+### 11.10 Tests (H5)
+
+- Backend: `scheduled-exports.e2e-spec.ts` — guardar config válida (LOCAL y DRIVE con conexión ya existente); validaciones (`WEEKLY` sin `dayOfWeek` → 400; `MONTHLY` con `dayOfMonth: 31` → 400; `DRIVE` sin conexión → 400 pidiendo conectar primero); desactivar conserva el resto de la config (`GET` tras `DELETE` sigue devolviendo periodicidad/hora/destino, con `enabled: false`); aislamiento (la config de un usuario nunca aparece/afecta a otro). Unit test de `isDue()` (`scheduled-exports.due.spec.ts`): las 3 periodicidades dan `true`/`false` correctamente; catch-up tras un "ciclo perdido" (el proceso no corrió a la hora exacta, sigue debido en el siguiente barrido); no vuelve a estar debido el mismo día/semana/mes tras un `run` correcto. Unit test de `sanitizeSubfolder()`: quita `..`, barras repetidas y caracteres fuera del conjunto permitido. `scheduled-exports.scheduler.spec.ts`: un fallo de un usuario no interrumpe el barrido de los demás (mismo test que ya existe para `GoogleSheetsImportScheduler`).
+- Frontend: `BackupPage.test.tsx` ampliado con la nueva sección — guardar cada periodicidad con su campo condicional, validación en cliente (deshabilita Drive si no conectado), desactivar, estado de la última ejecución (correcta / con error).
+
+### 11.11bis Encontrado durante la implementación
+
+**`GET /scheduled-exports` devolvía un cuerpo vacío, no JSON `null`, cuando no había configuración — bug real, no solo de los tests.** El controlador inicial simplemente devolvía `this.scheduledExportsService.get(userId)` (que resuelve a `null`) para que Nest lo serializara. Nest trata un valor de retorno `null`/`undefined` como "sin cuerpo" y manda la respuesta con `Content-Length: 0` y sin `Content-Type`, en vez de serializar `null` a JSON — encontrado al verificar la ruta en un navegador real (backend-dev + frontend-dev): `fetch(...).json()` fallaba con `SyntaxError: Unexpected end of JSON input` pese a que la petición respondía 200, así que `BackupPage` mostraba "No se ha podido cargar la exportación programada." con una configuración nueva (el caso más común: la primera vez que cualquier usuario visita la página). Los tests e2e no lo habían detectado porque `supertest`/`superagent` tiene el mismo problema por otro motivo (`res.text`/`res.body` tampoco distinguen de forma fiable un cuerpo `"null"` de uno vacío, ver `node_modules/superagent/lib/node/response.js`) — los primeros tests de este grupo comprobaban solo el status 200 y la fila en BD, sin ver el problema real. Corregido inyectando `@Res()` y llamando a `res.json(row)` de Express directamente (que sí serializa `null` de verdad), en vez de dejar que Nest decida — único endpoint de toda la app cuyo valor "vacío" legítimo es `null` en la raíz de la respuesta (el resto de endpoints que devuelven "nada" usan 204 sin cuerpo, `DeleteAccountDto`/`disable()` incluidos, así que no les afecta este mismo problema). Los tests de este endpoint ahora comprueban `res.text === 'null'` explícitamente, verificado también en el navegador real tras la corrección.
+
+### 11.11 Fuera de este plan (H5)
+
+- Igual que spec.md §2 (Fuera de alcance de H5): sin ruta arbitraria, sin email, sin varias programaciones simultáneas, sin selector de zona horaria.
+- Sin purga/retención para el destino Drive — solo para `LOCAL` (§11.5).
+- Sin exponer `SCHEDULED_EXPORT_LOCAL_DIR` ni ninguna ruta física en las respuestas de la API — el frontend nunca necesita saber dónde vive el fichero en el servidor, solo que existe (`lastRunAt`/`lastRunError`).

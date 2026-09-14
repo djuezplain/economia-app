@@ -70,6 +70,15 @@ services:
       PORT: 3000
     ports:
       - "3000:3000"
+    volumes:
+      # Exportaciones programadas con destino "carpeta en el servidor"
+      # (spec 032 H5) — bind-mount fuera del contenedor, mismo criterio que
+      # `backups/` (deploy/backup.sh): sobrevive a recrear el contenedor y
+      # se puede copiar con `scp`. `SCHEDULED_EXPORT_LOCAL_DIR` no se
+      # sobreescribe aquí: su valor por defecto (`./scheduled-exports`,
+      # relativo al `WORKDIR` del backend, `/app/backend`) ya coincide con
+      # el lado derecho de este bind-mount.
+      - ./scheduled-exports:/app/backend/scheduled-exports
 
   frontend:
     build:

@@ -9,6 +9,8 @@ import * as usersApi from '../api/users';
 import * as dataImportApi from '../api/data-import';
 import type { DataImportSummary } from '../api/data-import';
 import * as googleDriveApi from '../api/google-drive';
+import * as scheduledExportsApi from '../api/scheduled-exports';
+import type { ScheduledExportConfig } from '../api/scheduled-exports';
 import { ApiError } from '../api/client';
 
 const PROFILE: usersApi.UserProfile = {
@@ -42,6 +44,10 @@ describe('BackupPage', () => {
     // según lo que necesite. Evita que el resto de tests (export/import) se
     // vean afectados por la comprobación de conexión que se hace al montar.
     vi.spyOn(googleDriveApi, 'getDriveConnectionStatus').mockResolvedValue({ connected: false });
+    // Por defecto, sin configuración de exportación programada (H5) — cada
+    // test de esa sección lo sustituye según lo que necesite; evita que el
+    // resto de tests (export/import/Drive) se vean afectados.
+    vi.spyOn(scheduledExportsApi, 'getScheduledExport').mockResolvedValue(null);
   });
 
   function renderPage(initialEntries: string[] = ['/backup']) {
@@ -231,6 +237,132 @@ describe('BackupPage', () => {
       renderPage(['/backup?driveConnected=0&error=access_denied']);
 
       expect(await screen.findByText('Has cancelado la conexión con Google Drive.')).toBeInTheDocument();
+    });
+  });
+
+  describe('Exportación programada (H5)', () => {
+    const SAVED_CONFIG: ScheduledExportConfig = {
+      id: 'sched-1',
+      userId: 'user-1',
+      enabled: true,
+      frequency: 'WEEKLY',
+      dayOfWeek: 1,
+      dayOfMonth: null,
+      timeOfDay: '03:30',
+      destination: 'LOCAL',
+      localSubfolder: 'mis backups',
+      lastRunAt: '2026-01-02T03:30:00.000Z',
+      lastRunError: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T03:30:00.000Z',
+    };
+
+    it('sin configuración previa, el formulario parte de los valores por defecto y sin botón de desactivar', async () => {
+      renderPage();
+      await screen.findByRole('heading', { name: 'Exportación programada' });
+
+      expect(screen.getByLabelText('Activada')).not.toBeChecked();
+      expect(screen.getByLabelText('Periodicidad')).toHaveValue('DAILY');
+      expect(screen.queryByLabelText('Día de la semana')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Desactivar' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Última ejecución/)).not.toBeInTheDocument();
+    });
+
+    it('con una configuración guardada, precarga el formulario y muestra la última ejecución', async () => {
+      vi.spyOn(scheduledExportsApi, 'getScheduledExport').mockResolvedValue(SAVED_CONFIG);
+
+      renderPage();
+      await screen.findByRole('button', { name: 'Desactivar' }); // solo aparece una vez cargada la config.
+
+      expect(screen.getByLabelText('Activada')).toBeChecked();
+      expect(screen.getByLabelText('Periodicidad')).toHaveValue('WEEKLY');
+      expect(screen.getByLabelText('Día de la semana')).toHaveValue('1');
+      expect(screen.getByLabelText('Hora')).toHaveValue('03:30');
+      expect(screen.getByLabelText('Subcarpeta (opcional)')).toHaveValue('mis backups');
+      expect(screen.getByRole('button', { name: 'Desactivar' })).toBeInTheDocument();
+      expect(screen.getByText(/Última ejecución/)).toHaveTextContent('correcta');
+    });
+
+    it('una última ejecución fallida se muestra como alerta con el motivo', async () => {
+      vi.spyOn(scheduledExportsApi, 'getScheduledExport').mockResolvedValue({
+        ...SAVED_CONFIG,
+        lastRunError: 'No se ha podido guardar el fichero en Google Drive. Inténtalo de nuevo más tarde.',
+      });
+
+      renderPage();
+
+      const status = await screen.findByText(/Última ejecución/);
+      expect(status).toHaveAttribute('role', 'alert');
+      expect(status).toHaveTextContent('No se ha podido guardar el fichero en Google Drive');
+    });
+
+    it('cambiar la periodicidad a Mensual muestra el selector de día del mes (1-28), no el de día de la semana', async () => {
+      renderPage();
+      await userEvent.selectOptions(await screen.findByLabelText('Periodicidad'), 'MONTHLY');
+
+      expect(screen.getByLabelText('Día del mes')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Día de la semana')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Día del mes')).toHaveDisplayValue('1');
+    });
+
+    it('guardar una programación diaria envía solo los campos que aplican', async () => {
+      const saveSpy = vi.spyOn(scheduledExportsApi, 'saveScheduledExport').mockResolvedValue({ ...SAVED_CONFIG, frequency: 'DAILY' });
+
+      renderPage();
+      await userEvent.click(await screen.findByLabelText('Activada'));
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() =>
+        expect(saveSpy).toHaveBeenCalledWith({
+          enabled: true,
+          frequency: 'DAILY',
+          timeOfDay: '03:00',
+          destination: 'LOCAL',
+        }),
+      );
+    });
+
+    it('guardar una programación semanal incluye dayOfWeek', async () => {
+      const saveSpy = vi.spyOn(scheduledExportsApi, 'saveScheduledExport').mockResolvedValue(SAVED_CONFIG);
+
+      renderPage();
+      await userEvent.selectOptions(await screen.findByLabelText('Periodicidad'), 'WEEKLY');
+      await userEvent.selectOptions(screen.getByLabelText('Día de la semana'), 'Miércoles');
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() => expect(saveSpy).toHaveBeenCalledWith(expect.objectContaining({ frequency: 'WEEKLY', dayOfWeek: 3 })));
+    });
+
+    it('Google Drive aparece deshabilitado como destino si no está conectado', async () => {
+      renderPage();
+      await screen.findByRole('heading', { name: 'Exportación programada' });
+
+      const driveOption = screen.getByRole('option', { name: /Google Drive/ }) as HTMLOptionElement;
+      expect(driveOption.disabled).toBe(true);
+    });
+
+    it('si falla al guardar, muestra el error del backend (p. ej. Drive sin conectar)', async () => {
+      vi.spyOn(scheduledExportsApi, 'saveScheduledExport').mockRejectedValue(
+        new ApiError(400, 'Conecta Google Drive antes de programar una exportación a Drive.'),
+      );
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Guardar' }));
+
+      expect(await screen.findByText('Conecta Google Drive antes de programar una exportación a Drive.')).toBeInTheDocument();
+    });
+
+    it('desactivar llama a la API y esconde el botón, sin perder el resto de la configuración', async () => {
+      vi.spyOn(scheduledExportsApi, 'getScheduledExport').mockResolvedValue(SAVED_CONFIG);
+      const disableSpy = vi.spyOn(scheduledExportsApi, 'disableScheduledExport').mockResolvedValue(undefined);
+
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Desactivar' }));
+
+      expect(disableSpy).toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Desactivar' })).not.toBeInTheDocument());
+      expect(screen.getByLabelText('Activada')).not.toBeChecked();
+      expect(screen.getByLabelText('Periodicidad')).toHaveValue('WEEKLY');
     });
   });
 });

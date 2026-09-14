@@ -1,7 +1,7 @@
 # Spec 032 — Exportación e importación de todos los datos (copia de seguridad)
 
-**Estado:** H1-H4 implementadas. H4 (Google Drive) pendiente solo de que Diego configure credenciales reales de Google (ver tasks.md, Grupo 9) para la verificación end-to-end final.
-**Fase:** 4 de 4 (Spec → Plan → Tasks → Implementación).
+**Estado:** H1-H5 implementadas (H4/Google Drive pendiente solo de que Diego configure credenciales reales de Google, ver tasks.md Grupo 9, para la verificación end-to-end final — H5 usa esa misma conexión cuando destino = Drive).
+**Fase:** H1-H5: 4 de 4 (Spec → Plan → Tasks → Implementación).
 
 ## 0. Qué cambia
 
@@ -12,6 +12,7 @@ Esta spec:
 2. Añade la importación de un fichero exportado previamente, en modo **aditivo/fusión** (H2) — capacidad que no existe hoy (el "import" actual, specs 003/012/026, es solo para movimientos vía Excel/Google Sheets, no para restaurar una copia completa).
 3. Da acceso a ambas desde un punto único (H3), en vez de solo dentro de "Mi perfil" como hoy el export RGPD.
 4. Añade Google Drive como destino adicional de la exportación (H4), sin quitar la descarga local.
+5. Añade poder programar que la exportación (H1) se repita sola, con periodicidad, hora y destino elegidos por Diego (H5) — hasta ahora H4 solo cubría un envío manual bajo demanda.
 
 ## 1. Historias de usuario
 
@@ -54,6 +55,19 @@ Como usuario quiero poder enviar el fichero de exportación (H1) directamente a 
 - Criterio 6: existe una forma de desconectar Google Drive desde la misma pantalla (revocar el acceso guardado en la app). Desconectar no borra los ficheros ya subidos a Drive.
 - Criterio 7: mismo aislamiento por usuario que el resto de la app — el token de Drive de un usuario nunca se usa para otro, y se guarda cifrado en la base de datos (igual criterio que cualquier secreto de terceros, constitution §2 "seguridad por defecto").
 
+**H5 — Programar exportaciones automáticas**
+
+Como usuario quiero poder programar que mi copia de seguridad se guarde sola, con la periodicidad, hora y destino que yo elija, para no tener que acordarme de exportar a mano.
+
+- Criterio 1: en la pantalla de copia de seguridad puedo activar "Exportación programada" y configurar: periodicidad (diaria, semanal — eligiendo el día de la semana, o mensual — eligiendo el día del mes, del 1 al 28), hora del día, y destino (una carpeta en el servidor, o Google Drive si ya lo tengo conectado — H4).
+- Criterio 2: la exportación programada lleva siempre el mismo contenido que H1 (todos los datos económicos), nunca un subconjunto.
+- Criterio 3: si elijo Google Drive como destino y no lo tengo conectado, no puedo activar la programación hasta conectar Drive primero (mismo criterio que H4).
+- Criterio 4: puedo desactivar la exportación programada en cualquier momento sin perder la configuración — periodicidad, hora y destino quedan guardados por si la vuelvo a activar más adelante.
+- Criterio 5: veo cuándo se ejecutó la última exportación programada y si fue bien o mal (con el motivo, si falló) — mismo criterio que ya existe para la importación automática de Google Sheets (spec 026 H3).
+- Criterio 6: si una ejecución programada falla, no se reintenta hasta el siguiente ciclo programado, y no bloquea las de otros usuarios — decisión explícita (§3), sin aviso por email en esta versión.
+- Criterio 7: "ruta local" como destino nunca es una ruta arbitraria del servidor que yo escriba a mano — siempre una carpeta propia de mi cuenta dentro de un directorio base que configura quien despliega la app (constitution §2, seguridad por defecto). Ver decisión 7 (§3).
+- Criterio 8: mismo aislamiento por usuario que el resto de la app.
+
 ## 2. Fuera de alcance
 
 - Otros formatos de fichero (CSV, Excel...) — se mantiene JSON, mismo criterio ya usado por el export RGPD existente (spec 001, decisión 2) y el único capaz de representar sin pérdida toda la estructura relacional (CSV aplanaría categorías/historiales). Diego lo propuso abierto a alternativas; se confirma JSON como parte de esta spec (§3).
@@ -65,7 +79,12 @@ Como usuario quiero poder enviar el fichero de exportación (H1) directamente a 
 - Exportar/importar sesiones activas, auditoría, o cualquier dato de autenticación — nunca formó parte del export RGPD y sigue sin formar parte de este.
 - **Importar desde Google Drive** (leer un fichero ya guardado allí) — H4 es solo de exportación/subida; H2 (importar) sigue funcionando exclusivamente subiendo un fichero `.json` desde el dispositivo, como hoy.
 - **Elegir carpeta de destino en Drive** — H4 usa siempre la misma carpeta propia de la app (criterio 4), sin selector de carpetas (Google Picker); si en el futuro se pide poder elegir, es una spec/decisión aparte.
-- **Copias de seguridad automáticas/periódicas a Drive** — H4 es un envío manual bajo demanda (botón), no una tarea programada.
+- **Copias de seguridad automáticas/periódicas a Drive** — H4 (envío manual bajo demanda) no cubre esto; a partir de esta revisión de la spec pasa a cubrirlo H5.
+- **Elegir una ruta arbitraria del sistema de ficheros del servidor** (H5) — el destino "ruta local" siempre escribe dentro de la carpeta propia del usuario bajo el directorio base configurado por quien despliega la app; nunca una ruta que el usuario introduzca a mano (H5 criterio 7).
+- **Aviso por email si falla una exportación programada** (H5) — decisión explícita (§3); queda para una spec futura si se prioriza.
+- **Varias programaciones simultáneas** (H5) — p. ej. una diaria a Drive y otra semanal al servidor: una única configuración activa por usuario, mismo criterio que la importación automática de Google Sheets (spec 026).
+- **Elegir zona horaria** (H5) — la hora programada se interpreta en la zona horaria del servidor; sin selector, ver decisión 9 (§3).
+- **Que la exportación programada dispare automáticamente un import** (H2) — H5 es solo de escritura/exportación, no cruza con H2 de ninguna forma.
 
 ## 3. Decisiones tomadas directamente con Diego
 
@@ -75,6 +94,9 @@ Como usuario quiero poder enviar el fichero de exportación (H1) directamente a 
 4. **H4 (Google Drive) se añade como opción extra, no sustituye la descarga local** — se mantienen ambos botones.
 5. **H4 pide autorización de Drive por separado del login con Google**, no se amplía el scope del login existente — así solo los usuarios que vayan a usar esta función conceden ese permiso adicional, y no se cambia el comportamiento del login para el resto.
 6. **H4 usa el scope más restrictivo de Drive (`drive.file`)** — la app solo puede ver y gestionar los ficheros que ella misma crea, nunca el resto del Drive del usuario — y siempre la misma carpeta propia de la app, sin selector de carpetas.
+7. **"Ruta local" (H5) = una carpeta en el servidor donde corre la app, no en el dispositivo de Diego.** Un proceso programado en el backend no tiene ninguna forma de escribir en el ordenador/móvil de Diego — solo puede escribir en el disco del servidor, exactamente igual que ya hace `deploy/backup.sh` con los volcados de Postgres. Se documenta explícitamente para que quede claro desde la spec, no como un descubrimiento a mitad de implementación.
+8. **Fallo de una ejecución programada: solo queda registrado, se reintenta en el siguiente ciclo — sin aviso por email en esta versión.** Mismo criterio ya aceptado para la importación automática de Google Sheets (spec 026); prioriza simplicidad, revisable si en el futuro se echa en falta.
+9. **Sin selector de zona horaria — la hora programada usa la zona horaria del servidor.** App autoalojada de un único usuario (Diego); si el servidor cambia de zona horaria, es una decisión de despliegue, no de esta feature.
 
 ---
-**Siguiente paso:** revisar esta spec (incluyendo H4) con Diego; con su aprobación (o los ajustes que pida), se amplía `plan.md` con el diseño técnico de H4 (nueva tabla para el token de Drive, flujo OAuth de conexión/desconexión, endpoint de subida, credenciales de Google Cloud Console que Diego debe crear).
+**Siguiente paso:** revisar esta spec (incluyendo H4 y H5) con Diego; con su aprobación (o los ajustes que pida), se amplía `plan.md` con el diseño técnico de H5 (tabla de configuración de programación, barrido periódico/scheduler, endpoints, directorio local namespaced por usuario, UI en `BackupPage.tsx`). H4 ya tiene su diseño técnico completo en `plan.md` §9.

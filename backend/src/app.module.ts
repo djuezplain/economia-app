@@ -19,6 +19,7 @@ import { GoogleDriveModule } from './google-drive/google-drive.module.js';
 import { StockImportModule } from './stock-import/stock-import.module.js';
 import { ReceiptImportModule } from './receipt-import/receipt-import.module.js';
 import { GroceriesModule } from './groceries/groceries.module.js';
+import { ScheduledExportsModule } from './scheduled-exports/scheduled-exports.module.js';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { GroceriesModule } from './groceries/groceries.module.js';
     StockImportModule,
     ReceiptImportModule,
     GroceriesModule,
+    ScheduledExportsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

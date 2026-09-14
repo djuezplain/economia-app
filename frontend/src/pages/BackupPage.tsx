@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { exportAccountData } from '../api/users';
 import { confirmDataImport, previewDataImport, DATA_TABLE_LABELS } from '../api/data-import';
 import type { DataImportSummary } from '../api/data-import';
 import { disconnectDrive, driveConnectUrl, exportToDrive, getDriveConnectionStatus } from '../api/google-drive';
+import { disableScheduledExport, getScheduledExport, saveScheduledExport } from '../api/scheduled-exports';
+import type { ScheduleDestination, ScheduleFrequency, ScheduledExportConfig } from '../api/scheduled-exports';
 import { ApiError } from '../api/client';
 
 /**
@@ -15,8 +17,13 @@ import { ApiError } from '../api/client';
  * de vuelta en modo fusión/aditivo (H2 — selecciona fichero → vista previa
  * automática → confirmar, mismo patrón de dos pasos que `ImportPage`).
  * H4 añade el envío a Google Drive como opción extra de exportación, sin
- * quitar la descarga local.
+ * quitar la descarga local. H5 añade poder programar que H1/H4 se repitan
+ * solas, con periodicidad/hora/destino elegidos por el usuario.
  */
+
+// Spec 032 H5, plan.md §11.9: mismo índice que `Date.getDay()` (0 = domingo), que es lo que espera `dayOfWeek` en el backend.
+const WEEKDAY_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const MONTH_DAYS = Array.from({ length: 28 }, (_, i) => i + 1);
 
 // Spec 032 H4, plan.md §9.5: `error` que puede llegar en `GET
 // /auth/drive/callback → /backup?driveConnected=0&error=...`.
@@ -43,6 +50,20 @@ export function BackupPage() {
   const [driveExportLink, setDriveExportLink] = useState<string | null>(null);
   const [isDisconnectingDrive, setIsDisconnectingDrive] = useState(false);
   const [driveDisconnectError, setDriveDisconnectError] = useState<string | null>(null);
+
+  // Exportación programada (H5).
+  const [scheduledExport, setScheduledExport] = useState<ScheduledExportConfig | null>(null);
+  const [scheduleLoadError, setScheduleLoadError] = useState<string | null>(null);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleFrequency, setScheduleFrequency] = useState<ScheduleFrequency>('DAILY');
+  const [scheduleDayOfWeek, setScheduleDayOfWeek] = useState(1);
+  const [scheduleDayOfMonth, setScheduleDayOfMonth] = useState(1);
+  const [scheduleTimeOfDay, setScheduleTimeOfDay] = useState('03:00');
+  const [scheduleDestination, setScheduleDestination] = useState<ScheduleDestination>('LOCAL');
+  const [scheduleLocalSubfolder, setScheduleLocalSubfolder] = useState('');
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const [saveScheduleError, setSaveScheduleError] = useState<string | null>(null);
+  const [isDisablingSchedule, setIsDisablingSchedule] = useState(false);
 
   // Importar (H2).
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -122,6 +143,68 @@ export function BackupPage() {
 
   function handleConnectDrive() {
     window.location.href = driveConnectUrl();
+  }
+
+  async function loadScheduledExport() {
+    setScheduleLoadError(null);
+    try {
+      const config = await getScheduledExport();
+      setScheduledExport(config);
+      if (config) {
+        setScheduleEnabled(config.enabled);
+        setScheduleFrequency(config.frequency);
+        setScheduleDayOfWeek(config.dayOfWeek ?? 1);
+        setScheduleDayOfMonth(config.dayOfMonth ?? 1);
+        setScheduleTimeOfDay(config.timeOfDay);
+        setScheduleDestination(config.destination);
+        setScheduleLocalSubfolder(config.localSubfolder ?? '');
+      }
+    } catch (err) {
+      setScheduleLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar la exportación programada.');
+    }
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void loadScheduledExport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  async function handleSaveSchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaveScheduleError(null);
+    setIsSavingSchedule(true);
+    try {
+      const saved = await saveScheduledExport({
+        enabled: scheduleEnabled,
+        frequency: scheduleFrequency,
+        timeOfDay: scheduleTimeOfDay,
+        destination: scheduleDestination,
+        ...(scheduleFrequency === 'WEEKLY' ? { dayOfWeek: scheduleDayOfWeek } : {}),
+        ...(scheduleFrequency === 'MONTHLY' ? { dayOfMonth: scheduleDayOfMonth } : {}),
+        ...(scheduleDestination === 'LOCAL' && scheduleLocalSubfolder ? { localSubfolder: scheduleLocalSubfolder } : {}),
+      });
+      setScheduledExport(saved);
+    } catch (err) {
+      setSaveScheduleError(err instanceof ApiError ? err.message : 'No se ha podido guardar la exportación programada.');
+    } finally {
+      setIsSavingSchedule(false);
+    }
+  }
+
+  /** H5 criterio 4: desactiva sin perder la configuración ya introducida en el formulario. */
+  async function handleDisableSchedule() {
+    setSaveScheduleError(null);
+    setIsDisablingSchedule(true);
+    try {
+      await disableScheduledExport();
+      setScheduleEnabled(false);
+      setScheduledExport((prev) => (prev ? { ...prev, enabled: false } : prev));
+    } catch (err) {
+      setSaveScheduleError(err instanceof ApiError ? err.message : 'No se ha podido desactivar la exportación programada.');
+    } finally {
+      setIsDisablingSchedule(false);
+    }
   }
 
   async function handleExportToDrive() {
@@ -290,6 +373,147 @@ export function BackupPage() {
       </section>
 
       <section>
+        <h2>Exportación programada</h2>
+        <div className="card elev-sm">
+          <p className="card-body">
+            Programa que la exportación completa (mismo contenido que "Exportar todos tus datos") se guarde sola,
+            con la periodicidad, hora y destino que elijas.
+          </p>
+
+          {scheduleLoadError && <p role="alert">{scheduleLoadError}</p>}
+
+          <form onSubmit={(e) => void handleSaveSchedule(e)}>
+            <div className="field">
+              <label htmlFor="schedule-enabled">
+                <input
+                  id="schedule-enabled"
+                  type="checkbox"
+                  checked={scheduleEnabled}
+                  onChange={(e) => setScheduleEnabled(e.target.checked)}
+                />{' '}
+                Activada
+              </label>
+            </div>
+
+            <div className="field">
+              <label htmlFor="schedule-frequency">Periodicidad</label>
+              <select
+                id="schedule-frequency"
+                className="input"
+                value={scheduleFrequency}
+                onChange={(e) => setScheduleFrequency(e.target.value as ScheduleFrequency)}
+              >
+                <option value="DAILY">Diaria</option>
+                <option value="WEEKLY">Semanal</option>
+                <option value="MONTHLY">Mensual</option>
+              </select>
+            </div>
+
+            {scheduleFrequency === 'WEEKLY' && (
+              <div className="field">
+                <label htmlFor="schedule-day-of-week">Día de la semana</label>
+                <select
+                  id="schedule-day-of-week"
+                  className="input"
+                  value={scheduleDayOfWeek}
+                  onChange={(e) => setScheduleDayOfWeek(Number(e.target.value))}
+                >
+                  {WEEKDAY_LABELS.map((label, index) => (
+                    <option key={label} value={index}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {scheduleFrequency === 'MONTHLY' && (
+              <div className="field">
+                <label htmlFor="schedule-day-of-month">Día del mes</label>
+                <select
+                  id="schedule-day-of-month"
+                  className="input"
+                  value={scheduleDayOfMonth}
+                  onChange={(e) => setScheduleDayOfMonth(Number(e.target.value))}
+                >
+                  {MONTH_DAYS.map((day) => (
+                    <option key={day} value={day}>
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="field">
+              <label htmlFor="schedule-time">Hora</label>
+              <input
+                id="schedule-time"
+                type="time"
+                className="input"
+                value={scheduleTimeOfDay}
+                onChange={(e) => setScheduleTimeOfDay(e.target.value)}
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="schedule-destination">Destino</label>
+              <select
+                id="schedule-destination"
+                className="input"
+                value={scheduleDestination}
+                onChange={(e) => setScheduleDestination(e.target.value as ScheduleDestination)}
+              >
+                <option value="LOCAL">Carpeta en el servidor</option>
+                <option value="DRIVE" disabled={!isDriveConnected}>
+                  Google Drive{!isDriveConnected ? ' (conecta Drive primero)' : ''}
+                </option>
+              </select>
+            </div>
+
+            {scheduleDestination === 'LOCAL' && (
+              <div className="field">
+                <label htmlFor="schedule-subfolder">Subcarpeta (opcional)</label>
+                <input
+                  id="schedule-subfolder"
+                  className="input"
+                  value={scheduleLocalSubfolder}
+                  onChange={(e) => setScheduleLocalSubfolder(e.target.value)}
+                />
+              </div>
+            )}
+
+            {saveScheduleError && <p role="alert">{saveScheduleError}</p>}
+
+            <div>
+              <button type="submit" className="btn btn-primary" disabled={isSavingSchedule}>
+                {isSavingSchedule ? 'Guardando…' : 'Guardar'}
+              </button>{' '}
+              {scheduledExport?.enabled && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={isDisablingSchedule}
+                  onClick={() => void handleDisableSchedule()}
+                >
+                  {isDisablingSchedule ? 'Desactivando…' : 'Desactivar'}
+                </button>
+              )}
+            </div>
+          </form>
+
+          {scheduledExport && (
+            <p role={scheduledExport.lastRunError ? 'alert' : 'status'}>
+              Última ejecución:{' '}
+              {scheduledExport.lastRunAt
+                ? `${formatDateTime(scheduledExport.lastRunAt)} — ${scheduledExport.lastRunError ?? 'correcta'}`
+                : 'todavía no se ha ejecutado.'}
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section>
         <h2>Importar datos</h2>
         <p>
           Sube un fichero exportado antes (de tu propia cuenta) para añadir sus datos a los que ya tienes. Nunca
@@ -326,6 +550,10 @@ export function BackupPage() {
       </section>
     </main>
   );
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('es-ES');
 }
 
 function DataImportSummaryTable({ summary }: { summary: DataImportSummary }) {
