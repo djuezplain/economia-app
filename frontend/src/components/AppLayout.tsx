@@ -74,6 +74,7 @@ const NAV_ITEMS = [
       { to: '/tickets/importar', end: true, label: 'Importar ticket', icon: '📷' },
       { to: '/tickets', end: true, label: 'Historial', icon: '📋' },
       { to: '/tickets/productos', end: false, label: 'Productos', icon: '⚖️' },
+      { to: '/tickets/cesta', end: false, label: 'Cesta de la compra', icon: '🛒' },
     ],
   },
   { to: '/import', end: false, label: 'Importar Excel', icon: '📥' },

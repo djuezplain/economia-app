@@ -8,7 +8,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
-import { products, receiptLines, receipts, supermarkets, users } from '../src/db/schema/index.js';
+import { products, receiptLines, receipts, shoppingListItems, shoppingLists, supermarkets, users } from '../src/db/schema/index.js';
 import { RateLimitGuard } from '../src/common/rate-limit.guard.js';
 
 describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 5', () => {
@@ -262,6 +262,47 @@ describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 
         .set('Authorization', `Bearer ${token}`)
         .send({ survivorId: ajeno.id, mergedIds: [loser.id] })
         .expect(404);
+    });
+
+    it('spec 039, T1.4: reasigna el item de una lista de la compra al superviviente', async () => {
+      const user = await createUser('merge-4@example.com');
+      const [survivor] = await db.insert(products).values({ userId: user.id, name: 'Leche entera' }).returning();
+      const [loser] = await db.insert(products).values({ userId: user.id, name: 'leche' }).returning();
+      const [list] = await db.insert(shoppingLists).values({ userId: user.id, name: 'Compra' }).returning();
+      await db.insert(shoppingListItems).values({ shoppingListId: list.id, productId: loser.id });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/products/merge')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ survivorId: survivor.id, mergedIds: [loser.id] })
+        .expect(201);
+
+      const items = await db.select().from(shoppingListItems).where(eq(shoppingListItems.shoppingListId, list.id));
+      expect(items).toHaveLength(1);
+      expect(items[0].productId).toBe(survivor.id);
+    });
+
+    it('spec 039, T1.4: si la lista ya tiene el superviviente, el item del perdedor se borra en vez de duplicar', async () => {
+      const user = await createUser('merge-5@example.com');
+      const [survivor] = await db.insert(products).values({ userId: user.id, name: 'Leche entera' }).returning();
+      const [loser] = await db.insert(products).values({ userId: user.id, name: 'leche' }).returning();
+      const [list] = await db.insert(shoppingLists).values({ userId: user.id, name: 'Compra' }).returning();
+      await db.insert(shoppingListItems).values([
+        { shoppingListId: list.id, productId: survivor.id },
+        { shoppingListId: list.id, productId: loser.id },
+      ]);
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/products/merge')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ survivorId: survivor.id, mergedIds: [loser.id] })
+        .expect(201);
+
+      const items = await db.select().from(shoppingListItems).where(eq(shoppingListItems.shoppingListId, list.id));
+      expect(items).toHaveLength(1);
+      expect(items[0].productId).toBe(survivor.id);
     });
   });
 
