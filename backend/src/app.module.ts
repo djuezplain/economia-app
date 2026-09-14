@@ -20,6 +20,7 @@ import { StockImportModule } from './stock-import/stock-import.module.js';
 import { ReceiptImportModule } from './receipt-import/receipt-import.module.js';
 import { GroceriesModule } from './groceries/groceries.module.js';
 import { ScheduledExportsModule } from './scheduled-exports/scheduled-exports.module.js';
+import { ShoppingListsModule } from './shopping-lists/shopping-lists.module.js';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ScheduledExportsModule } from './scheduled-exports/scheduled-exports.mo
     ReceiptImportModule,
     GroceriesModule,
     ScheduledExportsModule,
+    ShoppingListsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],
