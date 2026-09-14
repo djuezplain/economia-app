@@ -68,6 +68,11 @@ export function getProductPrices(productId: string): Promise<ProductPrice[]> {
   return api.get<ProductPrice[]>(`/products/${productId}/prices`);
 }
 
+/** Spec 038 (H1): fusiona `mergedIds` en `survivorId` — sus tickets pasan a contar como del superviviente y los demás se borran. */
+export function mergeProducts(survivorId: string, mergedIds: string[]): Promise<Product> {
+  return api.post<Product>('/products/merge', { survivorId, mergedIds });
+}
+
 export function listReceipts(): Promise<ReceiptSummary[]> {
   return api.get<ReceiptSummary[]>('/receipts');
 }

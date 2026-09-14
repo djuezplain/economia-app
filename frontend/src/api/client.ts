@@ -2,10 +2,13 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localho
 
 export class ApiError extends Error {
   status: number;
+  /** Cuerpo JSON completo del error — p. ej. `duplicateProductId` en el 409 de fusión de productos (spec 038). */
+  body: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, body?: unknown) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -64,7 +67,7 @@ async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }));
-    throw new ApiError(res.status, body.message ?? 'Error de red');
+    throw new ApiError(res.status, body.message ?? 'Error de red', body);
   }
 
   if (res.status === 204) return undefined as T;
