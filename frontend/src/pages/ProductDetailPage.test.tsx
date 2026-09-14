@@ -62,6 +62,18 @@ describe('ProductDetailPage', () => {
     expect(within(row).getByRole('link', { name: 'Ver ticket' })).toHaveAttribute('href', '/tickets/r1');
   });
 
+  it('en una línea a peso (kg) la tabla de precios muestra el importe, no el precio por kg', async () => {
+    vi.spyOn(groceriesApi, 'getProductPrices').mockResolvedValue([
+      { receiptId: 'r1', supermarketId: 's1', supermarketName: 'Mercadona', date: '2026-04-01', unit: 'kg', pricePerUnit: '2.500', amount: '0.35' },
+    ]);
+
+    renderPage();
+
+    const row = await screen.findByRole('row', { name: /Mercadona/ });
+    expect(row).toHaveTextContent('0.35 €');
+    expect(row).not.toHaveTextContent('2.500 €');
+  });
+
   it('editar el nombre y guardar llama a updateProduct', async () => {
     const updateSpy = vi.spyOn(groceriesApi, 'updateProduct').mockResolvedValue({ id: 'p1', name: 'Chocolate Classic Corregido' });
 
