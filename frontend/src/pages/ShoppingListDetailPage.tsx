@@ -5,11 +5,13 @@ import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { addShoppingListItem, getShoppingList, removeShoppingListItem, renameShoppingList } from '../api/shopping-lists';
 import type { ShoppingListDetail } from '../api/shopping-lists';
-import { searchProducts } from '../api/groceries';
+import { getProductPrices, searchProducts } from '../api/groceries';
 import type { Product } from '../api/groceries';
 import { ApiError } from '../api/client';
+import { computeBasketSimulation } from './basket-simulation.calculations';
+import type { BasketSimulation, MixedOption, SingleSupermarketOption } from './basket-simulation.calculations';
 
-/** Spec 039, plan.md §5 (H1): renombrar la lista y gestionar sus productos. */
+/** Spec 039, plan.md §5 (H1-H2): renombrar la lista, gestionar sus productos y generar la simulación. */
 export function ShoppingListDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -30,6 +32,10 @@ export function ShoppingListDetailPage() {
 
   const [removingItemId, setRemovingItemId] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+
+  const [simulation, setSimulation] = useState<BasketSimulation | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   function loadList() {
     if (!id) return;
@@ -99,6 +105,23 @@ export function ShoppingListDetailPage() {
       setRemoveError(err instanceof ApiError ? err.message : 'No se ha podido quitar el producto.');
     } finally {
       setRemovingItemId(null);
+    }
+  }
+
+  /** H2 criterio 8: se recalcula al vuelo con los precios más recientes disponibles en ese momento, sin guardar histórico. */
+  async function handleGenerate() {
+    if (!list || list.items.length === 0) return;
+    setGenerateError(null);
+    setIsGenerating(true);
+    try {
+      const prices = await Promise.all(list.items.map((item) => getProductPrices(item.productId)));
+      setSimulation(
+        computeBasketSimulation(list.items.map((item, index) => ({ productId: item.productId, productName: item.productName, prices: prices[index] }))),
+      );
+    } catch (err) {
+      setGenerateError(err instanceof ApiError ? err.message : 'No se ha podido generar la simulación.');
+    } finally {
+      setIsGenerating(false);
     }
   }
 
@@ -196,8 +219,76 @@ export function ShoppingListDetailPage() {
               ))}
             </ul>
           )}
+
+          <h2>Simulación</h2>
+          <button type="button" className="btn btn-primary" disabled={isGenerating || list.items.length === 0} onClick={() => void handleGenerate()}>
+            {isGenerating ? 'Generando…' : 'Generar'}
+          </button>
+          {generateError && <p role="alert">{generateError}</p>}
+
+          {simulation && (
+            <>
+              {simulation.missingProducts.length > 0 && (
+                <p role="status">
+                  Sin datos de precio para: {simulation.missingProducts.map((product) => product.productName).join(', ')}. No cuentan en los
+                  totales.
+                </p>
+              )}
+              {!simulation.cheapestSingle && <p role="status">Ningún supermercado tiene precio de todos los productos con datos.</p>}
+
+              {simulation.cheapestSingle && <SingleOptionSection title="Más barato (cesta única)" option={simulation.cheapestSingle} />}
+              {simulation.mostExpensiveSingle && <SingleOptionSection title="Más caro (cesta única)" option={simulation.mostExpensiveSingle} />}
+              {simulation.cheapestMixed && <MixedOptionSection title="Opción mixta más barata" option={simulation.cheapestMixed} />}
+              {simulation.fewestStoresMixed && <MixedOptionSection title="Opción mixta con menos súpers" option={simulation.fewestStoresMixed} />}
+            </>
+          )}
         </>
       )}
     </main>
+  );
+}
+
+function SingleOptionSection({ title, option }: { title: string; option: SingleSupermarketOption }) {
+  return (
+    <>
+      <h3>
+        {title}: {option.supermarketName} — {option.total} €
+      </h3>
+      <BasketLinesTable lines={option.lines} showSupermarket={false} />
+    </>
+  );
+}
+
+function MixedOptionSection({ title, option }: { title: string; option: MixedOption }) {
+  return (
+    <>
+      <h3>
+        {title}: {option.total} € en {option.storeCount} supermercado{option.storeCount === 1 ? '' : 's'}
+      </h3>
+      <BasketLinesTable lines={option.lines} showSupermarket />
+    </>
+  );
+}
+
+function BasketLinesTable({ lines, showSupermarket }: { lines: { productId: string; productName: string; supermarketName: string; pricePerUnit: string }[]; showSupermarket: boolean }) {
+  return (
+    <table className="table">
+      <thead>
+        <tr>
+          <th scope="col">Producto</th>
+          {showSupermarket && <th scope="col">Supermercado</th>}
+          <th scope="col">Precio/unidad</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lines.map((line) => (
+          <tr key={line.productId}>
+            <td>{line.productName}</td>
+            {showSupermarket && <td>{line.supermarketName}</td>}
+            <td>{line.pricePerUnit} €</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

@@ -9,7 +9,7 @@ import * as usersApi from '../api/users';
 import * as shoppingListsApi from '../api/shopping-lists';
 import type { ShoppingListDetail } from '../api/shopping-lists';
 import * as groceriesApi from '../api/groceries';
-import type { Product } from '../api/groceries';
+import type { Product, ProductPrice } from '../api/groceries';
 
 const PROFILE: usersApi.UserProfile = {
   id: 'user-1',
@@ -109,5 +109,63 @@ describe('ShoppingListDetailPage', () => {
 
     expect(shoppingListsApi.renameShoppingList).toHaveBeenCalledWith('l1', 'Compra del finde');
     expect(await screen.findByRole('heading', { name: 'Compra del finde' })).toBeInTheDocument();
+  });
+
+  function price(overrides: Partial<ProductPrice>): ProductPrice {
+    return { receiptId: 'r1', supermarketId: 's1', supermarketName: 'Mercadona', date: '2026-01-01', unit: 'unidad', pricePerUnit: '1.00', amount: '1.00', ...overrides };
+  }
+
+  describe('Generar simulación', () => {
+    const LIST_2_ITEMS: ShoppingListDetail = {
+      id: 'l1',
+      name: 'Compra semanal',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      items: [
+        { id: 'i1', productId: 'leche', productName: 'Leche' },
+        { id: 'i2', productId: 'pan', productName: 'Pan' },
+      ],
+    };
+
+    it('muestra los cuatro bloques con los totales correctos', async () => {
+      vi.spyOn(shoppingListsApi, 'getShoppingList').mockResolvedValue(LIST_2_ITEMS);
+      vi.spyOn(groceriesApi, 'getProductPrices').mockImplementation((productId) => {
+        if (productId === 'leche') {
+          return Promise.resolve([
+            price({ supermarketId: 'merc', supermarketName: 'Mercadona', pricePerUnit: '1.00' }),
+            price({ supermarketId: 'carr', supermarketName: 'Carrefour', pricePerUnit: '1.50' }),
+          ]);
+        }
+        return Promise.resolve([
+          price({ supermarketId: 'merc', supermarketName: 'Mercadona', pricePerUnit: '0.80' }),
+          price({ supermarketId: 'carr', supermarketName: 'Carrefour', pricePerUnit: '0.70' }),
+        ]);
+      });
+
+      renderPage();
+      await screen.findByText('Leche');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Generar' }));
+
+      expect(await screen.findByRole('heading', { name: 'Más barato (cesta única): Mercadona — 1.80 €' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Más caro (cesta única): Carrefour — 2.20 €' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Opción mixta más barata: 1.70 € en 2 supermercados' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Opción mixta con menos súpers/ })).toBeInTheDocument();
+    });
+
+    it('un producto sin datos de precio muestra el aviso y no cuenta en los totales', async () => {
+      vi.spyOn(shoppingListsApi, 'getShoppingList').mockResolvedValue(LIST_2_ITEMS);
+      vi.spyOn(groceriesApi, 'getProductPrices').mockImplementation((productId) => {
+        if (productId === 'leche') return Promise.resolve([price({ supermarketId: 'merc', supermarketName: 'Mercadona', pricePerUnit: '1.00' })]);
+        return Promise.resolve([]);
+      });
+
+      renderPage();
+      await screen.findByText('Leche');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Generar' }));
+
+      expect(await screen.findByText('Sin datos de precio para: Pan. No cuentan en los totales.')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Más barato (cesta única): Mercadona — 1.00 €' })).toBeInTheDocument();
+    });
   });
 });
