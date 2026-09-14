@@ -3,7 +3,7 @@ import { Decimal } from 'decimal.js';
 import { and, asc, eq, ilike, inArray } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
-import { products, receiptLines, receipts, supermarkets } from '../db/schema/index.js';
+import { products, receiptLines, receipts, shoppingListItems, supermarkets } from '../db/schema/index.js';
 import { normalizeText } from '../common/normalize-text.util.js';
 
 export type Product = typeof products.$inferSelect;
@@ -94,6 +94,27 @@ export class ProductsService {
 
     await this.db.transaction(async (tx) => {
       await tx.update(receiptLines).set({ productId: survivorId }).where(inArray(receiptLines.productId, ids));
+
+      // Spec 039, plan.md §3: `shoppingListItems.productId` también cascadea
+      // sobre `products` — sin esto, un producto fusionado desaparecería en
+      // silencio de cualquier lista de la compra que lo tuviera. Secuencial
+      // (no en paralelo): si dos productos fusionados están en la misma
+      // lista, el primero reasigna su item al superviviente y el segundo lo
+      // encuentra ya presente y se borra en vez de violar el índice único
+      // (shoppingListId, productId).
+      const affectedItems = await tx.select().from(shoppingListItems).where(inArray(shoppingListItems.productId, ids));
+      for (const item of affectedItems) {
+        const [existing] = await tx
+          .select()
+          .from(shoppingListItems)
+          .where(and(eq(shoppingListItems.shoppingListId, item.shoppingListId), eq(shoppingListItems.productId, survivorId)));
+        if (existing) {
+          await tx.delete(shoppingListItems).where(eq(shoppingListItems.id, item.id));
+        } else {
+          await tx.update(shoppingListItems).set({ productId: survivorId }).where(eq(shoppingListItems.id, item.id));
+        }
+      }
+
       await tx.delete(products).where(inArray(products.id, ids));
     });
 
