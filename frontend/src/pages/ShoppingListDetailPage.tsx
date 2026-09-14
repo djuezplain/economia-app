@@ -234,7 +234,12 @@ export function ShoppingListDetailPage() {
                   totales.
                 </p>
               )}
-              {!simulation.cheapestSingle && <p role="status">Ningún supermercado tiene precio de todos los productos con datos.</p>}
+              {simulation.cheapestMixed === null && (
+                <p role="status">No hay suficiente información para simular: ningún producto de la lista tiene precio en ningún ticket.</p>
+              )}
+              {simulation.cheapestMixed !== null && !simulation.cheapestSingle && (
+                <p role="status">Ningún supermercado tiene precio de todos los productos con datos.</p>
+              )}
 
               {simulation.cheapestSingle && <SingleOptionSection title="Más barato (cesta única)" option={simulation.cheapestSingle} />}
               {simulation.mostExpensiveSingle && <SingleOptionSection title="Más caro (cesta única)" option={simulation.mostExpensiveSingle} />}

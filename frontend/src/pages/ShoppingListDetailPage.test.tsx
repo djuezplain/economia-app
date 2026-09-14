@@ -169,5 +169,20 @@ describe('ShoppingListDetailPage', () => {
       expect(await screen.findByText('Sin datos de precio para: Pan. No cuentan en los totales.')).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Más barato (cesta única): Mercadona — 1.00 €' })).toBeInTheDocument();
     });
+
+    it('con todos los productos sin datos, avisa de que no hay suficiente información', async () => {
+      vi.spyOn(shoppingListsApi, 'getShoppingList').mockResolvedValue(LIST_2_ITEMS);
+      vi.spyOn(groceriesApi, 'getProductPrices').mockResolvedValue([]);
+
+      renderPage();
+      await screen.findByText('Leche');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Generar' }));
+
+      expect(
+        await screen.findByText('No hay suficiente información para simular: ningún producto de la lista tiene precio en ningún ticket.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /cesta única/ })).not.toBeInTheDocument();
+    });
   });
 });
