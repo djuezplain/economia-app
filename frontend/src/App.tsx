@@ -29,6 +29,7 @@ import { ReceiptDetailPage } from './pages/ReceiptDetailPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 import { ShoppingListsPage } from './pages/ShoppingListsPage';
+import { ShoppingListDetailPage } from './pages/ShoppingListDetailPage';
 
 function App() {
   return (
@@ -55,6 +56,7 @@ function App() {
             <Route path="/tickets/importar" element={<ReceiptImportPage />} />
             <Route path="/tickets/productos/:id" element={<ProductDetailPage />} />
             <Route path="/tickets/productos" element={<ProductsPage />} />
+            <Route path="/tickets/cesta/:id" element={<ShoppingListDetailPage />} />
             <Route path="/tickets/cesta" element={<ShoppingListsPage />} />
             <Route path="/tickets/:id" element={<ReceiptDetailPage />} />
             <Route path="/tickets" element={<ReceiptsPage />} />
