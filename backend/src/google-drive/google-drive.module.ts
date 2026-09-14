@@ -22,5 +22,9 @@ import { GoogleDriveService } from './google-drive.service.js';
   imports: [AuthModule, AuthGuardModule, UsersModule],
   controllers: [GoogleDriveOAuthController, GoogleDriveController],
   providers: [GoogleDriveService, GoogleDriveConfiguredGuard],
+  // Spec 032 H5, plan.md §11.8: la exportación programada con destino
+  // Drive (ScheduledExportsModule) reutiliza `exportToDrive()`/`isConnected()`
+  // tal cual, sin duplicar nada de H4.
+  exports: [GoogleDriveService],
 })
 export class GoogleDriveModule {}

@@ -30,3 +30,8 @@ coverage/
 
 # Despliegue (Raspberry Pi, ver deploy/README.md)
 /backups/
+
+# Spec 032 H5: exportaciones programadas con destino "carpeta en el
+# servidor" (dev y test) — ver backend/.env(.test), SCHEDULED_EXPORT_LOCAL_DIR.
+backend/scheduled-exports/
+backend/scheduled-exports-test/

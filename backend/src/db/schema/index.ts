@@ -5,3 +5,4 @@ export * from './wealth.schema.js';
 export * from './import.schema.js';
 export * from './google-drive.schema.js';
 export * from './groceries.schema.js';
+export * from './scheduled-export.schema.js';

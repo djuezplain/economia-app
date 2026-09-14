@@ -269,3 +269,15 @@ docker compose logs backend | tail -20
 Desde la app (**Copia de seguridad**), pulsa **Conectar Google Drive**, acepta el aviso de "app no verificada" del paso 10.1, y confirma el permiso. Prueba **Guardar en Google Drive** y comprueba que aparece el fichero en tu Drive, dentro de la carpeta "Economía App".
 
 Para quitarlo más adelante: deja `DRIVE_TOKEN_ENCRYPTION_KEY` vacío y reconstruye (`docker compose up -d --build backend`) — vuelve a responder 503 de forma controlada, sin afectar al resto de la app.
+
+## 11. Exportación programada (opcional)
+
+Spec 032, H5. Desde **Copia de seguridad**, puedes programar que la exportación completa (§10, mismo contenido) se guarde sola, con la periodicidad, hora y destino que elijas — una carpeta en la propia Raspberry Pi, o tu Google Drive (§10, si ya lo has conectado).
+
+El destino "carpeta en el servidor" **no necesita ninguna credencial** — funciona directamente. `docker-compose.yml` ya monta `./scheduled-exports` (junto a `backups/`, mismo criterio) como carpeta del host, así que los ficheros sobreviven a recrear el contenedor y se pueden copiar con `scp`, igual que las copias de Postgres (§6):
+
+```bash
+ls scheduled-exports/          # una subcarpeta por usuario (su id)
+```
+
+No hace falta ningún paso adicional en el `.env` — `SCHEDULED_EXPORT_LOCAL_DIR` ya tiene un valor por defecto que coincide con ese volumen. Los ficheros de más de 14 días se purgan solos en cada ejecución (misma retención que `backup.sh`, §6).

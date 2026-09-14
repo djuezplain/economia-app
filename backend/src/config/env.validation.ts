@@ -19,6 +19,12 @@ export const envValidationSchema = Joi.object({
   GOOGLE_DRIVE_CALLBACK_URL: Joi.string().uri().default('http://localhost:3000/auth/drive/callback'),
   DRIVE_TOKEN_ENCRYPTION_KEY: Joi.string().allow('').default(''),
   GOOGLE_CLOUD_VISION_API_KEY: Joi.string().allow('').default(''),
+  // Spec 032 H5, plan.md §11.2: directorio base para las exportaciones
+  // programadas con destino "carpeta en el servidor" — cada usuario
+  // escribe en su propia subcarpeta (`<dir>/<userId>/...`), nunca fuera de
+  // aquí. En producción, volumen de Docker (mismo criterio que `backups/`
+  // de `deploy/backup.sh`).
+  SCHEDULED_EXPORT_LOCAL_DIR: Joi.string().default('./scheduled-exports'),
   MAIL_FROM: Joi.string().email().required(),
   FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
 });
