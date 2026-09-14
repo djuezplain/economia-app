@@ -63,6 +63,27 @@ describe('ReceiptDetailPage', () => {
     expect(row).toHaveTextContent('1.300');
   });
 
+  it('en una línea a peso (kg) muestra el importe en la columna de precio/unidad, no el precio por kg', async () => {
+    vi.spyOn(groceriesApi, 'getReceipt').mockResolvedValue({
+      ...RECEIPT,
+      lines: [
+        { id: 'l1', description: 'CHOCOLATE CLASSIC', quantity: '1', unit: 'unidad', pricePerUnit: '1.300', amount: '1.30', productId: 'p1', productName: 'Chocolate Classic' },
+        { id: 'l2', description: 'PLATANO', quantity: '0.850', unit: 'kg', pricePerUnit: '1.99', amount: '1.69', productId: 'p2', productName: 'Plátano' },
+      ],
+    });
+
+    renderPage();
+    await screen.findByRole('heading', { name: /Mercadona/ });
+
+    const unidadRow = screen.getByRole('row', { name: /CHOCOLATE CLASSIC/ });
+    expect(unidadRow).toHaveTextContent('1.300 €');
+
+    const kgRow = screen.getByRole('row', { name: /PLATANO/ });
+    expect(kgRow).not.toHaveTextContent('1.99 €');
+    const amountCells = [...kgRow.querySelectorAll('td')].filter((cell) => cell.textContent === '1.69 €');
+    expect(amountCells).toHaveLength(2);
+  });
+
   it('editar, cambiar un campo y guardar llama a updateReceipt con el payload correcto', async () => {
     vi.spyOn(groceriesApi, 'getReceipt').mockResolvedValue(RECEIPT);
     const updateSpy = vi.spyOn(groceriesApi, 'updateReceipt').mockResolvedValue({ ...RECEIPT, printedTotal: '2.00' });
