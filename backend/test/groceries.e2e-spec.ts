@@ -209,6 +209,62 @@ describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 
     });
   });
 
+  describe('POST /products/merge (spec 038, H1)', () => {
+    it('reasigna las líneas de los productos fusionados al superviviente y borra los demás', async () => {
+      const user = await createUser('merge-1@example.com');
+      const [survivor] = await db.insert(products).values({ userId: user.id, name: 'Leche entera' }).returning();
+      const [loser] = await db.insert(products).values({ userId: user.id, name: 'leche' }).returning();
+      const [supermarket] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+      const [receipt] = await db.insert(receipts).values({ userId: user.id, supermarketId: supermarket.id, date: '2026-04-01' }).returning();
+      await db.insert(receiptLines).values({ receiptId: receipt.id, productId: loser.id, description: 'LECHE', quantity: '1', unit: 'unidad', pricePerUnit: '0.95', amount: '0.95' });
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .post('/products/merge')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ survivorId: survivor.id, mergedIds: [loser.id] })
+        .expect(201);
+      expect(res.body).toMatchObject({ id: survivor.id, name: 'Leche entera' });
+
+      const [line] = await db.select().from(receiptLines).where(eq(receiptLines.receiptId, receipt.id));
+      expect(line.productId).toBe(survivor.id);
+
+      const remaining = await db.select().from(products).where(eq(products.userId, user.id));
+      expect(remaining.map((p) => p.id)).toEqual([survivor.id]);
+    });
+
+    it('un producto fusionado que no existe o no es del usuario responde 404, sin cambiar nada', async () => {
+      const user = await createUser('merge-2@example.com');
+      const [survivor] = await db.insert(products).values({ userId: user.id, name: 'Leche entera' }).returning();
+      const other = await createUser('merge-2-otro@example.com');
+      const [ajeno] = await db.insert(products).values({ userId: other.id, name: 'leche' }).returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/products/merge')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ survivorId: survivor.id, mergedIds: [ajeno.id] })
+        .expect(404);
+
+      const stillThere = await db.select().from(products).where(eq(products.id, ajeno.id));
+      expect(stillThere).toHaveLength(1);
+    });
+
+    it('un survivorId que no es del usuario responde 404', async () => {
+      const owner = await createUser('merge-3-owner@example.com');
+      const [ajeno] = await db.insert(products).values({ userId: owner.id, name: 'Leche entera' }).returning();
+      const user = await createUser('merge-3@example.com');
+      const [loser] = await db.insert(products).values({ userId: user.id, name: 'leche' }).returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post('/products/merge')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ survivorId: ajeno.id, mergedIds: [loser.id] })
+        .expect(404);
+    });
+  });
+
   describe('GET /receipts', () => {
     it('lista los tickets del usuario, ordenados por fecha descendente', async () => {
       const user = await createUser('receipts-1@example.com');

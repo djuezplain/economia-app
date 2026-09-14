@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
 import { and, asc, eq, ilike, inArray } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
@@ -57,10 +57,47 @@ export class ProductsService {
     const ownProducts = await this.db.select().from(products).where(eq(products.userId, userId));
     const normalized = normalizeText(name);
     const duplicate = ownProducts.find((p) => p.id !== id && normalizeText(p.name) === normalized);
-    if (duplicate) throw new ConflictException('Ya tienes otro producto con ese nombre.');
+    if (duplicate) {
+      // Spec 038 (H2): se manda el id del duplicado en el cuerpo del error para
+      // que el frontend pueda ofrecer "fusionar con ese producto" en vez de solo
+      // bloquear — mismo `ConflictException`, cuerpo enriquecido.
+      throw new ConflictException({
+        message: 'Ya tienes otro producto con ese nombre.',
+        duplicateProductId: duplicate.id,
+      });
+    }
 
     const [updated] = await this.db.update(products).set({ name }).where(eq(products.id, id)).returning();
     return updated;
+  }
+
+  /**
+   * Spec 038, H1: fusiona uno o varios productos ("perdedores") en el
+   * `survivorId` ("superviviente") — reasigna sus líneas de ticket y los
+   * borra. `receiptLines.productId` es `restrict`, así que hay que reasignar
+   * antes de borrar; transacción para que sea atómico (mismo patrón que
+   * `ReceiptsService.update`).
+   */
+  async merge(userId: string, survivorId: string, mergedIds: string[]): Promise<Product> {
+    const ids = [...new Set(mergedIds)].filter((mergedId) => mergedId !== survivorId);
+    if (ids.length === 0) throw new BadRequestException('No hay ningún producto que fusionar.');
+
+    const rows = await this.db
+      .select()
+      .from(products)
+      .where(and(eq(products.userId, userId), inArray(products.id, [survivorId, ...ids])));
+    const rowById = new Map(rows.map((p) => [p.id, p]));
+    if (!rowById.has(survivorId)) throw new NotFoundException('El producto indicado no existe.');
+    for (const mergedId of ids) {
+      if (!rowById.has(mergedId)) throw new NotFoundException('El producto indicado no existe.');
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx.update(receiptLines).set({ productId: survivorId }).where(inArray(receiptLines.productId, ids));
+      await tx.delete(products).where(inArray(products.id, ids));
+    });
+
+    return rowById.get(survivorId)!;
   }
 
   /** H4 criterio 3: precio de un producto en cada supermercado/fecha, de más barato a más caro. */

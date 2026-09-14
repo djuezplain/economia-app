@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
-import { getProduct, getProductPrices, updateProduct } from '../api/groceries';
+import { getProduct, getProductPrices, mergeProducts, updateProduct } from '../api/groceries';
 import type { Product, ProductPrice } from '../api/groceries';
 import { ApiError } from '../api/client';
+
+/** Cuerpo del 409 que `ProductsService.update` manda cuando el nombre ya lo usa otro producto (spec 038, H2). */
+function duplicateProductIdFrom(body: unknown): string | null {
+  if (body && typeof body === 'object' && 'duplicateProductId' in body) {
+    const value = (body as { duplicateProductId: unknown }).duplicateProductId;
+    return typeof value === 'string' ? value : null;
+  }
+  return null;
+}
 
 const CHART_TICK_STYLE = { fontFamily: 'var(--font-body)', fontSize: 12, fill: 'var(--text)' };
 const CHART_TOOLTIP_STYLE = { fontFamily: 'var(--font-body)', fontSize: 13 };
@@ -72,6 +81,7 @@ function uniqueSupermarketNames(prices: ProductPrice[]): string[] {
  */
 export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const isOnline = useConnectivity();
 
@@ -86,8 +96,20 @@ export function ProductDetailPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [duplicate, setDuplicate] = useState<Product | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
+
   useEffect(() => {
     if (!isAuthenticated || !id) return;
+    // Reinicia el estado de fusión/error al cambiar de producto — necesario
+    // además de forma explícita porque, al fusionar y navegar al
+    // superviviente, la ruta sigue siendo `/tickets/productos/:id` con solo
+    // el id distinto: React Router no desmonta `ProductDetailPage`, así que
+    // sin esto el aviso de duplicado y el botón "Fusionando…" se quedarían
+    // pegados en pantalla tras la fusión.
+    setDuplicate(null);
+    setSaveError(null);
+    setIsMerging(false);
     getProduct(id)
       .then((p) => {
         setProduct(p);
@@ -102,14 +124,38 @@ export function ProductDetailPage() {
   async function handleSave() {
     if (!id) return;
     setSaveError(null);
+    setDuplicate(null);
     setIsSaving(true);
     try {
       const updated = await updateProduct(id, name);
       setProduct(updated);
     } catch (err) {
-      setSaveError(err instanceof ApiError ? err.message : 'No se ha podido guardar el nombre.');
+      const duplicateId = err instanceof ApiError && err.status === 409 ? duplicateProductIdFrom(err.body) : null;
+      if (duplicateId) {
+        try {
+          setDuplicate(await getProduct(duplicateId));
+        } catch {
+          setSaveError(err instanceof ApiError ? err.message : 'No se ha podido guardar el nombre.');
+        }
+      } else {
+        setSaveError(err instanceof ApiError ? err.message : 'No se ha podido guardar el nombre.');
+      }
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  /** Spec 038, H2: en vez de renombrar, el producto actual se fusiona en el duplicado ya existente. */
+  async function handleMergeIntoDuplicate() {
+    if (!id || !duplicate) return;
+    setSaveError(null);
+    setIsMerging(true);
+    try {
+      await mergeProducts(duplicate.id, [id]);
+      navigate(`/tickets/productos/${duplicate.id}`, { replace: true });
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : 'No se han podido fusionar los productos.');
+      setIsMerging(false);
     }
   }
 
@@ -167,6 +213,20 @@ export function ProductDetailPage() {
           <button type="button" className="btn btn-primary" disabled={isSaving || name.trim() === ''} onClick={() => void handleSave()}>
             {isSaving ? 'Guardando…' : 'Guardar'}
           </button>
+
+          {duplicate && (
+            <div role="alert">
+              <p>
+                Ya tienes otro producto llamado «{duplicate.name}». ¿Quieres fusionar «{product.name}» con ese producto en vez de renombrarlo?
+              </p>
+              <button type="button" className="btn btn-primary" disabled={isMerging} onClick={() => void handleMergeIntoDuplicate()}>
+                {isMerging ? 'Fusionando…' : 'Fusionar'}
+              </button>{' '}
+              <button type="button" className="btn btn-secondary" disabled={isMerging} onClick={() => setDuplicate(null)}>
+                Cancelar
+              </button>
+            </div>
+          )}
 
           {pricesError && <p role="alert">{pricesError}</p>}
 

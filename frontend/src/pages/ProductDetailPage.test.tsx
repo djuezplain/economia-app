@@ -138,6 +138,47 @@ describe('ProductDetailPage', () => {
     });
   });
 
+  describe('fusionar al renombrar a un duplicado (spec 038, H2)', () => {
+    it('un 409 con duplicateProductId ofrece fusionar con el producto existente', async () => {
+      const duplicate: Product = { id: 'p2', name: 'Nachos' };
+      vi.spyOn(groceriesApi, 'updateProduct').mockRejectedValue(
+        new ApiError(409, 'Ya tienes otro producto con ese nombre.', { message: 'Ya tienes otro producto con ese nombre.', duplicateProductId: 'p2' }),
+      );
+      vi.spyOn(groceriesApi, 'getProduct').mockImplementation((id: string) => Promise.resolve(id === 'p2' ? duplicate : PRODUCT));
+      const mergeSpy = vi.spyOn(groceriesApi, 'mergeProducts').mockResolvedValue(duplicate);
+
+      renderPage();
+      await screen.findByRole('heading', { name: 'Chocolate Classic', level: 1 });
+
+      const nameInput = screen.getByLabelText('Nombre');
+      await userEvent.clear(nameInput);
+      await userEvent.type(nameInput, 'Nachos');
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Ya tienes otro producto llamado «Nachos»');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Fusionar' }));
+
+      expect(mergeSpy).toHaveBeenCalledWith('p2', ['p1']);
+      expect(await screen.findByRole('heading', { name: 'Nachos', level: 1 })).toBeInTheDocument();
+    });
+
+    it('un 409 sin duplicateProductId (cuerpo antiguo) solo muestra el error, sin ofrecer fusionar', async () => {
+      vi.spyOn(groceriesApi, 'updateProduct').mockRejectedValue(new ApiError(409, 'Ya tienes otro producto con ese nombre.'));
+
+      renderPage();
+      await screen.findByRole('heading', { name: 'Chocolate Classic', level: 1 });
+
+      const nameInput = screen.getByLabelText('Nombre');
+      await userEvent.clear(nameInput);
+      await userEvent.type(nameInput, 'Nachos');
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Ya tienes otro producto con ese nombre.');
+      expect(screen.queryByRole('button', { name: 'Fusionar' })).not.toBeInTheDocument();
+    });
+  });
+
   describe('estadísticas (spec 037, H1)', () => {
     const MULTI_SUPERMARKET_PRICES: ProductPrice[] = [
       { receiptId: 'r1', supermarketId: 's1', supermarketName: 'Mercadona', date: '2026-03-01', unit: 'unidad', pricePerUnit: '1.00', amount: '1.00' },
