@@ -1,8 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { products, shoppingListItems, shoppingLists } from '../db/schema/index.js';
+import { isUniqueViolation } from '../common/db-errors.util.js';
 
 export type ShoppingList = typeof shoppingLists.$inferSelect;
 
@@ -93,6 +94,39 @@ export class ShoppingListsService {
   async remove(userId: string, id: string): Promise<void> {
     await this.findOwnOrThrow(userId, id);
     await this.db.delete(shoppingLists).where(eq(shoppingLists.id, id));
+  }
+
+  /**
+   * H1 criterio 2: añade un producto del catálogo del propio usuario a la
+   * lista. 404 si el producto no existe o no es suyo; 409 si ya está en la
+   * lista (índice único `shopping_list_items_list_product_unique`,
+   * H1 criterio 4) — se deja que la constraint SQL sea la fuente de verdad
+   * en vez de comprobarlo antes con una consulta aparte (misma condición de
+   * carrera que evita `isUniqueViolation` en el resto del proyecto).
+   */
+  async addItem(userId: string, shoppingListId: string, productId: string): Promise<ShoppingListItemDetail> {
+    await this.findOwnOrThrow(userId, shoppingListId);
+    const [product] = await this.db.select().from(products).where(and(eq(products.id, productId), eq(products.userId, userId)));
+    if (!product) throw new NotFoundException('El producto indicado no existe.');
+
+    try {
+      const [item] = await this.db.insert(shoppingListItems).values({ shoppingListId, productId }).returning();
+      return { id: item.id, productId: item.productId, productName: product.name };
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new ConflictException('Ese producto ya está en la lista.');
+      throw err;
+    }
+  }
+
+  /** H1 criterio 2: quita un producto de la lista. 404 si la lista o el item no son del usuario. */
+  async removeItem(userId: string, shoppingListId: string, itemId: string): Promise<void> {
+    await this.findOwnOrThrow(userId, shoppingListId);
+    const [item] = await this.db
+      .select()
+      .from(shoppingListItems)
+      .where(and(eq(shoppingListItems.id, itemId), eq(shoppingListItems.shoppingListId, shoppingListId)));
+    if (!item) throw new NotFoundException('El producto indicado no está en esta lista.');
+    await this.db.delete(shoppingListItems).where(eq(shoppingListItems.id, itemId));
   }
 
   private async findOwnOrThrow(userId: string, id: string): Promise<ShoppingList> {

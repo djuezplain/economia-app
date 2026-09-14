@@ -179,4 +179,101 @@ describe('Listas de la compra (e2e) — spec 039 H1', () => {
       expect(stillThere).toBeDefined();
     });
   });
+
+  describe('POST /shopping-lists/:id/items', () => {
+    it('añade un producto a la lista', async () => {
+      const user = await createUser('anadir@example.com');
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Leche' }).returning();
+      const [list] = await db.insert(shoppingLists).values({ userId: user.id, name: 'Compra' }).returning();
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer())
+        .post(`/shopping-lists/${list.id}/items`)
+        .set('Authorization', auth(token))
+        .send({ productId: product.id })
+        .expect(201);
+      expect(res.body.productName).toBe('Leche');
+    });
+
+    it('H1 criterio 4: el mismo producto dos veces → 409', async () => {
+      const user = await createUser('duplicado@example.com');
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Leche' }).returning();
+      const [list] = await db.insert(shoppingLists).values({ userId: user.id, name: 'Compra' }).returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .post(`/shopping-lists/${list.id}/items`)
+        .set('Authorization', auth(token))
+        .send({ productId: product.id })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/shopping-lists/${list.id}/items`)
+        .set('Authorization', auth(token))
+        .send({ productId: product.id })
+        .expect(409);
+    });
+
+    it('un producto de otro usuario → 404', async () => {
+      const owner = await createUser('propietario-item@example.com');
+      const other = await createUser('otro-item@example.com');
+      const [otherProduct] = await db.insert(products).values({ userId: other.id, name: 'Leche' }).returning();
+      const [list] = await db.insert(shoppingLists).values({ userId: owner.id, name: 'Compra' }).returning();
+      const token = await login(owner.email);
+
+      await request(app.getHttpServer())
+        .post(`/shopping-lists/${list.id}/items`)
+        .set('Authorization', auth(token))
+        .send({ productId: otherProduct.id })
+        .expect(404);
+    });
+
+    it('una lista ajena → 404', async () => {
+      const owner = await createUser('propietario-item-lista@example.com');
+      const other = await createUser('otro-item-lista@example.com');
+      const [product] = await db.insert(products).values({ userId: other.id, name: 'Leche' }).returning();
+      const [list] = await db.insert(shoppingLists).values({ userId: owner.id, name: 'Compra' }).returning();
+      const token = await login(other.email);
+
+      await request(app.getHttpServer())
+        .post(`/shopping-lists/${list.id}/items`)
+        .set('Authorization', auth(token))
+        .send({ productId: product.id })
+        .expect(404);
+    });
+  });
+
+  describe('DELETE /shopping-lists/:id/items/:itemId', () => {
+    it('quita un producto de la lista', async () => {
+      const user = await createUser('quitar@example.com');
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Leche' }).returning();
+      const [list] = await db.insert(shoppingLists).values({ userId: user.id, name: 'Compra' }).returning();
+      const [item] = await db.insert(shoppingListItems).values({ shoppingListId: list.id, productId: product.id }).returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .delete(`/shopping-lists/${list.id}/items/${item.id}`)
+        .set('Authorization', auth(token))
+        .expect(204);
+
+      const remaining = await db.query.shoppingListItems.findFirst({ where: (i, { eq }) => eq(i.id, item.id) });
+      expect(remaining).toBeUndefined();
+    });
+
+    it('un item de una lista ajena → 404, sin borrarlo', async () => {
+      const owner = await createUser('propietario-quitar@example.com');
+      const other = await createUser('otro-quitar@example.com');
+      const [product] = await db.insert(products).values({ userId: owner.id, name: 'Leche' }).returning();
+      const [list] = await db.insert(shoppingLists).values({ userId: owner.id, name: 'Compra' }).returning();
+      const [item] = await db.insert(shoppingListItems).values({ shoppingListId: list.id, productId: product.id }).returning();
+      const token = await login(other.email);
+
+      await request(app.getHttpServer())
+        .delete(`/shopping-lists/${list.id}/items/${item.id}`)
+        .set('Authorization', auth(token))
+        .expect(404);
+
+      const stillThere = await db.query.shoppingListItems.findFirst({ where: (i, { eq }) => eq(i.id, item.id) });
+      expect(stillThere).toBeDefined();
+    });
+  });
 });
