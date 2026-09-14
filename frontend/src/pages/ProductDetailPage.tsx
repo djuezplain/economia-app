@@ -290,7 +290,7 @@ export function ProductDetailPage() {
                 <tr>
                   <th scope="col">Supermercado</th>
                   <th scope="col">Fecha</th>
-                  <th scope="col">Precio</th>
+                  <th scope="col">Precio/unidad</th>
                   <th scope="col">Unidad</th>
                   <th scope="col">Ticket</th>
                 </tr>
@@ -300,8 +300,7 @@ export function ProductDetailPage() {
                   <tr key={`${price.receiptId}-${index}`}>
                     <td>{price.supermarketName}</td>
                     <td>{price.date}</td>
-                    {/* Líneas a peso (kg): mismo criterio que ReceiptDetailPage — el precio por unidad de báscula es poco fiable, se muestra el importe (el dato real cobrado) en su lugar. Estadísticas y gráfico de evolución siguen usando el precio por unidad, sin cambios (comparan precios entre supermercados, no importes de compras concretas). */}
-                    <td>{price.unit === 'kg' ? price.amount : price.pricePerUnit} €</td>
+                    <td>{price.pricePerUnit} €</td>
                     <td>{price.unit}</td>
                     <td>
                       <Link to={`/tickets/${price.receiptId}`}>Ver ticket</Link>
