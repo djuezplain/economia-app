@@ -225,7 +225,8 @@ export function ReceiptDetailPage() {
                   <td>{line.description}</td>
                   <td>{line.quantity}</td>
                   <td>{line.unit}</td>
-                  <td>{line.pricePerUnit} €</td>
+                  {/* Líneas a peso (kg): el precio por unidad de báscula es poco fiable/legible en el ticket, así que se muestra el importe (el dato real cobrado) en su lugar — el historial del producto (ProductDetailPage) sigue usando el precio por unidad, sin cambios. */}
+                  <td>{line.unit === 'kg' ? line.amount : line.pricePerUnit} €</td>
                   <td>{line.amount} €</td>
                 </tr>
               ))}
