@@ -238,8 +238,22 @@ export function ShoppingListDetailPage() {
 
               {simulation.cheapestSingle && <SingleOptionSection title="Más barato (cesta única)" option={simulation.cheapestSingle} />}
               {simulation.mostExpensiveSingle && <SingleOptionSection title="Más caro (cesta única)" option={simulation.mostExpensiveSingle} />}
-              {simulation.cheapestMixed && <MixedOptionSection title="Opción mixta más barata" option={simulation.cheapestMixed} />}
-              {simulation.fewestStoresMixed && <MixedOptionSection title="Opción mixta con menos súpers" option={simulation.fewestStoresMixed} />}
+              {simulation.cheapestMixed && (
+                <MixedOptionSection
+                  title="Opción mixta más barata"
+                  option={simulation.cheapestMixed}
+                  savingsVsTotal={simulation.cheapestSingle?.total}
+                  savingsVsLabel="la cesta única más barata"
+                />
+              )}
+              {simulation.fewestStoresMixed && (
+                <MixedOptionSection
+                  title="Opción mixta con menos súpers"
+                  option={simulation.fewestStoresMixed}
+                  diffVsTotal={simulation.cheapestMixed?.total}
+                  diffVsLabel="la opción mixta más barata"
+                />
+              )}
             </>
           )}
         </>
@@ -259,12 +273,43 @@ function SingleOptionSection({ title, option }: { title: string; option: SingleS
   );
 }
 
-function MixedOptionSection({ title, option }: { title: string; option: MixedOption }) {
+/**
+ * H2 criterios 3-4: la mixta más barata muestra el ahorro (importe y %) frente al total pasado
+ * en `savingsVsTotal` (la cesta única más barata); la mixta con menos súpers muestra la
+ * diferencia frente a `diffVsTotal` (la mixta más barata) — nunca las dos a la vez.
+ */
+function MixedOptionSection({
+  title,
+  option,
+  savingsVsTotal,
+  savingsVsLabel,
+  diffVsTotal,
+  diffVsLabel,
+}: {
+  title: string;
+  option: MixedOption;
+  savingsVsTotal?: string;
+  savingsVsLabel?: string;
+  diffVsTotal?: string;
+  diffVsLabel?: string;
+}) {
+  const savings = savingsVsTotal !== undefined ? parseFloat(savingsVsTotal) - parseFloat(option.total) : null;
+  const diff = diffVsTotal !== undefined ? parseFloat(option.total) - parseFloat(diffVsTotal) : null;
+
   return (
     <>
       <h3>
         {title}: {option.total} € en {option.storeCount} supermercado{option.storeCount === 1 ? '' : 's'}
       </h3>
+      {savings !== null && savingsVsLabel && (
+        <p>
+          Ahorras {savings.toFixed(2)} € ({parseFloat(savingsVsTotal!) > 0 ? ((savings / parseFloat(savingsVsTotal!)) * 100).toFixed(1) : '0.0'}%) frente
+          a {savingsVsLabel}.
+        </p>
+      )}
+      {diff !== null && diffVsLabel && (
+        <p>{diff > 0 ? `Cuesta ${diff.toFixed(2)} € más que ${diffVsLabel}.` : `Mismo precio que ${diffVsLabel}.`}</p>
+      )}
       <BasketLinesTable lines={option.lines} showSupermarket />
     </>
   );
