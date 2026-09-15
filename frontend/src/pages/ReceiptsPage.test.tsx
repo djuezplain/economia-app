@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReceiptsPage } from './ReceiptsPage';
@@ -43,6 +44,8 @@ describe('ReceiptsPage', () => {
     vi.restoreAllMocks();
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+    vi.spyOn(groceriesApi, 'listSupermarkets').mockResolvedValue([{ id: 's1', name: 'Mercadona' }]);
+    vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue([{ id: 'p1', name: 'Leche' }]);
   });
 
   function renderPage() {
@@ -73,5 +76,75 @@ describe('ReceiptsPage', () => {
 
     expect(await screen.findByText('Todavía no has importado ningún ticket.')).toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
+  it('muestra la suma de líneas junto al total impreso', async () => {
+    vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue(RECEIPTS);
+
+    renderPage();
+
+    expect(await screen.findByText('Mercadona · Suma de líneas: 20.00 €')).toBeInTheDocument();
+  });
+
+  describe('spec 040, H1: filtros', () => {
+    it('filtrar por supermercado llama a listReceipts con el filtro', async () => {
+      const listSpy = vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue(RECEIPTS);
+
+      renderPage();
+      await screen.findAllByRole('listitem');
+
+      await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 's1');
+
+      expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ supermarketId: 's1' }));
+    });
+
+    it('combina varios filtros a la vez', async () => {
+      const listSpy = vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue(RECEIPTS);
+
+      renderPage();
+      await screen.findAllByRole('listitem');
+
+      await userEvent.selectOptions(screen.getByLabelText('Producto'), 'p1');
+      await userEvent.type(screen.getByLabelText('Desde'), '2026-01-01');
+      await userEvent.type(screen.getByLabelText('Importe mínimo'), '5');
+
+      expect(listSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ productId: 'p1', dateFrom: '2026-01-01', amountMin: '5' }),
+      );
+    });
+
+    it('sin resultados con filtros activos, muestra un mensaje distinto del de "sin tickets"', async () => {
+      vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValueOnce(RECEIPTS).mockResolvedValueOnce([]);
+
+      renderPage();
+      await screen.findAllByRole('listitem');
+
+      await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 's1');
+
+      expect(await screen.findByText('No hay tickets con estos filtros.')).toBeInTheDocument();
+      expect(screen.queryByText('Todavía no has importado ningún ticket.')).not.toBeInTheDocument();
+    });
+
+    it('"Limpiar filtros" vuelve a listar sin ningún filtro', async () => {
+      const listSpy = vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue(RECEIPTS);
+
+      renderPage();
+      await screen.findAllByRole('listitem');
+
+      await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 's1');
+      expect(await screen.findByRole('button', { name: 'Limpiar filtros' })).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
+
+      expect(listSpy).toHaveBeenLastCalledWith({
+        supermarketId: undefined,
+        productId: undefined,
+        dateFrom: undefined,
+        dateTo: undefined,
+        amountMin: undefined,
+        amountMax: undefined,
+      });
+      expect(screen.queryByRole('button', { name: 'Limpiar filtros' })).not.toBeInTheDocument();
+    });
   });
 });
