@@ -26,6 +26,7 @@ const RECEIPTS: ReceiptSummary[] = [
     supermarketId: 's1',
     supermarketName: 'Mercadona',
     printedTotal: '20.00',
+    linesTotal: '20.00',
   },
   {
     id: 'r1',
@@ -33,6 +34,7 @@ const RECEIPTS: ReceiptSummary[] = [
     supermarketId: 's1',
     supermarketName: 'Mercadona',
     printedTotal: '10.00',
+    linesTotal: '10.00',
   },
 ];
 

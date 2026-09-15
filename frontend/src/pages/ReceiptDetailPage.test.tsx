@@ -26,6 +26,7 @@ const RECEIPT: ReceiptDetail = {
   supermarketId: 's1',
   supermarketName: 'Mercadona',
   printedTotal: '1.30',
+  linesTotal: '1.30',
   lines: [
     { id: 'l1', description: 'CHOCOLATE CLASSIC', quantity: '1', unit: 'unidad', pricePerUnit: '1.300', amount: '1.30', productId: 'p1', productName: 'Chocolate Classic' },
   ],
