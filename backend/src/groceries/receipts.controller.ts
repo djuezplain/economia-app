@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthGuard } from '../auth/guards/auth.guard.js';
 import { RequireActiveUserGuard } from '../auth/guards/require-active-user.guard.js';
 import type { RequestUser } from '../auth/guards/require-active-user.guard.js';
 import { ConfirmReceiptDto } from '../receipt-import/dto/confirm-receipt.dto.js';
+import { ListReceiptsQueryDto } from './dto/list-receipts-query.dto.js';
 import { ReceiptsService } from './receipts.service.js';
 
 /**
@@ -20,8 +21,8 @@ export class ReceiptsController {
   constructor(private readonly receiptsService: ReceiptsService) {}
 
   @Get()
-  list(@Req() req: Request & { user: RequestUser }) {
-    return this.receiptsService.list(req.user.id);
+  list(@Query() query: ListReceiptsQueryDto, @Req() req: Request & { user: RequestUser }) {
+    return this.receiptsService.list(req.user.id, query);
   }
 
   @Get(':id')

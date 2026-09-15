@@ -28,6 +28,27 @@ export interface ReceiptSummary {
   supermarketId: string;
   supermarketName: string;
   printedTotal: string | null;
+  /** Spec 040, plan.md §3: suma real de las líneas — el importe usado para filtrar, no `printedTotal` (puede ser `null`). */
+  linesTotal: string;
+}
+
+/** Spec 040, plan.md §1 (H1): filtros de `GET /receipts`, todos opcionales y combinables. */
+export interface ListReceiptsFilters {
+  supermarketId?: string;
+  productId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  amountMin?: string;
+  amountMax?: string;
+}
+
+function buildReceiptsQuery(filters: ListReceiptsFilters): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') params.set(key, value);
+  }
+  const query = params.toString();
+  return query ? `?${query}` : '';
 }
 
 export interface ReceiptLineDetail {
@@ -73,8 +94,8 @@ export function mergeProducts(survivorId: string, mergedIds: string[]): Promise<
   return api.post<Product>('/products/merge', { survivorId, mergedIds });
 }
 
-export function listReceipts(): Promise<ReceiptSummary[]> {
-  return api.get<ReceiptSummary[]>('/receipts');
+export function listReceipts(filters: ListReceiptsFilters = {}): Promise<ReceiptSummary[]> {
+  return api.get<ReceiptSummary[]>(`/receipts${buildReceiptsQuery(filters)}`);
 }
 
 export function getReceipt(id: string): Promise<ReceiptDetail> {
