@@ -1,10 +1,12 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { Decimal } from 'decimal.js';
+import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { products, receiptLines, receipts, supermarkets } from '../db/schema/index.js';
 import type { ConfirmReceiptDto } from '../receipt-import/dto/confirm-receipt.dto.js';
 import { resolveEntityRef } from '../receipt-import/resolve-entity-ref.util.js';
+import type { ListReceiptsQueryDto } from './dto/list-receipts-query.dto.js';
 
 export interface ReceiptSummary {
   id: string;
@@ -12,6 +14,8 @@ export interface ReceiptSummary {
   supermarketId: string;
   supermarketName: string;
   printedTotal: string | null;
+  /** Spec 040, plan.md §2: suma real de las líneas — el importe usado para filtrar (H1 criterio 4), no `printedTotal` (puede ser `null`). */
+  linesTotal: string;
 }
 
 export interface ReceiptLineDetail {
@@ -34,21 +38,75 @@ export interface ReceiptDetail extends ReceiptSummary {
 export class ReceiptsService {
   constructor(@Inject(DB) private readonly db: Database) {}
 
-  async list(userId: string): Promise<ReceiptSummary[]> {
-    const receiptRows = await this.db.select().from(receipts).where(eq(receipts.userId, userId)).orderBy(desc(receipts.date));
+  /**
+   * Spec 040, plan.md §2 (H1): filtros de `query`, todos opcionales y
+   * combinables con Y lógico (criterio 5). `supermarketId`/`dateFrom`/
+   * `dateTo` se aplican como condiciones SQL sobre `receipts`;
+   * `productId`/`amountMin`/`amountMax` se aplican en JS tras traer las
+   * líneas relacionadas — mismo criterio "sin joins SQL" que el resto del
+   * módulo (`ProductsService.getPrices`).
+   */
+  async list(userId: string, query: ListReceiptsQueryDto = {}): Promise<ReceiptSummary[]> {
+    if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) {
+      throw new BadRequestException('El rango de fechas no es válido: "dateFrom" es posterior a "dateTo".');
+    }
+    if (query.amountMin && query.amountMax && new Decimal(query.amountMin).greaterThan(query.amountMax)) {
+      throw new BadRequestException('El rango de importe no es válido: "amountMin" es mayor que "amountMax".');
+    }
+
+    const conditions = [eq(receipts.userId, userId)];
+    if (query.supermarketId) conditions.push(eq(receipts.supermarketId, query.supermarketId));
+    if (query.dateFrom) conditions.push(gte(receipts.date, query.dateFrom));
+    if (query.dateTo) conditions.push(lte(receipts.date, query.dateTo));
+
+    const receiptRows = await this.db
+      .select()
+      .from(receipts)
+      .where(and(...conditions))
+      .orderBy(desc(receipts.date));
     if (receiptRows.length === 0) return [];
 
     const supermarketIds = [...new Set(receiptRows.map((r) => r.supermarketId))];
     const supermarketRows = await this.db.select().from(supermarkets).where(inArray(supermarkets.id, supermarketIds));
     const supermarketById = new Map(supermarketRows.map((s) => [s.id, s]));
 
-    return receiptRows.map((receipt) => ({
-      id: receipt.id,
-      date: receipt.date,
-      supermarketId: receipt.supermarketId,
-      supermarketName: supermarketById.get(receipt.supermarketId)!.name,
-      printedTotal: receipt.printedTotal,
-    }));
+    const lineRows = await this.db
+      .select()
+      .from(receiptLines)
+      .where(
+        inArray(
+          receiptLines.receiptId,
+          receiptRows.map((r) => r.id),
+        ),
+      );
+    const linesByReceipt = new Map<string, (typeof lineRows)[number][]>();
+    for (const line of lineRows) {
+      const lines = linesByReceipt.get(line.receiptId) ?? [];
+      lines.push(line);
+      linesByReceipt.set(line.receiptId, lines);
+    }
+
+    const summaries = receiptRows.map((receipt) => {
+      const lines = linesByReceipt.get(receipt.id) ?? [];
+      const linesTotal = lines.reduce((sum, line) => sum.plus(line.amount), new Decimal(0)).toFixed(2);
+      return {
+        id: receipt.id,
+        date: receipt.date,
+        supermarketId: receipt.supermarketId,
+        supermarketName: supermarketById.get(receipt.supermarketId)!.name,
+        printedTotal: receipt.printedTotal,
+        linesTotal,
+        // Presencia del producto filtrado, para el filtro de `productId` (T1.3) — se calcula
+        // aquí porque `lines` ya está disponible, se descarta abajo si no se necesita.
+        hasFilteredProduct: query.productId ? lines.some((line) => line.productId === query.productId) : true,
+      };
+    });
+
+    return summaries
+      .filter((summary) => summary.hasFilteredProduct)
+      .filter((summary) => !query.amountMin || new Decimal(summary.linesTotal).greaterThanOrEqualTo(query.amountMin))
+      .filter((summary) => !query.amountMax || new Decimal(summary.linesTotal).lessThanOrEqualTo(query.amountMax))
+      .map(({ hasFilteredProduct: _hasFilteredProduct, ...summary }) => summary);
   }
 
   async getById(userId: string, receiptId: string): Promise<ReceiptDetail> {
@@ -68,6 +126,7 @@ export class ReceiptsService {
       supermarketId: receipt.supermarketId,
       supermarketName: supermarket.name,
       printedTotal: receipt.printedTotal,
+      linesTotal: lineRows.reduce((sum, line) => sum.plus(line.amount), new Decimal(0)).toFixed(2),
       lines: lineRows.map((line) => ({
         id: line.id,
         description: line.description,

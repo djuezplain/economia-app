@@ -320,6 +320,137 @@ describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 
       expect(res.body.map((r: { date: string }) => r.date)).toEqual(['2026-04-15', '2026-04-01']);
       expect(res.body[0].supermarketName).toBe('Mercadona');
     });
+
+    it('devuelve linesTotal (suma real de las líneas), no printedTotal, aunque este último sea null', async () => {
+      const user = await createUser('receipts-linestotal@example.com');
+      const [supermarket] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Leche' }).returning();
+      const [receipt] = await db.insert(receipts).values({ userId: user.id, supermarketId: supermarket.id, date: '2026-04-01', printedTotal: null }).returning();
+      await db.insert(receiptLines).values([
+        { receiptId: receipt.id, productId: product.id, description: 'LECHE', quantity: '2', unit: 'unidad', pricePerUnit: '1.00', amount: '1.00' },
+        { receiptId: receipt.id, productId: product.id, description: 'LECHE', quantity: '1', unit: 'unidad', pricePerUnit: '0.50', amount: '0.50' },
+      ]);
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer()).get('/receipts').set('Authorization', `Bearer ${token}`).expect(200);
+      expect(res.body[0].printedTotal).toBeNull();
+      expect(res.body[0].linesTotal).toBe('1.50');
+    });
+
+    describe('spec 040, H1: filtros', () => {
+      async function seedFiltrableReceipts(userId: string) {
+        const [mercadona] = await db.insert(supermarkets).values({ userId, name: 'Mercadona' }).returning();
+        const [carrefour] = await db.insert(supermarkets).values({ userId, name: 'Carrefour' }).returning();
+        const [leche] = await db.insert(products).values({ userId, name: 'Leche' }).returning();
+        const [pan] = await db.insert(products).values({ userId, name: 'Pan' }).returning();
+
+        const [r1] = await db.insert(receipts).values({ userId, supermarketId: mercadona.id, date: '2026-01-10', printedTotal: '10.00' }).returning();
+        await db.insert(receiptLines).values({ receiptId: r1.id, productId: leche.id, description: 'LECHE', quantity: '1', unit: 'unidad', pricePerUnit: '10.00', amount: '10.00' });
+
+        const [r2] = await db.insert(receipts).values({ userId, supermarketId: carrefour.id, date: '2026-02-10', printedTotal: '25.00' }).returning();
+        await db.insert(receiptLines).values({ receiptId: r2.id, productId: pan.id, description: 'PAN', quantity: '1', unit: 'unidad', pricePerUnit: '25.00', amount: '25.00' });
+
+        const [r3] = await db.insert(receipts).values({ userId, supermarketId: mercadona.id, date: '2026-03-10', printedTotal: '50.00' }).returning();
+        await db.insert(receiptLines).values([
+          { receiptId: r3.id, productId: leche.id, description: 'LECHE', quantity: '1', unit: 'unidad', pricePerUnit: '5.00', amount: '5.00' },
+          { receiptId: r3.id, productId: pan.id, description: 'PAN', quantity: '1', unit: 'unidad', pricePerUnit: '45.00', amount: '45.00' },
+        ]);
+
+        return { mercadona, carrefour, leche, pan, r1, r2, r3 };
+      }
+
+      it('filtra por supermarketId', async () => {
+        const user = await createUser('filtro-super@example.com');
+        const { mercadona, r1, r3 } = await seedFiltrableReceipts(user.id);
+        const token = await login(user.email);
+
+        const res = await request(app.getHttpServer())
+          .get(`/receipts?supermarketId=${mercadona.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(res.body.map((r: { id: string }) => r.id).sort()).toEqual([r1.id, r3.id].sort());
+      });
+
+      it('filtra por rango de fechas, límites incluidos', async () => {
+        const user = await createUser('filtro-fechas@example.com');
+        const { r2 } = await seedFiltrableReceipts(user.id);
+        const token = await login(user.email);
+
+        const res = await request(app.getHttpServer())
+          .get('/receipts?dateFrom=2026-02-10&dateTo=2026-02-10')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(res.body.map((r: { id: string }) => r.id)).toEqual([r2.id]);
+      });
+
+      it('dateFrom posterior a dateTo → 400', async () => {
+        const user = await createUser('filtro-fechas-invalido@example.com');
+        await seedFiltrableReceipts(user.id);
+        const token = await login(user.email);
+
+        await request(app.getHttpServer())
+          .get('/receipts?dateFrom=2026-03-10&dateTo=2026-01-10')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(400);
+      });
+
+      it('filtra por productId (tickets con al menos una línea de ese producto)', async () => {
+        const user = await createUser('filtro-producto@example.com');
+        const { pan, r2, r3 } = await seedFiltrableReceipts(user.id);
+        const token = await login(user.email);
+
+        const res = await request(app.getHttpServer()).get(`/receipts?productId=${pan.id}`).set('Authorization', `Bearer ${token}`).expect(200);
+        expect(res.body.map((r: { id: string }) => r.id).sort()).toEqual([r2.id, r3.id].sort());
+      });
+
+      it('filtra por rango de importe sobre linesTotal, límites incluidos', async () => {
+        const user = await createUser('filtro-importe@example.com');
+        const { r3 } = await seedFiltrableReceipts(user.id);
+        const token = await login(user.email);
+
+        const res = await request(app.getHttpServer())
+          .get('/receipts?amountMin=50.00&amountMax=50.00')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(res.body.map((r: { id: string }) => r.id)).toEqual([r3.id]);
+      });
+
+      it('amountMin mayor que amountMax → 400', async () => {
+        const user = await createUser('filtro-importe-invalido@example.com');
+        await seedFiltrableReceipts(user.id);
+        const token = await login(user.email);
+
+        await request(app.getHttpServer()).get('/receipts?amountMin=50.00&amountMax=10.00').set('Authorization', `Bearer ${token}`).expect(400);
+      });
+
+      it('combina varios filtros a la vez (Y lógico)', async () => {
+        const user = await createUser('filtro-combinado@example.com');
+        const { mercadona, pan, r3 } = await seedFiltrableReceipts(user.id);
+        const token = await login(user.email);
+
+        const res = await request(app.getHttpServer())
+          .get(`/receipts?supermarketId=${mercadona.id}&productId=${pan.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        // r1 es de Mercadona pero no tiene Pan; r3 es de Mercadona y sí tiene Pan.
+        expect(res.body.map((r: { id: string }) => r.id)).toEqual([r3.id]);
+      });
+
+      it('aislamiento por usuario: los filtros nunca devuelven tickets de otro usuario', async () => {
+        const user = await createUser('filtro-aislamiento@example.com');
+        const other = await createUser('filtro-aislamiento-otro@example.com');
+        const { mercadona } = await seedFiltrableReceipts(user.id);
+        await seedFiltrableReceipts(other.id);
+        const token = await login(user.email);
+
+        const res = await request(app.getHttpServer())
+          .get(`/receipts?supermarketId=${mercadona.id}`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(res.body.every((r: { id: string }) => typeof r.id === 'string')).toBe(true);
+        expect(res.body).toHaveLength(2);
+      });
+    });
   });
 
   describe('GET /receipts/:id', () => {
