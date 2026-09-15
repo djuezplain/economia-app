@@ -23,8 +23,7 @@
      oscuro (ver bloque @media más abajo), como en la captura. */
   --fab-bg: var(--accent);
   --fab-fg: var(--bg);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
   --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
   --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
 
@@ -86,10 +85,8 @@
   --wealth-cat-pension: #008300;
   --wealth-cat-cash: #4a3aa7;
 
-  --font-body:
-    'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --heading:
-    'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --heading: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
   /* Escala de espaciado (spec 010) — sustituye a los valores sueltos
@@ -102,10 +99,13 @@
   --space-8: 40px;
 
   /* Radios grandes (antes 1/2/4px, look "editorial" recto): la captura de
-     referencia usa tarjetas y botones muy redondeados. */
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
+     referencia usa tarjetas y botones muy redondeados. Ampliados de nuevo
+     (8/14/20 → 10/18/28, petición de Diego, captura de referencia tipo
+     Microsoft Rewards): tarjetas y botones "pill", más redondeados
+     todavía. */
+  --radius-sm: 10px;
+  --radius-md: 18px;
+  --radius-lg: 28px;
 
   font: 15px/155% var(--font-body);
   letter-spacing: normal;
@@ -132,16 +132,18 @@
     --text: #d4d4d4;
     --text-h: #f5f5f5;
     --bg: #0a0a0a;
-    --border: color-mix(in srgb, #f5f5f5 12%, transparent);
+    --border: color-mix(in srgb, #f5f5f5 14%, transparent);
     --code-bg: #171717;
     --accent: #4ade80;
     --accent-2: #ff6fa8;
-    --card-bg: #171717;
-    --social-bg: rgba(23, 23, 23, 0.5);
+    /* Más clara que antes (#171717 → #1c1c1c, petición de Diego, captura de
+       referencia tipo Microsoft Rewards): más contraste entre el fondo casi
+       negro y las tarjetas, que quedan claramente "elevadas" sobre él. */
+    --card-bg: #1c1c1c;
+    --social-bg: rgba(28, 28, 28, 0.5);
     --fab-bg: #f5f5f5;
     --fab-fg: #121212;
-    --shadow:
-      rgba(0, 0, 0, 0.5) 0 10px 15px -3px, rgba(0, 0, 0, 0.35) 0 4px 6px -2px;
+    --shadow: rgba(0, 0, 0, 0.5) 0 10px 15px -3px, rgba(0, 0, 0, 0.35) 0 4px 6px -2px;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.45);
 
@@ -271,8 +273,12 @@ p {
 /* Spec 005 (navegación), plan.md §6. Único CSS de `AppLayout`: por `id`,
    igual que `#root`/`#social` — el proyecto no usa `className` en ninguna
    página, así que no se introduce esa convención solo para el menú. */
+/* Columna (antes fila, spec 005): la barra superior ocupa su propia fila
+   y el contenido va debajo a ancho completo, en vez de sidebar + contenido
+   lado a lado. */
 #app-shell {
   display: flex;
+  flex-direction: column;
   align-items: stretch;
   flex: 1;
   text-align: left;
@@ -295,41 +301,69 @@ p {
    interno si sus enlaces no caben en una pantalla. Solo aplica en
    escritorio: en móvil el menú ya usa `position: fixed` (ver media query
    más abajo), que sustituye a este `sticky`. */
+/* Barra de navegación superior (antes menú lateral, petición de Diego,
+   captura de referencia tipo Microsoft Rewards: logo + pestañas en una
+   franja horizontal fija arriba, en vez de un panel a la izquierda). El
+   `id`, `aria-label` y el estado (`isCollapsed`/`expandedItems`/menú móvil)
+   de `AppLayout.tsx` no cambian — solo su disposición visual, por eso todos
+   los tests de comportamiento (roles, aria-*, sr-only...) siguen pasando
+   igual. `#app-shell` pasa a columna (ver más abajo) en vez de fila: la
+   barra ocupa una fila propia y el contenido va debajo, a ancho completo. */
 #app-sidebar {
-  flex-shrink: 0;
-  width: 236px;
-  padding: var(--space-4) var(--space-3);
-  overflow-x: hidden;
-  overflow-y: auto;
-  transition: width 0.18s ease;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
   position: sticky;
   top: 0;
-  align-self: flex-start;
-  max-height: 100vh;
-}
-#app-sidebar[data-collapsed='true'] {
-  width: 68px;
+  z-index: 15;
+  /* Con 9 secciones + cerrar sesión no siempre caben todas a la vez en un
+     portátil de ancho medio — se deja scroll horizontal propio de la barra
+     en vez de partir el texto o desbordar la página entera. */
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
-/* Spec 008, plan.md §4 (H4). Marca visual del menú lateral. */
+/* Spec 008, plan.md §4 (H4). Marca visual de la barra. */
 #app-sidebar-brand {
   font-family: var(--heading);
   font-weight: 600;
   font-size: 19px;
   letter-spacing: -0.01em;
   color: var(--text-h);
-  margin: 0 0 var(--space-4);
+  margin: 0;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
-#app-sidebar ul {
+#app-sidebar > ul {
   list-style: none;
-  margin: var(--space-4) 0 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
   padding: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 #app-sidebar li {
-  margin: var(--space-1) 0;
+  margin: 0;
+  /* Ancla de posición para el desplegable de subsecciones (`.nav-sublist`
+     más abajo), que ahora flota bajo su entrada en vez de indentarse en el
+     flujo normal. */
+  position: relative;
+}
+
+/* La entrada de "Cerrar sesión" es siempre la última del `<ul>` — se separa
+   del resto de secciones al otro extremo de la barra, como el avatar de la
+   captura de referencia. */
+#app-sidebar > ul > li:last-child {
+  margin-inline-start: auto;
 }
 
 /* Spec 010, plan.md §3. Base de cada enlace del menú — el color de la
@@ -338,10 +372,11 @@ p {
 .nav-link {
   display: flex;
   align-items: center;
-  padding: 8px 6px;
+  padding: 8px 10px;
   border-radius: var(--radius-md);
   font-size: 14px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .nav-link:hover {
   background: color-mix(in srgb, var(--text) 6%, transparent);
@@ -419,8 +454,21 @@ p {
    subsecciones a la misma indentación que la entrada principal. */
 #app-sidebar .nav-sublist {
   list-style: none;
-  margin: 2px 0 6px;
-  padding: 0 0 0 34px;
+  /* Dropdown flotante bajo la entrada principal (antes lista indentada en
+     el propio flujo, pensada para un menú vertical) — misma tarjeta
+     elevada que el resto de la app (`--card-bg`/`--shadow-md`), en vez de
+     heredar el fondo de la barra. */
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin: 6px 0 0;
+  padding: var(--space-2);
+  min-width: 220px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  z-index: 20;
 }
 .nav-sublist li {
   margin: 1px 0;
@@ -428,8 +476,8 @@ p {
 .nav-sublink {
   display: flex;
   align-items: center;
-  padding: 4px 6px;
-  border-radius: var(--radius-md);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   white-space: nowrap;
 }
@@ -494,6 +542,15 @@ p {
   }
 
   #app-sidebar {
+    /* Vuelve a ser un panel vertical superpuesto (antes barra horizontal,
+       ver regla base más arriba): la barra superior solo tiene sentido en
+       escritorio, con sitio para las 9 secciones en fila — en móvil sigue
+       siendo el cajón lateral de siempre (spec 009), abierto con
+       "Abrir menú". */
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    border-bottom: none;
     position: fixed;
     inset-block: 0;
     inset-inline-start: 0;
@@ -502,7 +559,9 @@ p {
     transform: translateX(-100%);
     transition: transform 0.2s ease;
     background: var(--bg);
+    overflow-x: visible;
     overflow-y: auto;
+    padding: var(--space-4) var(--space-3);
     /* Spec 010 (rediseño editorial), plan.md §6/T11 (verificación de
        H11): `#app-mobile-menu-toggle` es `position:fixed;top:12px` con
        z-index por encima del panel (para seguir siendo clicable con el
@@ -514,6 +573,34 @@ p {
   }
   #app-sidebar[data-mobile-open='true'] {
     transform: translateX(0);
+  }
+  #app-sidebar-brand {
+    margin: 0 0 var(--space-4);
+  }
+  #app-sidebar > ul {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin: var(--space-4) 0 0;
+  }
+  #app-sidebar > ul > li:last-child {
+    margin-inline-start: 0;
+  }
+  #app-sidebar li {
+    margin: var(--space-1) 0;
+  }
+  /* Las subsecciones vuelven a indentarse en el propio flujo (antes
+     dropdown flotante, pensado para la barra de escritorio) — mismo
+     aspecto que un menú lateral clásico. */
+  #app-sidebar .nav-sublist {
+    position: static;
+    margin: 2px 0 6px;
+    padding: 0 0 0 34px;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   #app-sidebar-backdrop {
@@ -994,6 +1081,12 @@ main ul li:last-child {
   padding: var(--space-3);
   border-radius: var(--radius-md);
   background: var(--card-bg);
+  /* Borde + sombra por defecto (antes solo con `.elev-sm`/`.elev-md`,
+     petición de Diego, captura de referencia tipo Microsoft Rewards): toda
+     tarjeta de la app queda "elevada" sobre el fondo, no solo las que
+     marcaban explícitamente una clase de elevación. */
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
 /* Spec 010 (rediseño editorial), plan.md §4.7 (Tu perfil) y §4.6 (editar
    presupuesto en línea, T8): la regla global `main form` (spec 007) da a
