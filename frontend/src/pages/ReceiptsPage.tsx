@@ -18,7 +18,9 @@ export function ReceiptsPage() {
     if (!isAuthenticated) return;
     listReceipts()
       .then(setReceipts)
-      .catch((err) => setError(err instanceof ApiError ? err.message : 'No se han podido cargar los tickets.'));
+      .catch((err) =>
+        setError(err instanceof ApiError ? err.message : 'No se han podido cargar los tickets.'),
+      );
   }, [isAuthenticated]);
 
   if (isAuthLoading) {
@@ -61,28 +63,26 @@ export function ReceiptsPage() {
 
       {receipts && receipts.length === 0 && <p>Todavía no has importado ningún ticket.</p>}
 
+      {/* Antes una `<table>` (spec 034): pasa a `.card` con
+          `.wealth-item-header` (petición de Diego, mismo patrón que las
+          filas de Patrimonio) para heredar el aspecto de tarjeta elevada y
+          radios redondeados del resto de la app. */}
       {receipts && receipts.length > 0 && (
-        <table className="table">
-          <caption>Tickets importados</caption>
-          <thead>
-            <tr>
-              <th scope="col">Fecha</th>
-              <th scope="col">Supermercado</th>
-              <th scope="col">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {receipts.map((receipt) => (
-              <tr key={receipt.id}>
-                <td>
-                  <Link to={`/tickets/${receipt.id}`}>{receipt.date}</Link>
-                </td>
-                <td>{receipt.supermarketName}</td>
-                <td>{receipt.printedTotal ? `${receipt.printedTotal} €` : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ul id="receipts-list">
+          {receipts.map((receipt) => (
+            <li className="card" key={receipt.id}>
+              <div className="wealth-item-header">
+                <Link to={`/tickets/${receipt.id}`} className="card-title">
+                  {receipt.date}
+                </Link>
+                <span className="card-amount">
+                  {receipt.printedTotal ? `${receipt.printedTotal} €` : '—'}
+                </span>
+              </div>
+              <p className="card-meta">{receipt.supermarketName}</p>
+            </li>
+          ))}
+        </ul>
       )}
     </main>
   );
