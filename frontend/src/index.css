@@ -312,8 +312,8 @@ p {
 #app-sidebar {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
-  gap: var(--space-4);
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
   width: 100%;
   padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border);
@@ -321,11 +321,7 @@ p {
   position: sticky;
   top: 0;
   z-index: 15;
-  /* Con 9 secciones + cerrar sesión no siempre caben todas a la vez en un
-     portátil de ancho medio — se deja scroll horizontal propio de la barra
-     en vez de partir el texto o desbordar la página entera. */
-  overflow-x: auto;
-  overflow-y: visible;
+  overflow: visible;
 }
 
 /* Spec 008, plan.md §4 (H4). Marca visual de la barra. */
@@ -344,7 +340,13 @@ p {
   list-style: none;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  /* `wrap` (antes `nowrap` + scroll horizontal en la propia barra): con 9
+     secciones + cerrar sesión no siempre caben todas en una sola fila en un
+     portátil de ancho medio — mejor que la barra ocupe dos filas a que
+     algunas entradas queden fuera de la vista sin que se note (petición de
+     Diego, "el menú se corta"). */
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
   margin: 0;
   padding: 0;
   flex: 1;
@@ -579,6 +581,7 @@ p {
   }
   #app-sidebar > ul {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: stretch;
     gap: 0;
     margin: var(--space-4) 0 0;
@@ -1507,6 +1510,23 @@ a.card-title:hover {
   max-width: 680px;
 }
 #sessions-list li {
+  border-bottom: none;
+}
+
+/* Historial de tickets de supermercado (spec 034/039, petición de Diego):
+   pasa de `<table>` a `.card` — mismo criterio que Movimientos/Sesiones,
+   fecha (enlace) e importe en cabecera (`.wealth-item-header`) y
+   supermercado como metadato debajo. */
+#receipts-list {
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 640px;
+}
+#receipts-list li {
   border-bottom: none;
 }
 

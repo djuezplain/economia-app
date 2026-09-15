@@ -20,8 +20,20 @@ const PROFILE: usersApi.UserProfile = {
 };
 
 const RECEIPTS: ReceiptSummary[] = [
-  { id: 'r2', date: '2026-04-15', supermarketId: 's1', supermarketName: 'Mercadona', printedTotal: '20.00' },
-  { id: 'r1', date: '2026-04-01', supermarketId: 's1', supermarketName: 'Mercadona', printedTotal: '10.00' },
+  {
+    id: 'r2',
+    date: '2026-04-15',
+    supermarketId: 's1',
+    supermarketName: 'Mercadona',
+    printedTotal: '20.00',
+  },
+  {
+    id: 'r1',
+    date: '2026-04-01',
+    supermarketId: 's1',
+    supermarketName: 'Mercadona',
+    printedTotal: '10.00',
+  },
 ];
 
 describe('ReceiptsPage', () => {
@@ -46,19 +58,18 @@ describe('ReceiptsPage', () => {
 
     renderPage();
 
-    const rows = await screen.findAllByRole('row');
-    // rows[0] es la cabecera
-    expect(rows[1]).toHaveTextContent('2026-04-15');
-    expect(rows[2]).toHaveTextContent('2026-04-01');
+    const items = await screen.findAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('2026-04-15');
+    expect(items[1]).toHaveTextContent('2026-04-01');
     expect(screen.getByRole('link', { name: '2026-04-15' })).toHaveAttribute('href', '/tickets/r2');
   });
 
-  it('sin tickets importados, muestra un mensaje en vez de una tabla vacía', async () => {
+  it('sin tickets importados, muestra un mensaje en vez de una lista vacía', async () => {
     vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue([]);
 
     renderPage();
 
     expect(await screen.findByText('Todavía no has importado ningún ticket.')).toBeInTheDocument();
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 });
