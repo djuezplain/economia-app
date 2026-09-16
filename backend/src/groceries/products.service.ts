@@ -47,6 +47,20 @@ export class ProductsService {
   }
 
   /**
+   * Spec 041, plan.md §1 (H1). Mismo criterio de duplicados que `update()`
+   * (nombre normalizado) — a diferencia de ahí, el 409 no lleva
+   * `duplicateProductId`: no hay nada que "fusionar" con un producto que
+   * nunca ha llegado a crearse.
+   */
+  async create(userId: string, name: string): Promise<Product> {
+    const duplicate = await this.findDuplicateByName(userId, name);
+    if (duplicate) throw new ConflictException('Ya tienes un producto con ese nombre.');
+
+    const [created] = await this.db.insert(products).values({ userId, name }).returning();
+    return created;
+  }
+
+  /**
    * Spec 036, plan.md §2 (H3). Bloquea si el nombre normalizado ya lo usa
    * otro producto del usuario (409) — no fusiona (spec.md H3 criterio 2,
    * mismo criterio que spec 034 §3).
@@ -54,9 +68,7 @@ export class ProductsService {
   async update(userId: string, id: string, name: string): Promise<Product> {
     await this.getById(userId, id);
 
-    const ownProducts = await this.db.select().from(products).where(eq(products.userId, userId));
-    const normalized = normalizeText(name);
-    const duplicate = ownProducts.find((p) => p.id !== id && normalizeText(p.name) === normalized);
+    const duplicate = await this.findDuplicateByName(userId, name, id);
     if (duplicate) {
       // Spec 038 (H2): se manda el id del duplicado en el cuerpo del error para
       // que el frontend pueda ofrecer "fusionar con ese producto" en vez de solo
@@ -69,6 +81,13 @@ export class ProductsService {
 
     const [updated] = await this.db.update(products).set({ name }).where(eq(products.id, id)).returning();
     return updated;
+  }
+
+  /** Spec 041, plan.md §1: comparación de nombre normalizado, compartida entre `create()` y `update()`. */
+  private async findDuplicateByName(userId: string, name: string, excludeId?: string): Promise<Product | undefined> {
+    const ownProducts = await this.db.select().from(products).where(eq(products.userId, userId));
+    const normalized = normalizeText(name);
+    return ownProducts.find((p) => p.id !== excludeId && normalizeText(p.name) === normalized);
   }
 
   /**

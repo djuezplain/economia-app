@@ -3,9 +3,12 @@ import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
-import { mergeProducts, searchProducts } from '../api/groceries';
-import type { Product } from '../api/groceries';
+import { createProduct, listSupermarkets, mergeProducts, searchProducts } from '../api/groceries';
+import type { Product, Supermarket } from '../api/groceries';
 import { ApiError } from '../api/client';
+import { confirmReceiptImport } from '../api/receipt-import';
+import type { ReceiptUnit } from '../api/receipt-import';
+import { NEW_OPTION_VALUE } from '../components/receipt-line.types';
 
 /**
  * Spec 036 (H1), plan.md §3: sustituye a `ProductPricesPage` — listado con
@@ -15,6 +18,11 @@ import { ApiError } from '../api/client';
  * Spec 038 (H1): selección múltiple + fusión — dos o más productos que en
  * realidad son el mismo (p. ej. duplicados por un ticket mal emparejado) se
  * marcan y se fusionan en uno solo, eligiendo cuál de ellos sobrevive.
+ *
+ * Spec 041 (H1): crear un producto nuevo, con un precio inicial opcional
+ * (supermercado + fecha + precio) que se guarda como un ticket sintético
+ * (plan.md §2-§3) — así aparece igual que cualquier precio real en el resto
+ * de la app, sin lógica especial en ningún sitio.
  */
 export function ProductsPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -29,12 +37,80 @@ export function ProductsPage() {
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [isMerging, setIsMerging] = useState(false);
 
+  const [supermarkets, setSupermarkets] = useState<Supermarket[]>([]);
+  const [newProductName, setNewProductName] = useState('');
+  const [priceSupermarketId, setPriceSupermarketId] = useState('');
+  const [priceSupermarketName, setPriceSupermarketName] = useState('');
+  const [priceDate, setPriceDate] = useState('');
+  const [priceUnit, setPriceUnit] = useState<ReceiptUnit>('unidad');
+  const [pricePerUnit, setPricePerUnit] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [priceWarning, setPriceWarning] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+
   useEffect(() => {
     if (!isAuthenticated) return;
     searchProducts()
       .then(setProducts)
       .catch((err) => setError(err instanceof ApiError ? err.message : 'No se han podido cargar los productos.'));
+    void listSupermarkets().then(setSupermarkets);
   }, [isAuthenticated]);
+
+  function resetPriceFields() {
+    setPriceSupermarketId('');
+    setPriceSupermarketName('');
+    setPriceDate('');
+    setPriceUnit('unidad');
+    setPricePerUnit('');
+  }
+
+  async function handleCreateProduct(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateError(null);
+    setPriceWarning(null);
+
+    const hasSupermarket = Boolean(priceSupermarketId || priceSupermarketName);
+    const filledPriceFields = [hasSupermarket, Boolean(priceDate), Boolean(pricePerUnit)].filter(Boolean).length;
+    if (filledPriceFields > 0 && filledPriceFields < 3) {
+      setCreateError('Para añadir un precio inicial, completa el supermercado, la fecha y el precio — o déjalos los tres vacíos.');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const created = await createProduct(newProductName);
+      setProducts((current) => [...(current ?? []), created].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewProductName('');
+
+      if (filledPriceFields === 3) {
+        try {
+          await confirmReceiptImport({
+            supermarket: priceSupermarketId ? { id: priceSupermarketId } : { name: priceSupermarketName },
+            date: priceDate,
+            lines: [
+              {
+                description: created.name,
+                quantity: '1',
+                unit: priceUnit,
+                pricePerUnit,
+                amount: pricePerUnit,
+                product: { id: created.id },
+              },
+            ],
+          });
+          resetPriceFields();
+        } catch (err) {
+          setPriceWarning(
+            `El producto «${created.name}» se ha creado, pero no se ha podido guardar el precio inicial: ${err instanceof ApiError ? err.message : 'error desconocido'}.`,
+          );
+        }
+      }
+    } catch (err) {
+      setCreateError(err instanceof ApiError ? err.message : 'No se ha podido crear el producto.');
+    } finally {
+      setIsCreating(false);
+    }
+  }
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -122,6 +198,80 @@ export function ProductsPage() {
     <main>
       <h1>Productos</h1>
       <p>Entra en un producto para ver su precio en cada supermercado donde lo has comprado, o corregir su nombre. Marca dos o más para fusionarlos en uno solo.</p>
+
+      <section aria-label="Crear producto">
+        <h2>Crear producto</h2>
+        <form onSubmit={(e) => void handleCreateProduct(e)}>
+          <div className="field">
+            <label htmlFor="new-product-name">Nombre</label>
+            <input
+              id="new-product-name"
+              type="text"
+              className="input"
+              value={newProductName}
+              onChange={(e) => setNewProductName(e.target.value)}
+              required
+            />
+          </div>
+
+          <p>Precio inicial (opcional)</p>
+          <div className="field">
+            <label htmlFor="price-supermarket">Supermercado</label>
+            <select
+              id="price-supermarket"
+              className="input"
+              value={priceSupermarketId}
+              onChange={(e) => setPriceSupermarketId(e.target.value)}
+            >
+              <option value={NEW_OPTION_VALUE}>+ Nuevo supermercado</option>
+              {supermarkets.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            {!priceSupermarketId && (
+              <input
+                type="text"
+                className="input"
+                aria-label="Nombre del nuevo supermercado"
+                value={priceSupermarketName}
+                onChange={(e) => setPriceSupermarketName(e.target.value)}
+              />
+            )}
+          </div>
+          <div className="field">
+            <label htmlFor="price-date">Fecha</label>
+            <input id="price-date" type="date" className="input" value={priceDate} onChange={(e) => setPriceDate(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="price-unit">Unidad</label>
+            <select id="price-unit" className="input" value={priceUnit} onChange={(e) => setPriceUnit(e.target.value as ReceiptUnit)}>
+              <option value="unidad">Unidad</option>
+              <option value="kg">Kg</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="price-per-unit">Precio por unidad</label>
+            <input
+              id="price-per-unit"
+              type="number"
+              step="0.01"
+              min="0"
+              className="input"
+              value={pricePerUnit}
+              onChange={(e) => setPricePerUnit(e.target.value)}
+            />
+          </div>
+
+          {createError && <p role="alert">{createError}</p>}
+          {priceWarning && <p role="alert">{priceWarning}</p>}
+
+          <button type="submit" className="btn btn-primary" disabled={isCreating || newProductName.trim() === ''}>
+            {isCreating ? 'Creando…' : 'Crear producto'}
+          </button>
+        </form>
+      </section>
 
       <form onSubmit={(e) => void handleSearch(e)}>
         <label htmlFor="product-search">Buscar</label>

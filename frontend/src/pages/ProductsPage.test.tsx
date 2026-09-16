@@ -8,6 +8,7 @@ import * as authApi from '../api/auth';
 import * as usersApi from '../api/users';
 import * as groceriesApi from '../api/groceries';
 import type { Product } from '../api/groceries';
+import * as receiptImportApi from '../api/receipt-import';
 import { ApiError } from '../api/client';
 
 const PROFILE: usersApi.UserProfile = {
@@ -31,6 +32,7 @@ describe('ProductsPage', () => {
     vi.restoreAllMocks();
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+    vi.spyOn(groceriesApi, 'listSupermarkets').mockResolvedValue([{ id: 's1', name: 'Mercadona' }]);
   });
 
   function renderPage() {
@@ -115,6 +117,97 @@ describe('ProductsPage', () => {
 
       expect(await screen.findByRole('alert')).toHaveTextContent('No hay ningún producto que fusionar.');
       expect(screen.getByRole('heading', { name: 'Fusionar 2 productos' })).toBeInTheDocument();
+    });
+  });
+
+  describe('Crear producto (spec 041, H1)', () => {
+    it('crea un producto solo con el nombre, sin precio', async () => {
+      vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue(PRODUCTS);
+      vi.spyOn(groceriesApi, 'createProduct').mockResolvedValue({ id: 'p3', name: 'Arroz' });
+      const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport');
+
+      renderPage();
+      await screen.findByRole('link', { name: 'Chocolate Classic' });
+
+      await userEvent.type(screen.getByLabelText('Nombre'), 'Arroz');
+      await userEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
+
+      expect(groceriesApi.createProduct).toHaveBeenCalledWith('Arroz');
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(await screen.findByRole('link', { name: 'Arroz' })).toHaveAttribute('href', '/tickets/productos/p3');
+    });
+
+    it('crea un producto con precio inicial completo, como ticket sintético', async () => {
+      vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue(PRODUCTS);
+      vi.spyOn(groceriesApi, 'createProduct').mockResolvedValue({ id: 'p3', name: 'Arroz' });
+      vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'r1' });
+
+      renderPage();
+      await screen.findByRole('link', { name: 'Chocolate Classic' });
+
+      await userEvent.type(screen.getByLabelText('Nombre'), 'Arroz');
+      await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 's1');
+      await userEvent.type(screen.getByLabelText('Fecha'), '2026-01-15');
+      await userEvent.selectOptions(screen.getByLabelText('Unidad'), 'kg');
+      await userEvent.type(screen.getByLabelText('Precio por unidad'), '2.50');
+      await userEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
+
+      await screen.findByRole('link', { name: 'Arroz' });
+      expect(receiptImportApi.confirmReceiptImport).toHaveBeenCalledWith({
+        supermarket: { id: 's1' },
+        date: '2026-01-15',
+        lines: [{ description: 'Arroz', quantity: '1', unit: 'kg', pricePerUnit: '2.5', amount: '2.5', product: { id: 'p3' } }],
+      });
+    });
+
+    it('nombre duplicado muestra el aviso y no llama a confirmReceiptImport', async () => {
+      vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue(PRODUCTS);
+      vi.spyOn(groceriesApi, 'createProduct').mockRejectedValue(new ApiError(409, 'Ya tienes un producto con ese nombre.'));
+      const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport');
+
+      renderPage();
+      await screen.findByRole('link', { name: 'Chocolate Classic' });
+
+      await userEvent.type(screen.getByLabelText('Nombre'), 'Leche');
+      await userEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
+
+      expect(await screen.findByText('Ya tienes un producto con ese nombre.')).toBeInTheDocument();
+      expect(confirmSpy).not.toHaveBeenCalled();
+    });
+
+    it('si falla el precio inicial, el producto igualmente queda creado y se avisa por separado', async () => {
+      vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue(PRODUCTS);
+      vi.spyOn(groceriesApi, 'createProduct').mockResolvedValue({ id: 'p3', name: 'Arroz' });
+      vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockRejectedValue(new ApiError(400, 'Datos de precio inválidos.'));
+
+      renderPage();
+      await screen.findByRole('link', { name: 'Chocolate Classic' });
+
+      await userEvent.type(screen.getByLabelText('Nombre'), 'Arroz');
+      await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 's1');
+      await userEvent.type(screen.getByLabelText('Fecha'), '2026-01-15');
+      await userEvent.type(screen.getByLabelText('Precio por unidad'), '2.50');
+      await userEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
+
+      expect(await screen.findByRole('link', { name: 'Arroz' })).toBeInTheDocument();
+      expect(await screen.findByText(/se ha creado, pero no se ha podido guardar el precio inicial/)).toBeInTheDocument();
+    });
+
+    it('precio a medio rellenar bloquea el envío con un aviso, sin crear el producto', async () => {
+      vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue(PRODUCTS);
+      const createSpy = vi.spyOn(groceriesApi, 'createProduct');
+
+      renderPage();
+      await screen.findByRole('link', { name: 'Chocolate Classic' });
+
+      await userEvent.type(screen.getByLabelText('Nombre'), 'Arroz');
+      await userEvent.type(screen.getByLabelText('Fecha'), '2026-01-15');
+      await userEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
+
+      expect(
+        await screen.findByText('Para añadir un precio inicial, completa el supermercado, la fecha y el precio — o déjalos los tres vacíos.'),
+      ).toBeInTheDocument();
+      expect(createSpy).not.toHaveBeenCalled();
     });
   });
 });

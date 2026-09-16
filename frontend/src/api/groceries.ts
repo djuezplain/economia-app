@@ -75,6 +75,11 @@ export function searchProducts(search?: string): Promise<Product[]> {
   return api.get<Product[]>(`/products${query}`);
 }
 
+/** Spec 041, plan.md §1 (H1). */
+export function createProduct(name: string): Promise<Product> {
+  return api.post<Product>('/products', { name });
+}
+
 /** Spec 036, plan.md §1 (H2). */
 export function getProduct(id: string): Promise<Product> {
   return api.get<Product>(`/products/${id}`);
