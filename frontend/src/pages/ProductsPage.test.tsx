@@ -121,6 +121,21 @@ describe('ProductsPage', () => {
   });
 
   describe('Crear producto (spec 041, H1)', () => {
+    it('spec 043, H1: la sección empieza plegada y se despliega con un clic', async () => {
+      vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue(PRODUCTS);
+
+      renderPage();
+      await screen.findByRole('link', { name: 'Chocolate Classic' });
+
+      const heading = screen.getByRole('heading', { name: 'Crear producto' });
+      const details = heading.closest('details');
+      expect(details).not.toBeNull();
+      expect(details).not.toHaveAttribute('open');
+
+      await userEvent.click(heading);
+      expect(details).toHaveAttribute('open');
+    });
+
     it('crea un producto solo con el nombre, sin precio', async () => {
       vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue(PRODUCTS);
       vi.spyOn(groceriesApi, 'createProduct').mockResolvedValue({ id: 'p3', name: 'Arroz' });
