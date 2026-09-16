@@ -210,4 +210,25 @@ describe('ProductsPage', () => {
       expect(createSpy).not.toHaveBeenCalled();
     });
   });
+
+  describe('Precio más bajo reciente (spec 042, H1)', () => {
+    it('muestra el precio y el supermercado cuando hay datos', async () => {
+      vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue([
+        { id: 'p1', name: 'Chocolate Classic', lowestRecentPrice: { pricePerUnit: '1.100', unit: 'unidad', supermarketId: 's1', supermarketName: 'Mercadona' } },
+      ]);
+
+      renderPage();
+
+      expect(await screen.findByText('1.100 € (Mercadona)')).toBeInTheDocument();
+    });
+
+    it('sin datos de precio, muestra "—"', async () => {
+      vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue([{ id: 'p1', name: 'Chocolate Classic', lowestRecentPrice: null }]);
+
+      renderPage();
+
+      await screen.findByRole('link', { name: 'Chocolate Classic' });
+      expect(screen.getByText('—')).toBeInTheDocument();
+    });
+  });
 });

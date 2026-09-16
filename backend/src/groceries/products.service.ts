@@ -8,6 +8,20 @@ import { normalizeText } from '../common/normalize-text.util.js';
 
 export type Product = typeof products.$inferSelect;
 
+/** Spec 042, plan.md §1: precio más bajo entre los precios más recientes de cada supermercado (H1). */
+export interface ProductLowestPrice {
+  pricePerUnit: string;
+  unit: string;
+  supermarketId: string;
+  supermarketName: string;
+}
+
+export interface ProductSummary {
+  id: string;
+  name: string;
+  lowestRecentPrice: ProductLowestPrice | null;
+}
+
 export interface ProductPrice {
   receiptId: string;
   supermarketId: string;
@@ -29,14 +43,95 @@ export interface ProductPrice {
 export class ProductsService {
   constructor(@Inject(DB) private readonly db: Database) {}
 
-  async search(userId: string, search?: string): Promise<Product[]> {
+  /**
+   * Spec 042, plan.md §1 (H1): cada producto gana `lowestRecentPrice` — se
+   * calcula aquí, en una sola pasada, en vez de con una petición extra por
+   * producto desde el cliente (a diferencia del simulador de cesta, spec
+   * 039, esto se llama en cada carga/búsqueda del listado, no como una
+   * acción puntual).
+   */
+  async search(userId: string, search?: string): Promise<ProductSummary[]> {
     const conditions = [eq(products.userId, userId)];
     if (search) conditions.push(ilike(products.name, `%${search}%`));
-    return this.db
+    const productRows = await this.db
       .select()
       .from(products)
       .where(and(...conditions))
       .orderBy(asc(products.name));
+    if (productRows.length === 0) return [];
+
+    const lineRows = await this.db.select().from(receiptLines).where(
+      inArray(
+        receiptLines.productId,
+        productRows.map((p) => p.id),
+      ),
+    );
+    if (lineRows.length === 0) return productRows.map((p) => ({ id: p.id, name: p.name, lowestRecentPrice: null }));
+
+    const receiptRows = await this.db.select().from(receipts).where(
+      inArray(
+        receipts.id,
+        [...new Set(lineRows.map((line) => line.receiptId))],
+      ),
+    );
+    const receiptById = new Map(receiptRows.map((r) => [r.id, r]));
+
+    const supermarketRows = await this.db.select().from(supermarkets).where(
+      inArray(
+        supermarkets.id,
+        [...new Set(receiptRows.map((r) => r.supermarketId))],
+      ),
+    );
+    const supermarketById = new Map(supermarketRows.map((s) => [s.id, s]));
+
+    const linesByProduct = new Map<string, typeof lineRows>();
+    for (const line of lineRows) {
+      const lines = linesByProduct.get(line.productId) ?? [];
+      lines.push(line);
+      linesByProduct.set(line.productId, lines);
+    }
+
+    return productRows.map((product) => ({
+      id: product.id,
+      name: product.name,
+      lowestRecentPrice: this.lowestRecentPrice(linesByProduct.get(product.id) ?? [], receiptById, supermarketById),
+    }));
+  }
+
+  /**
+   * Spec 042, plan.md §1: para cada supermercado, su línea de fecha más
+   * reciente (mismo criterio que `latestPricesBySupermarket` del simulador
+   * de cesta, frontend, spec 039); de esas, la de `pricePerUnit` más bajo.
+   */
+  private lowestRecentPrice(
+    lines: (typeof receiptLines.$inferSelect)[],
+    receiptById: Map<string, typeof receipts.$inferSelect>,
+    supermarketById: Map<string, typeof supermarkets.$inferSelect>,
+  ): ProductLowestPrice | null {
+    const latestBySupermarket = new Map<string, { date: string; pricePerUnit: string; unit: string }>();
+    for (const line of lines) {
+      const receipt = receiptById.get(line.receiptId);
+      if (!receipt) continue;
+      const current = latestBySupermarket.get(receipt.supermarketId);
+      if (!current || receipt.date > current.date) {
+        latestBySupermarket.set(receipt.supermarketId, { date: receipt.date, pricePerUnit: line.pricePerUnit, unit: line.unit });
+      }
+    }
+
+    let best: { supermarketId: string; pricePerUnit: string; unit: string } | null = null;
+    for (const [supermarketId, entry] of latestBySupermarket) {
+      if (!best || new Decimal(entry.pricePerUnit).lessThan(best.pricePerUnit)) {
+        best = { supermarketId, pricePerUnit: entry.pricePerUnit, unit: entry.unit };
+      }
+    }
+    if (!best) return null;
+
+    return {
+      pricePerUnit: best.pricePerUnit,
+      unit: best.unit,
+      supermarketId: best.supermarketId,
+      supermarketName: supermarketById.get(best.supermarketId)!.name,
+    };
   }
 
   /** Spec 036, plan.md §2 (H2). */
