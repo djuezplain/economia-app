@@ -7,9 +7,19 @@ export interface Supermarket {
   name: string;
 }
 
+/** Spec 042, plan.md §1: precio más bajo entre los precios más recientes de cada supermercado. */
+export interface ProductLowestPrice {
+  pricePerUnit: string;
+  unit: string;
+  supermarketId: string;
+  supermarketName: string;
+}
+
 export interface Product {
   id: string;
   name: string;
+  /** Spec 042, plan.md §2. Solo lo devuelve `searchProducts()` (listado); `null` sin ningún ticket. */
+  lowestRecentPrice?: ProductLowestPrice | null;
 }
 
 export interface ProductPrice {
