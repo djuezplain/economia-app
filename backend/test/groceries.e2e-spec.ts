@@ -104,6 +104,66 @@ describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 
       const res = await request(app.getHttpServer()).get('/products?search=inexistente').set('Authorization', `Bearer ${token}`).expect(200);
       expect(res.body).toEqual([]);
     });
+
+    describe('spec 042, H1: lowestRecentPrice', () => {
+      it('un producto sin ningún ticket → null', async () => {
+        const user = await createUser('prod-lowest-1@example.com');
+        await db.insert(products).values({ userId: user.id, name: 'Leche' });
+        const token = await login(user.email);
+
+        const res = await request(app.getHttpServer()).get('/products').set('Authorization', `Bearer ${token}`).expect(200);
+        expect(res.body[0].lowestRecentPrice).toBeNull();
+      });
+
+      it('con un único supermercado, ese es el resultado', async () => {
+        const user = await createUser('prod-lowest-2@example.com');
+        const [supermarket] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+        const [product] = await db.insert(products).values({ userId: user.id, name: 'Leche' }).returning();
+        const [receipt] = await db.insert(receipts).values({ userId: user.id, supermarketId: supermarket.id, date: '2026-01-10' }).returning();
+        await db.insert(receiptLines).values({ receiptId: receipt.id, productId: product.id, description: 'LECHE', quantity: '1', unit: 'unidad', pricePerUnit: '1.20', amount: '1.20' });
+        const token = await login(user.email);
+
+        const res = await request(app.getHttpServer()).get('/products').set('Authorization', `Bearer ${token}`).expect(200);
+        expect(res.body[0].lowestRecentPrice).toMatchObject({ pricePerUnit: '1.200', unit: 'unidad', supermarketName: 'Mercadona' });
+      });
+
+      it('con 2+ supermercados, se queda con el más bajo de los PRECIOS MÁS RECIENTES (no el histórico más bajo)', async () => {
+        const user = await createUser('prod-lowest-3@example.com');
+        const [mercadona] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+        const [carrefour] = await db.insert(supermarkets).values({ userId: user.id, name: 'Carrefour' }).returning();
+        const [product] = await db.insert(products).values({ userId: user.id, name: 'Leche' }).returning();
+
+        // Mercadona: precio antiguo muy bajo (0.50), pero el más reciente es 1.50.
+        const [r1] = await db.insert(receipts).values({ userId: user.id, supermarketId: mercadona.id, date: '2026-01-01' }).returning();
+        await db.insert(receiptLines).values({ receiptId: r1.id, productId: product.id, description: 'LECHE', quantity: '1', unit: 'unidad', pricePerUnit: '0.50', amount: '0.50' });
+        const [r2] = await db.insert(receipts).values({ userId: user.id, supermarketId: mercadona.id, date: '2026-03-01' }).returning();
+        await db.insert(receiptLines).values({ receiptId: r2.id, productId: product.id, description: 'LECHE', quantity: '1', unit: 'unidad', pricePerUnit: '1.50', amount: '1.50' });
+
+        // Carrefour: único precio, más reciente que ambos de Mercadona, y más barato que el reciente de Mercadona.
+        const [r3] = await db.insert(receipts).values({ userId: user.id, supermarketId: carrefour.id, date: '2026-04-01' }).returning();
+        await db.insert(receiptLines).values({ receiptId: r3.id, productId: product.id, description: 'LECHE', quantity: '1', unit: 'unidad', pricePerUnit: '1.10', amount: '1.10' });
+
+        const token = await login(user.email);
+        const res = await request(app.getHttpServer()).get('/products').set('Authorization', `Bearer ${token}`).expect(200);
+        // El más bajo de los recientes es Carrefour (1.10), no el histórico 0.50 de Mercadona.
+        expect(res.body[0].lowestRecentPrice).toMatchObject({ pricePerUnit: '1.100', supermarketName: 'Carrefour' });
+      });
+
+      it('aislamiento por usuario: no mezcla precios de otro usuario', async () => {
+        const user = await createUser('prod-lowest-4@example.com');
+        const other = await createUser('prod-lowest-4-otro@example.com');
+        const [product] = await db.insert(products).values({ userId: user.id, name: 'Leche' }).returning();
+        const [otherSupermarket] = await db.insert(supermarkets).values({ userId: other.id, name: 'Otro súper' }).returning();
+        const [otherProduct] = await db.insert(products).values({ userId: other.id, name: 'Leche' }).returning();
+        const [otherReceipt] = await db.insert(receipts).values({ userId: other.id, supermarketId: otherSupermarket.id, date: '2026-01-10' }).returning();
+        await db.insert(receiptLines).values({ receiptId: otherReceipt.id, productId: otherProduct.id, description: 'LECHE', quantity: '1', unit: 'unidad', pricePerUnit: '0.10', amount: '0.10' });
+        const token = await login(user.email);
+
+        const res = await request(app.getHttpServer()).get('/products').set('Authorization', `Bearer ${token}`).expect(200);
+        const own = res.body.find((p: { id: string }) => p.id === product.id);
+        expect(own.lowestRecentPrice).toBeNull();
+      });
+    });
   });
 
   describe('POST /products (spec 041, H1)', () => {
