@@ -292,7 +292,14 @@ export function ProductsPage() {
               <label>
                 <input type="checkbox" checked={selectedIds.has(product.id)} onChange={() => toggleSelected(product.id)} />{' '}
                 <Link to={`/tickets/productos/${product.id}`}>{product.name}</Link>
-              </label>
+              </label>{' '}
+              {product.lowestRecentPrice ? (
+                <span>
+                  {product.lowestRecentPrice.pricePerUnit} € ({product.lowestRecentPrice.supermarketName})
+                </span>
+              ) : (
+                <span>—</span>
+              )}
             </li>
           ))}
         </ul>
