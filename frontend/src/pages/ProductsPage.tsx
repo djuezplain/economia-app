@@ -199,8 +199,10 @@ export function ProductsPage() {
       <h1>Productos</h1>
       <p>Entra en un producto para ver su precio en cada supermercado donde lo has comprado, o corregir su nombre. Marca dos o más para fusionarlos en uno solo.</p>
 
-      <section aria-label="Crear producto">
-        <h2>Crear producto</h2>
+      <details className="dashboard-section">
+        <summary>
+          <h2>Crear producto</h2>
+        </summary>
         <form onSubmit={(e) => void handleCreateProduct(e)}>
           <div className="field">
             <label htmlFor="new-product-name">Nombre</label>
@@ -271,7 +273,7 @@ export function ProductsPage() {
             {isCreating ? 'Creando…' : 'Crear producto'}
           </button>
         </form>
-      </section>
+      </details>
 
       <form onSubmit={(e) => void handleSearch(e)}>
         <label htmlFor="product-search">Buscar</label>
