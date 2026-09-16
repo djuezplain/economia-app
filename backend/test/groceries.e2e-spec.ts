@@ -106,6 +106,46 @@ describe('Consulta de supermercados/productos/tickets (e2e) — spec 034, grupo 
     });
   });
 
+  describe('POST /products (spec 041, H1)', () => {
+    it('crea un producto', async () => {
+      const user = await createUser('prod-create-1@example.com');
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer()).post('/products').set('Authorization', `Bearer ${token}`).send({ name: 'Leche' }).expect(201);
+      expect(res.body.name).toBe('Leche');
+
+      const stored = await db.select().from(products).where(eq(products.userId, user.id));
+      expect(stored).toHaveLength(1);
+    });
+
+    it('un nombre ya usado (normalizado) → 409, sin duplicateProductId', async () => {
+      const user = await createUser('prod-create-2@example.com');
+      await db.insert(products).values({ userId: user.id, name: 'leche' });
+      const token = await login(user.email);
+
+      const res = await request(app.getHttpServer()).post('/products').set('Authorization', `Bearer ${token}`).send({ name: 'LECHE' }).expect(409);
+      expect(res.body.duplicateProductId).toBeUndefined();
+
+      const stored = await db.select().from(products).where(eq(products.userId, user.id));
+      expect(stored).toHaveLength(1);
+    });
+
+    it('mismo nombre pero de otro usuario no choca (aislamiento)', async () => {
+      const userA = await createUser('prod-create-3-a@example.com');
+      const userB = await createUser('prod-create-3-b@example.com');
+      await db.insert(products).values({ userId: userA.id, name: 'Leche' });
+      const tokenB = await login(userB.email);
+
+      await request(app.getHttpServer()).post('/products').set('Authorization', `Bearer ${tokenB}`).send({ name: 'Leche' }).expect(201);
+    });
+
+    it('sin nombre → 400', async () => {
+      const user = await createUser('prod-create-4@example.com');
+      const token = await login(user.email);
+      await request(app.getHttpServer()).post('/products').set('Authorization', `Bearer ${token}`).send({}).expect(400);
+    });
+  });
+
   describe('GET /products/:id y PATCH /products/:id (spec 036, H2-H3)', () => {
     it('GET /products/:id devuelve la ficha del producto', async () => {
       const user = await createUser('prod-get-1@example.com');

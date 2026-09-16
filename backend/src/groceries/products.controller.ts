@@ -3,12 +3,13 @@ import type { Request } from 'express';
 import { AuthGuard } from '../auth/guards/auth.guard.js';
 import { RequireActiveUserGuard } from '../auth/guards/require-active-user.guard.js';
 import type { RequestUser } from '../auth/guards/require-active-user.guard.js';
+import { CreateProductDto } from './dto/create-product.dto.js';
 import { ListProductsQueryDto } from './dto/list-products-query.dto.js';
 import { MergeProductsDto } from './dto/merge-products.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { ProductsService } from './products.service.js';
 
-/** Spec 034, plan.md §3 (H4) + spec 036, plan.md §1 (H2-H3) + spec 038 (fusión de productos). */
+/** Spec 034, plan.md §3 (H4) + spec 036, plan.md §1 (H2-H3) + spec 038 (fusión de productos) + spec 041 (H1, crear). */
 @Controller('products')
 @UseGuards(AuthGuard, RequireActiveUserGuard)
 export class ProductsController {
@@ -17,6 +18,11 @@ export class ProductsController {
   @Get()
   search(@Query() query: ListProductsQueryDto, @Req() req: Request & { user: RequestUser }) {
     return this.productsService.search(req.user.id, query.search);
+  }
+
+  @Post()
+  create(@Body() dto: CreateProductDto, @Req() req: Request & { user: RequestUser }) {
+    return this.productsService.create(req.user.id, dto.name);
   }
 
   @Post('merge')
