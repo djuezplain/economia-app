@@ -1,9 +1,11 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Decimal } from 'decimal.js';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
-import { fundPurchases, funds } from '../db/schema/index.js';
+import { fundPurchases, fundSales, funds } from '../db/schema/index.js';
 import { FundsService } from './funds.service.js';
+import { totalShares } from './wealth.calculations.js';
 import type { CreateFundPurchaseDto } from './dto/create-fund-purchase.dto.js';
 import type { UpdateFundPurchaseDto } from './dto/update-fund-purchase.dto.js';
 
@@ -48,7 +50,10 @@ export class FundPurchasesService {
   }
 
   async update(userId: string, id: string, dto: UpdateFundPurchaseDto): Promise<FundPurchase> {
-    await this.findOwnOrThrow(userId, id);
+    const existing = await this.findOwnOrThrow(userId, id);
+    if (dto.shareCount !== undefined) {
+      await this.assertSalesStillCovered(existing.fundId, id, dto.shareCount);
+    }
 
     const [updated] = await this.db
       .update(fundPurchases)
@@ -64,8 +69,32 @@ export class FundPurchasesService {
   }
 
   async remove(userId: string, id: string): Promise<void> {
-    await this.findOwnOrThrow(userId, id);
+    const existing = await this.findOwnOrThrow(userId, id);
+    await this.assertSalesStillCovered(existing.fundId, id, '0');
     await this.db.delete(fundPurchases).where(eq(fundPurchases.id, id));
+  }
+
+  /**
+   * H1 criterio 4 (spec 044): editar (bajando la cantidad) o eliminar una compra no puede dejar
+   * una venta ya registrada sin participaciones suficientes que cubrirla. `newShareCount` es la
+   * cantidad que tendría ESTA compra tras el cambio ('0' al eliminarla, equivalente a no contarla).
+   * Salta la comprobación entera si el `fundId` no tiene ninguna venta (plan.md §2, caso común sin
+   * coste extra). Mismo criterio que `StockPurchasesService.assertSalesStillCovered` (spec 031).
+   */
+  private async assertSalesStillCovered(fundId: string, purchaseId: string, newShareCount: string): Promise<void> {
+    const salesOfFund = await this.db.query.fundSales.findMany({ where: eq(fundSales.fundId, fundId) });
+    if (salesOfFund.length === 0) return;
+
+    const otherPurchases = await this.db.query.fundPurchases.findMany({
+      where: and(eq(fundPurchases.fundId, fundId), ne(fundPurchases.id, purchaseId)),
+    });
+    const purchasedAfterChange = new Decimal(totalShares(otherPurchases)).plus(newShareCount);
+    const sold = new Decimal(totalShares(salesOfFund));
+    if (sold.greaterThan(purchasedAfterChange)) {
+      throw new BadRequestException(
+        `No se puede aplicar este cambio: dejaría ${sold.toFixed(8)} participaciones vendidas sin cubrir (solo quedarían ${purchasedAfterChange.toFixed(8)} compradas).`,
+      );
+    }
   }
 
   private async findOwnOrThrow(userId: string, id: string): Promise<FundPurchase> {

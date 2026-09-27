@@ -72,6 +72,8 @@ import {
 import type { FundValuation, UpdateFundValuationInput } from '../api/fund-valuations';
 import { createFundDividend, deleteFundDividend, listFundDividends, updateFundDividend } from '../api/fund-dividends';
 import type { FundDividend, UpdateFundDividendInput } from '../api/fund-dividends';
+import { createFundSale, deleteFundSale, listFundSales, updateFundSale } from '../api/fund-sales';
+import type { FundSale, UpdateFundSaleInput } from '../api/fund-sales';
 import { createCrypto, deleteCrypto, listCryptos, updateCrypto } from '../api/cryptos';
 import type { Crypto, CryptoInput } from '../api/cryptos';
 import {
@@ -140,6 +142,12 @@ import {
   totalGrossDividends,
   totalRealizedGainLoss,
 } from './stock-shared';
+import {
+  fifoPositionState as fundFifoPositionState,
+  fundsTotal,
+  isFundPositionClosed,
+  totalRealizedGainLoss as fundTotalRealizedGainLoss,
+} from './fund-shared';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -194,6 +202,7 @@ const EMPTY_FUND_FORM: FundInput = { custodyBank: '', fund: '' };
 const EMPTY_FUND_PURCHASE_FORM: UpdateFundPurchaseInput = { shareCount: '', purchasePrice: '', date: todayIso() };
 const EMPTY_FUND_VALUATION_FORM: UpdateFundValuationInput = { pricePerShare: '', date: todayIso() };
 const EMPTY_FUND_DIVIDEND_FORM: UpdateFundDividendInput = { netAmount: '', retentionPercent: '19', date: todayIso() };
+const EMPTY_FUND_SALE_FORM: UpdateFundSaleInput = { shareCount: '', salePrice: '', date: todayIso() };
 const EMPTY_CRYPTO_FORM: CryptoInput = { exchange: '', crypto: '' };
 const EMPTY_CRYPTO_PURCHASE_FORM: UpdateCryptoPurchaseInput = { quantity: '', purchasePrice: '', date: todayIso() };
 const EMPTY_CRYPTO_VALUATION_FORM: UpdateCryptoValuationInput = { pricePerUnit: '', date: todayIso() };
@@ -290,6 +299,10 @@ function fundDividendFormFromEntity(dividend: FundDividend): UpdateFundDividendI
   return { netAmount: dividend.netAmount, retentionPercent: dividend.retentionPercent, date: dividend.date };
 }
 
+function fundSaleFormFromEntity(sale: FundSale): UpdateFundSaleInput {
+  return { shareCount: sale.shareCount, salePrice: sale.salePrice, date: sale.date };
+}
+
 function cryptoFormFromEntity(crypto: Crypto): CryptoInput {
   return { exchange: crypto.exchange, crypto: crypto.crypto };
 }
@@ -338,19 +351,6 @@ function cashHoldingFormFromEntity(holding: CashHolding): CashHoldingInput {
 
 function cashBalanceFormFromEntity(balance: CashBalance): UpdateCashBalanceInput {
   return { amount: balance.amount, date: balance.date };
-}
-
-/** H2 criterio 4 (spec 020): nº total de acciones/participaciones de una posición, sumando todas sus
- *  compras — calculado, nunca guardado. 8 decimales, no 4 — mismo criterio de precisión que `shareCount`
- *  (revisión). Tipo estructural (no `StockPurchase[]`/`FundPurchase[]`): mismo cálculo para acciones y
- *  fondos de inversión (spec 021, mismo modelo que spec 020). */
-function totalShares(purchases: Array<{ shareCount: string }>): string {
-  return purchases.reduce((sum, p) => sum + parseFloat(p.shareCount), 0).toFixed(8);
-}
-
-/** H2 criterio 4 (spec 020): coste total de una posición, sumando el valor de compra de todas sus compras. */
-function totalCost(purchases: Array<{ shareCount: string; purchasePrice: string }>): string {
-  return purchases.reduce((sum, p) => sum + parseFloat(purchaseValue(p.purchasePrice, p.shareCount) || '0'), 0).toFixed(2);
 }
 
 /** Años (más reciente primero) en los que hay al menos una venta de acciones registrada —
@@ -549,16 +549,16 @@ function stocksHeldCost(stocks: Stock[], purchases: StockPurchase[], sales: Stoc
     .toFixed(2);
 }
 
-/** Resumen (parte superior de la página): sumatorio del valor actual de cada fondo — mismo criterio
- *  que `stocksTotal` (spec 021, mismo modelo que spec 020). Un fondo sin ninguna valoración aún
- *  contribuye 0, mismo criterio que "Sin valoración" en su propia tarjeta. */
-function fundsTotal(funds: Fund[], purchases: FundPurchase[], valuations: FundValuation[]): string {
+/** H3 criterio 5 (spec 044): "coste de compra" agregado de Fondos Inversión para spec 028 H4/H5 y
+ *  spec 030 — suma del `heldCost` (coste FIFO de lo que queda en cartera) de cada fondo,
+ *  sustituyendo a `totalCost(purchases)` que sumaba el coste de TODO lo comprado alguna vez. Mismo
+ *  criterio que `stocksHeldCost` (spec 031). */
+function fundsHeldCost(funds: Fund[], purchases: FundPurchase[], sales: FundSale[]): string {
   return funds
     .reduce((sum, fund) => {
-      const fundPurchases = purchases.filter((p) => p.fundId === fund.id);
-      const lastValuation = valuations.find((v) => v.fundId === fund.id); // ya ordenado por fecha descendente
-      if (!lastValuation) return sum;
-      return sum + parseFloat(currentValue(lastValuation.pricePerShare, totalShares(fundPurchases)));
+      const thisFundPurchases = purchases.filter((p) => p.fundId === fund.id);
+      const thisFundSales = sales.filter((s) => s.fundId === fund.id);
+      return sum + parseFloat(fundFifoPositionState(thisFundPurchases, thisFundSales).heldCost);
     }, 0)
     .toFixed(2);
 }
@@ -799,6 +799,18 @@ export function WealthPage() {
   const [pendingDeleteFundDividendId, setPendingDeleteFundDividendId] = useState<string | null>(null);
   const [fundDividendActionError, setFundDividendActionError] = useState<string | null>(null);
 
+  const [fundSaleList, setFundSaleList] = useState<FundSale[] | null>(null);
+  const [fundSalesLoadError, setFundSalesLoadError] = useState<string | null>(null);
+  const [newFundSaleForms, setNewFundSaleForms] = useState<Record<string, UpdateFundSaleInput>>({});
+  const [createFundSaleError, setCreateFundSaleError] = useState<string | null>(null);
+  const [creatingFundSaleForFundId, setCreatingFundSaleForFundId] = useState<string | null>(null);
+  const [editingFundSaleId, setEditingFundSaleId] = useState<string | null>(null);
+  const [editingFundSaleForm, setEditingFundSaleForm] = useState<UpdateFundSaleInput>(EMPTY_FUND_SALE_FORM);
+  const [editFundSaleError, setEditFundSaleError] = useState<string | null>(null);
+  const [isSavingFundSale, setIsSavingFundSale] = useState(false);
+  const [pendingDeleteFundSaleId, setPendingDeleteFundSaleId] = useState<string | null>(null);
+  const [fundSaleActionError, setFundSaleActionError] = useState<string | null>(null);
+
   const [cryptoList, setCryptoList] = useState<Crypto[] | null>(null);
   const [cryptosLoadError, setCryptosLoadError] = useState<string | null>(null);
   const [newCryptoForm, setNewCryptoForm] = useState<NewCryptoForm>(emptyNewCryptoForm);
@@ -966,6 +978,10 @@ export function WealthPage() {
 
   async function reloadFundDividends() {
     setFundDividendList(await listFundDividends());
+  }
+
+  async function reloadFundSales() {
+    setFundSaleList(await listFundSales());
   }
 
   async function reloadCryptos() {
@@ -1167,6 +1183,21 @@ export function WealthPage() {
         await reloadFundDividends();
       } catch (err) {
         if (!cancelled) setFundDividendsLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de dividendos.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await reloadFundSales();
+      } catch (err) {
+        if (!cancelled) setFundSalesLoadError(err instanceof ApiError ? err.message : 'No se ha podido cargar el historial de ventas.');
       }
     })();
     return () => {
@@ -1787,7 +1818,7 @@ export function WealthPage() {
     setPendingDeleteFundId(id);
     try {
       await deleteFund(id);
-      await Promise.all([reloadFunds(), reloadFundPurchases(), reloadFundValuations(), reloadFundDividends()]);
+      await Promise.all([reloadFunds(), reloadFundPurchases(), reloadFundSales(), reloadFundValuations(), reloadFundDividends()]);
     } catch (err) {
       setFundActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar el fondo.');
     } finally {
@@ -1979,6 +2010,65 @@ export function WealthPage() {
       setFundDividendActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar el dividendo.');
     } finally {
       setPendingDeleteFundDividendId(null);
+    }
+  }
+
+  function getNewFundSaleForm(fundId: string): UpdateFundSaleInput {
+    return newFundSaleForms[fundId] ?? { shareCount: '', salePrice: '', date: todayIso() };
+  }
+
+  function setNewFundSaleForm(fundId: string, form: UpdateFundSaleInput) {
+    setNewFundSaleForms((prev) => ({ ...prev, [fundId]: form }));
+  }
+
+  async function handleCreateFundSale(fundId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreateFundSaleError(null);
+    setCreatingFundSaleForFundId(fundId);
+    try {
+      const form = getNewFundSaleForm(fundId);
+      await createFundSale({ fundId, shareCount: form.shareCount ?? '', salePrice: form.salePrice ?? '', date: form.date ?? todayIso() });
+      setNewFundSaleForm(fundId, { shareCount: '', salePrice: '', date: todayIso() });
+      await reloadFundSales();
+    } catch (err) {
+      setCreateFundSaleError(err instanceof ApiError ? err.message : 'No se ha podido añadir la venta.');
+    } finally {
+      setCreatingFundSaleForFundId(null);
+    }
+  }
+
+  function startEditFundSale(sale: FundSale) {
+    setEditFundSaleError(null);
+    setEditingFundSaleId(sale.id);
+    setEditingFundSaleForm(fundSaleFormFromEntity(sale));
+  }
+
+  async function handleEditFundSale(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingFundSaleId) return;
+    setEditFundSaleError(null);
+    setIsSavingFundSale(true);
+    try {
+      await updateFundSale(editingFundSaleId, editingFundSaleForm);
+      setEditingFundSaleId(null);
+      await reloadFundSales();
+    } catch (err) {
+      setEditFundSaleError(err instanceof ApiError ? err.message : 'No se ha podido guardar la venta.');
+    } finally {
+      setIsSavingFundSale(false);
+    }
+  }
+
+  async function handleDeleteFundSale(id: string) {
+    setFundSaleActionError(null);
+    setPendingDeleteFundSaleId(id);
+    try {
+      await deleteFundSale(id);
+      await reloadFundSales();
+    } catch (err) {
+      setFundSaleActionError(err instanceof ApiError ? err.message : 'No se ha podido eliminar la venta.');
+    } finally {
+      setPendingDeleteFundSaleId(null);
     }
   }
 
@@ -2669,7 +2759,7 @@ export function WealthPage() {
       name: 'Patrimonio',
       bankAccounts: parseFloat(bankAccountsTotal(accounts ?? [], balances ?? [])),
       stocks: parseFloat(stocksTotal(stockList ?? [], purchases ?? [], stockSaleList ?? [], valuations ?? [])),
-      funds: parseFloat(fundsTotal(fundList ?? [], fundPurchases ?? [], fundValuations ?? [])),
+      funds: parseFloat(fundsTotal(fundList ?? [], fundPurchases ?? [], fundSaleList ?? [], fundValuations ?? [])),
       cryptos: parseFloat(cryptosTotal(cryptoList ?? [], cryptoPurchaseList ?? [], cryptoValuationList ?? [])),
       vehicles: parseFloat(vehiclesTotal(vehicleList ?? [], vehicleValuationList ?? [])),
       pensionPlans: parseFloat(pensionPlansTotal(pensionPlanList ?? [], pensionPlanValuationList ?? [])),
@@ -2687,6 +2777,7 @@ export function WealthPage() {
     valuations,
     fundList,
     fundPurchases,
+    fundSaleList,
     fundValuations,
     cryptoList,
     cryptoPurchaseList,
@@ -2713,8 +2804,10 @@ export function WealthPage() {
       },
       {
         category: 'Fondos Inversión',
-        aportado: parseFloat(totalCost(fundPurchases ?? [])),
-        valorActual: parseFloat(fundsTotal(fundList ?? [], fundPurchases ?? [], fundValuations ?? [])),
+        // spec 044 H3 criterio 5: coste de lo que queda en cartera (tras ventas), no de todo lo
+        // comprado alguna vez — `fundsHeldCost`, no `totalCost(purchases)`.
+        aportado: parseFloat(fundsHeldCost(fundList ?? [], fundPurchases ?? [], fundSaleList ?? [])),
+        valorActual: parseFloat(fundsTotal(fundList ?? [], fundPurchases ?? [], fundSaleList ?? [], fundValuations ?? [])),
       },
       {
         category: 'Cripto',
@@ -2738,6 +2831,7 @@ export function WealthPage() {
     stockSaleList,
     valuations,
     fundPurchases,
+    fundSaleList,
     fundList,
     fundValuations,
     cryptoPurchaseList,
@@ -2788,8 +2882,9 @@ export function WealthPage() {
     pushCategoryRows(
       rows,
       'Fondos Inversión',
-      fundsTotal(fundList ?? [], fundPurchases ?? [], fundValuations ?? []),
-      totalCost(fundPurchases ?? []),
+      fundsTotal(fundList ?? [], fundPurchases ?? [], fundSaleList ?? [], fundValuations ?? []),
+      // spec 044 H3 criterio 5: coste de lo que queda en cartera, no `totalCost(purchases)` (todo lo comprado).
+      fundsHeldCost(fundList ?? [], fundPurchases ?? [], fundSaleList ?? []),
       fundDividendsTotal(fundList ?? [], fundDividendList ?? []),
       fundGrossDividendsTotal(fundList ?? [], fundDividendList ?? []),
     );
@@ -2826,6 +2921,7 @@ export function WealthPage() {
     stockDividendList,
     fundList,
     fundPurchases,
+    fundSaleList,
     fundValuations,
     fundDividendList,
     cryptoList,
@@ -2877,6 +2973,7 @@ export function WealthPage() {
     valuations !== null &&
     fundList !== null &&
     fundPurchases !== null &&
+    fundSaleList !== null &&
     fundValuations !== null &&
     cryptoList !== null &&
     cryptoPurchaseList !== null &&
@@ -2905,7 +3002,7 @@ export function WealthPage() {
               (
                 parseFloat(bankAccountsTotal(accounts, balances)) +
                 parseFloat(stocksTotal(stockList, purchases, stockSaleList, valuations)) +
-                parseFloat(fundsTotal(fundList, fundPurchases, fundValuations)) +
+                parseFloat(fundsTotal(fundList, fundPurchases, fundSaleList, fundValuations)) +
                 parseFloat(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList)) +
                 parseFloat(vehiclesTotal(vehicleList, vehicleValuationList)) +
                 parseFloat(pensionPlansTotal(pensionPlanList, pensionPlanValuationList)) +
@@ -2916,7 +3013,7 @@ export function WealthPage() {
           <p className="card-meta">
             Cuentas Bancarias: {formatCurrency(bankAccountsTotal(accounts, balances))} · Acciones:{' '}
             {formatCurrency(stocksTotal(stockList, purchases, stockSaleList, valuations))} · Fondos Inversión:{' '}
-            {formatCurrency(fundsTotal(fundList, fundPurchases, fundValuations))} · Cripto:{' '}
+            {formatCurrency(fundsTotal(fundList, fundPurchases, fundSaleList, fundValuations))} · Cripto:{' '}
             {formatCurrency(cryptosTotal(cryptoList, cryptoPurchaseList, cryptoValuationList))} · Vehículos:{' '}
             {formatCurrency(vehiclesTotal(vehicleList, vehicleValuationList))} · Fondo Pensiones:{' '}
             {formatCurrency(pensionPlansTotal(pensionPlanList, pensionPlanValuationList))} · Efectivo:{' '}
@@ -4586,44 +4683,67 @@ export function WealthPage() {
 
         {fundsLoadError && <p role="alert">{fundsLoadError}</p>}
         {fundPurchasesLoadError && <p role="alert">{fundPurchasesLoadError}</p>}
+        {fundSalesLoadError && <p role="alert">{fundSalesLoadError}</p>}
         {fundValuationsLoadError && <p role="alert">{fundValuationsLoadError}</p>}
         {fundDividendsLoadError && <p role="alert">{fundDividendsLoadError}</p>}
         {fundActionError && <p role="alert">{fundActionError}</p>}
         {fundPurchaseActionError && <p role="alert">{fundPurchaseActionError}</p>}
+        {fundSaleActionError && <p role="alert">{fundSaleActionError}</p>}
         {fundValuationActionError && <p role="alert">{fundValuationActionError}</p>}
         {fundDividendActionError && <p role="alert">{fundDividendActionError}</p>}
 
         {fundList && fundList.length === 0 && <p>Todavía no tienes ningún fondo de inversión.</p>}
 
-        {fundList && fundList.length > 0 && (
-          <ul id="wealth-fund-list" aria-label="Tus fondos de inversión">
-            {fundList.map((fund) => {
+        {fundList &&
+          fundList.length > 0 &&
+          (() => {
+            // Distingue las posiciones abiertas (todavía con participaciones en cartera) de las
+            // cerradas (se compró y ya se vendió todo) — ver `isFundPositionClosed`, mismo criterio
+            // que Acciones (spec 031).
+            const openFundList = fundList.filter(
+              (fund) =>
+                !isFundPositionClosed(
+                  (fundPurchases ?? []).filter((p) => p.fundId === fund.id),
+                  (fundSaleList ?? []).filter((s) => s.fundId === fund.id),
+                ),
+            );
+            const closedFundList = fundList.filter((fund) =>
+              isFundPositionClosed(
+                (fundPurchases ?? []).filter((p) => p.fundId === fund.id),
+                (fundSaleList ?? []).filter((s) => s.fundId === fund.id),
+              ),
+            );
+
+            const renderFundCard = (fund: Fund) => {
               const isEditingFund = editingFundId === fund.id;
               const fundPurchaseHistory = (fundPurchases ?? []).filter((p) => p.fundId === fund.id);
+              const fundSalesForThisFund = (fundSaleList ?? []).filter((s) => s.fundId === fund.id);
               const fundValuationHistory = (fundValuations ?? []).filter((v) => v.fundId === fund.id);
               const fundDividendHistory = (fundDividendList ?? []).filter((d) => d.fundId === fund.id);
               const lastValuation = fundValuationHistory[0] ?? null; // `fundValuations` ya viene ordenado por fecha descendente
               const newFundPurchaseForm = getNewFundPurchaseForm(fund.id);
+              const newFundSaleForm = getNewFundSaleForm(fund.id);
               const newFundValuationForm = getNewFundValuationForm(fund.id);
               const newFundDividendForm = getNewFundDividendForm(fund.id);
+              // spec 044 H3: "en cartera" (compras − ventas, FIFO), no el total histórico comprado —
+              // sustituye a `totalShares(fundPurchaseHistory)`/`totalCost(fundPurchaseHistory)` en toda la tarjeta.
+              const fifoState = fundFifoPositionState(fundPurchaseHistory, fundSalesForThisFund);
+              const realizedGainLoss = fundTotalRealizedGainLoss(fifoState);
               const gainLoss = lastValuation
-                ? gainLossPercent(
-                    currentValue(lastValuation.pricePerShare, totalShares(fundPurchaseHistory)),
-                    totalCost(fundPurchaseHistory),
-                  )
+                ? gainLossPercent(currentValue(lastValuation.pricePerShare, fifoState.heldShares), fifoState.heldCost)
                 : null;
               // H1 (spec 030): mismo criterio que en Acciones — ver comentario junto a `gainLossNet` allí.
               const gainLossNet = lastValuation
                 ? gainLossPercentWithDividends(
-                    currentValue(lastValuation.pricePerShare, totalShares(fundPurchaseHistory)),
-                    totalCost(fundPurchaseHistory),
+                    currentValue(lastValuation.pricePerShare, fifoState.heldShares),
+                    fifoState.heldCost,
                     totalDividends(fundDividendHistory),
                   )
                 : null;
               const gainLossGross = lastValuation
                 ? gainLossPercentWithDividends(
-                    currentValue(lastValuation.pricePerShare, totalShares(fundPurchaseHistory)),
-                    totalCost(fundPurchaseHistory),
+                    currentValue(lastValuation.pricePerShare, fifoState.heldShares),
+                    fifoState.heldCost,
                     totalGrossDividends(fundDividendHistory),
                   )
                 : null;
@@ -4693,12 +4813,12 @@ export function WealthPage() {
                     </span>
                     <span className="card-amount">
                       {lastValuation
-                        ? formatCurrency(currentValue(lastValuation.pricePerShare, totalShares(fundPurchaseHistory)))
+                        ? formatCurrency(currentValue(lastValuation.pricePerShare, fifoState.heldShares))
                         : 'Sin valoración'}
                     </span>
                   </div>
                   <p className="card-meta">
-                    {totalShares(fundPurchaseHistory)} participaciones · Coste total: {formatCurrency(totalCost(fundPurchaseHistory))}
+                    {fifoState.heldShares} participaciones en cartera · Coste total: {formatCurrency(fifoState.heldCost)}
                     {lastValuation && (
                       <>
                         {' '}
@@ -4707,6 +4827,8 @@ export function WealthPage() {
                     )}
                     {' · Dividendos cobrados: '}
                     {fundDividendHistory.length > 0 ? formatCurrency(totalDividends(fundDividendHistory)) : 'Sin dividendos'}
+                    {' · Ganancia/pérdida realizada: '}
+                    {fundSalesForThisFund.length > 0 ? formatCurrency(realizedGainLoss) : 'Sin ventas'}
                   </p>
                   <div>
                     <button
@@ -4936,8 +5058,7 @@ export function WealthPage() {
                                   <p className="card-meta">
                                     Valor total:{' '}
                                     {formatCurrency(
-                                      currentValue(editingFundValuationForm.pricePerShare ?? '', totalShares(fundPurchaseHistory)) ||
-                                        '0.00',
+                                      currentValue(editingFundValuationForm.pricePerShare ?? '', fifoState.heldShares) || '0.00',
                                     )}
                                   </p>
                                   {editFundValuationError && <p role="alert">{editFundValuationError}</p>}
@@ -5012,7 +5133,7 @@ export function WealthPage() {
                       </div>
                       <p className="card-meta">
                         Valor total:{' '}
-                        {formatCurrency(currentValue(newFundValuationForm.pricePerShare ?? '', totalShares(fundPurchaseHistory)) || '0.00')}
+                        {formatCurrency(currentValue(newFundValuationForm.pricePerShare ?? '', fifoState.heldShares) || '0.00')}
                       </p>
                       {createFundValuationError && <p role="alert">{createFundValuationError}</p>}
                       <button type="submit" className="btn btn-primary" disabled={creatingFundValuationForFundId === fund.id}>
@@ -5186,11 +5307,174 @@ export function WealthPage() {
                       </button>
                     </form>
                   </details>
+
+                  <details>
+                    <summary>Historial de ventas ({fundSalesForThisFund.length})</summary>
+
+                    {fundSalesForThisFund.length === 0 && <p>Todavía no hay ninguna venta registrada en este fondo.</p>}
+
+                    {fundSalesForThisFund.length > 0 && (
+                      <ul aria-label={`Historial de ventas de ${fund.fund} · ${fund.custodyBank}`}>
+                        {fundSalesForThisFund.map((sale) => {
+                          const isEditingFundSale = editingFundSaleId === sale.id;
+                          const saleLabel = `${sale.date} · ${sale.shareCount} participaciones a ${sale.salePrice}€`;
+                          const saleGainLoss = fifoState.realizedGainLossBySaleId[sale.id];
+
+                          if (isEditingFundSale) {
+                            return (
+                              <li key={sale.id}>
+                                <form onSubmit={handleEditFundSale} aria-label={`Editar venta de ${fund.fund}: ${saleLabel}`} noValidate>
+                                  <div className="field">
+                                    <label htmlFor={`fund-sale-${sale.id}-shareCount`}>Número de participaciones vendidas</label>
+                                    <input
+                                      id={`fund-sale-${sale.id}-shareCount`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingFundSaleForm.shareCount}
+                                      onChange={(e) => setEditingFundSaleForm({ ...editingFundSaleForm, shareCount: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`fund-sale-${sale.id}-salePrice`}>Precio de venta</label>
+                                    <input
+                                      id={`fund-sale-${sale.id}-salePrice`}
+                                      className="input"
+                                      inputMode="decimal"
+                                      value={editingFundSaleForm.salePrice}
+                                      onChange={(e) => setEditingFundSaleForm({ ...editingFundSaleForm, salePrice: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label htmlFor={`fund-sale-${sale.id}-date`}>Fecha de venta</label>
+                                    <input
+                                      id={`fund-sale-${sale.id}-date`}
+                                      type="date"
+                                      className="input"
+                                      value={editingFundSaleForm.date}
+                                      onChange={(e) => setEditingFundSaleForm({ ...editingFundSaleForm, date: e.target.value })}
+                                      required
+                                    />
+                                  </div>
+                                  {editFundSaleError && <p role="alert">{editFundSaleError}</p>}
+                                  <button type="submit" className="btn btn-primary" disabled={isSavingFundSale}>
+                                    {isSavingFundSale ? 'Guardando…' : 'Guardar'}
+                                  </button>{' '}
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={isSavingFundSale}
+                                    onClick={() => setEditingFundSaleId(null)}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </form>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={sale.id}>
+                              <span>{sale.date}</span>{' '}
+                              <span>
+                                {sale.shareCount} participaciones @ {formatCurrency(sale.salePrice)} ={' '}
+                                {formatCurrency(purchaseValue(sale.salePrice, sale.shareCount))}
+                              </span>{' '}
+                              <span style={{ color: parseFloat(saleGainLoss) >= 0 ? 'var(--status-green)' : 'var(--status-red)', fontWeight: 600 }}>
+                                {parseFloat(saleGainLoss) >= 0 ? '+' : ''}
+                                {formatCurrency(saleGainLoss)}
+                              </span>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                aria-label={`Editar venta de ${fund.fund}: ${saleLabel}`}
+                                onClick={() => startEditFundSale(sale)}
+                              >
+                                Editar
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                aria-label={`Eliminar venta de ${fund.fund}: ${saleLabel}`}
+                                disabled={pendingDeleteFundSaleId === sale.id}
+                                onClick={() => void handleDeleteFundSale(sale.id)}
+                              >
+                                {pendingDeleteFundSaleId === sale.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    <form onSubmit={(e) => void handleCreateFundSale(fund.id, e)} aria-label={`Añadir venta: ${fund.fund}`} noValidate>
+                      <div className="field">
+                        <label htmlFor={`new-fund-sale-${fund.id}-shareCount`}>Número de participaciones vendidas</label>
+                        <input
+                          id={`new-fund-sale-${fund.id}-shareCount`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newFundSaleForm.shareCount}
+                          onChange={(e) => setNewFundSaleForm(fund.id, { ...newFundSaleForm, shareCount: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-fund-sale-${fund.id}-salePrice`}>Precio de venta</label>
+                        <input
+                          id={`new-fund-sale-${fund.id}-salePrice`}
+                          className="input"
+                          inputMode="decimal"
+                          value={newFundSaleForm.salePrice}
+                          onChange={(e) => setNewFundSaleForm(fund.id, { ...newFundSaleForm, salePrice: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`new-fund-sale-${fund.id}-date`}>Fecha de venta</label>
+                        <input
+                          id={`new-fund-sale-${fund.id}-date`}
+                          type="date"
+                          className="input"
+                          value={newFundSaleForm.date}
+                          onChange={(e) => setNewFundSaleForm(fund.id, { ...newFundSaleForm, date: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <p className="card-meta">
+                        Valor de venta:{' '}
+                        {formatCurrency(purchaseValue(newFundSaleForm.salePrice ?? '', newFundSaleForm.shareCount ?? '') || '0.00')}
+                      </p>
+                      {createFundSaleError && <p role="alert">{createFundSaleError}</p>}
+                      <button type="submit" className="btn btn-primary" disabled={creatingFundSaleForFundId === fund.id}>
+                        {creatingFundSaleForFundId === fund.id ? 'Añadiendo…' : 'Añadir venta'}
+                      </button>
+                    </form>
+                  </details>
                 </li>
               );
-            })}
-          </ul>
-        )}
+            };
+
+            return (
+              <>
+                {openFundList.length === 0 && <p>No tienes ninguna posición abierta.</p>}
+
+                {openFundList.length > 0 && (
+                  <ul id="wealth-fund-list" aria-label="Tus fondos de inversión abiertos">
+                    {openFundList.map(renderFundCard)}
+                  </ul>
+                )}
+
+                {closedFundList.length > 0 && (
+                  <details>
+                    <summary>Posiciones cerradas ({closedFundList.length})</summary>
+                    <ul aria-label="Tus fondos de inversión cerrados">{closedFundList.map(renderFundCard)}</ul>
+                  </details>
+                )}
+              </>
+            );
+          })()}
 
         <details className="dashboard-section">
           <summary>

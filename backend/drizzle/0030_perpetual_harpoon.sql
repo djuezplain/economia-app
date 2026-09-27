@@ -1,0 +1,13 @@
+CREATE TABLE "fund_sales" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"fund_id" uuid NOT NULL,
+	"share_count" numeric(18, 8) NOT NULL,
+	"sale_price" numeric(18, 8) NOT NULL,
+	"date" date NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "fund_sales" ADD CONSTRAINT "fund_sales_fund_id_funds_id_fk" FOREIGN KEY ("fund_id") REFERENCES "public"."funds"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "fund_sales_fund_idx" ON "fund_sales" USING btree ("fund_id");--> statement-breakpoint
+CREATE INDEX "fund_sales_fund_date_idx" ON "fund_sales" USING btree ("fund_id","date");

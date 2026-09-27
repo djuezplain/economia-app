@@ -281,6 +281,30 @@ export const fundDividends = pgTable(
 );
 
 /**
+ * H1 (spec 044): historial de ventas de un fondo — mismos campos y
+ * precisión que `stockSales` (spec 031), aplicado a Fondos Inversión. La
+ * validación de "no vender más de lo que queda en cartera" vive en el
+ * servicio, no aquí — es una resta de totales que depende de
+ * `fundPurchases`, no algo expresable en una constraint de columna. Sin
+ * `userId` propio, mismo criterio que `fundPurchases`/`fundDividends`.
+ */
+export const fundSales = pgTable(
+  'fund_sales',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    fundId: uuid('fund_id')
+      .notNull()
+      .references(() => funds.id, { onDelete: 'cascade' }),
+    shareCount: numeric('share_count', { precision: 18, scale: 8 }).notNull(),
+    salePrice: numeric('sale_price', { precision: 18, scale: 8 }).notNull(),
+    date: date('date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('fund_sales_fund_idx').on(table.fundId), index('fund_sales_fund_date_idx').on(table.fundId, table.date)],
+);
+
+/**
  * H1 (spec 022): una posición de cripto (exchange/wallet + criptomoneda) es
  * una entidad única por usuario — mismo patrón que `stocks` (spec 020), sin
  * ninguna tabla previa que sustituir (Cripto no tuvo implementación en spec
@@ -569,12 +593,17 @@ export const stockDividendsRelations = relations(stockDividends, ({ one }) => ({
 export const fundsRelations = relations(funds, ({ one, many }) => ({
   user: one(users, { fields: [funds.userId], references: [users.id] }),
   purchases: many(fundPurchases),
+  sales: many(fundSales),
   valuations: many(fundValuations),
   dividends: many(fundDividends),
 }));
 
 export const fundPurchasesRelations = relations(fundPurchases, ({ one }) => ({
   fund: one(funds, { fields: [fundPurchases.fundId], references: [funds.id] }),
+}));
+
+export const fundSalesRelations = relations(fundSales, ({ one }) => ({
+  fund: one(funds, { fields: [fundSales.fundId], references: [funds.id] }),
 }));
 
 export const fundValuationsRelations = relations(fundValuations, ({ one }) => ({
