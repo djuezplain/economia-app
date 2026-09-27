@@ -18,6 +18,8 @@ import { FundsController } from './funds.controller.js';
 import { FundsService } from './funds.service.js';
 import { FundPurchasesController } from './fund-purchases.controller.js';
 import { FundPurchasesService } from './fund-purchases.service.js';
+import { FundSalesController } from './fund-sales.controller.js';
+import { FundSalesService } from './fund-sales.service.js';
 import { FundValuationsController } from './fund-valuations.controller.js';
 import { FundValuationsService } from './fund-valuations.service.js';
 import { FundDividendsController } from './fund-dividends.controller.js';
@@ -78,6 +80,7 @@ import { CashBalancesService } from './cash-balances.service.js';
     StockDividendsController,
     FundsController,
     FundPurchasesController,
+    FundSalesController,
     FundValuationsController,
     FundDividendsController,
     CryptosController,
@@ -101,6 +104,7 @@ import { CashBalancesService } from './cash-balances.service.js';
     StockDividendsService,
     FundsService,
     FundPurchasesService,
+    FundSalesService,
     FundValuationsService,
     FundDividendsService,
     CryptosService,

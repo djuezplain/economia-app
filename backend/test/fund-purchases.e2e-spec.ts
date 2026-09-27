@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
-import { fundPurchases, fundValuations, funds, users } from '../src/db/schema/index.js';
+import { fundPurchases, fundSales, fundValuations, funds, users } from '../src/db/schema/index.js';
 
 describe('Historial de compras de fondos (e2e) — spec 021 H2', () => {
   let app: INestApplication<App>;
@@ -34,6 +34,7 @@ describe('Historial de compras de fondos (e2e) — spec 021 H2', () => {
 
   beforeEach(async () => {
     await db.delete(fundValuations);
+    await db.delete(fundSales);
     await db.delete(fundPurchases);
     await db.delete(funds);
     await db.delete(users);
@@ -248,6 +249,43 @@ describe('Historial de compras de fondos (e2e) — spec 021 H2', () => {
         .send({ shareCount: '999' })
         .expect(404);
     });
+
+    it('spec 044 H1 criterio 4: bajar la cantidad sin dejar ventas sin cubrir se permite', async () => {
+      const user = await createUser('baja-sin-afectar@example.com');
+      const fund = await createFund(user.id, 'MyInvestor', 'Vanguard Global Stock Index');
+      const [purchase] = await db
+        .insert(fundPurchases)
+        .values({ fundId: fund.id, shareCount: '10', purchasePrice: '28.50', date: '2026-08-01' })
+        .returning();
+      await db.insert(fundSales).values({ fundId: fund.id, shareCount: '4', salePrice: '30.00', date: '2026-08-15' });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .patch(`/fund-purchases/${purchase.id}`)
+        .set('Authorization', auth(token))
+        .send({ shareCount: '5' })
+        .expect(200);
+    });
+
+    it('spec 044 H1 criterio 4: bajar la cantidad por debajo de lo ya vendido → 400, sin aplicar el cambio', async () => {
+      const user = await createUser('baja-deja-sin-cubrir@example.com');
+      const fund = await createFund(user.id, 'MyInvestor', 'Vanguard Global Stock Index');
+      const [purchase] = await db
+        .insert(fundPurchases)
+        .values({ fundId: fund.id, shareCount: '10', purchasePrice: '28.50', date: '2026-08-01' })
+        .returning();
+      await db.insert(fundSales).values({ fundId: fund.id, shareCount: '4', salePrice: '30.00', date: '2026-08-15' });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer())
+        .patch(`/fund-purchases/${purchase.id}`)
+        .set('Authorization', auth(token))
+        .send({ shareCount: '3' })
+        .expect(400);
+
+      const stillThere = await db.query.fundPurchases.findFirst({ where: (p, { eq }) => eq(p.id, purchase.id) });
+      expect(stillThere?.shareCount).toBe('10.00000000');
+    });
   });
 
   describe('DELETE /fund-purchases/:id', () => {
@@ -283,6 +321,48 @@ describe('Historial de compras de fondos (e2e) — spec 021 H2', () => {
 
       const stillThere = await db.query.fundPurchases.findFirst({ where: (p, { eq }) => eq(p.id, purchase.id) });
       expect(stillThere).toBeDefined();
+    });
+
+    it('spec 044 H1 criterio 4: borrar una compra sin ventas se permite (caso común, sin comprobación extra)', async () => {
+      const user = await createUser('borra-sin-ventas@example.com');
+      const fund = await createFund(user.id, 'MyInvestor', 'Vanguard Global Stock Index');
+      const [purchase] = await db
+        .insert(fundPurchases)
+        .values({ fundId: fund.id, shareCount: '10', purchasePrice: '28.50', date: '2026-08-01' })
+        .returning();
+      const token = await login(user.email);
+
+      await request(app.getHttpServer()).delete(`/fund-purchases/${purchase.id}`).set('Authorization', auth(token)).expect(204);
+    });
+
+    it('spec 044 H1 criterio 4: borrar una compra cuyas participaciones ya se vendieron → 400, sin borrarla', async () => {
+      const user = await createUser('borra-deja-sin-cubrir@example.com');
+      const fund = await createFund(user.id, 'MyInvestor', 'Vanguard Global Stock Index');
+      const [purchase] = await db
+        .insert(fundPurchases)
+        .values({ fundId: fund.id, shareCount: '10', purchasePrice: '28.50', date: '2026-08-01' })
+        .returning();
+      await db.insert(fundSales).values({ fundId: fund.id, shareCount: '4', salePrice: '30.00', date: '2026-08-15' });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer()).delete(`/fund-purchases/${purchase.id}`).set('Authorization', auth(token)).expect(400);
+
+      const stillThere = await db.query.fundPurchases.findFirst({ where: (p, { eq }) => eq(p.id, purchase.id) });
+      expect(stillThere).toBeDefined();
+    });
+
+    it('spec 044 H1 criterio 4: borrar una compra con otra compra que sigue cubriendo la venta se permite', async () => {
+      const user = await createUser('borra-cubierta-por-otra@example.com');
+      const fund = await createFund(user.id, 'MyInvestor', 'Vanguard Global Stock Index');
+      const [purchaseA] = await db
+        .insert(fundPurchases)
+        .values({ fundId: fund.id, shareCount: '10', purchasePrice: '28.50', date: '2026-08-01' })
+        .returning();
+      await db.insert(fundPurchases).values({ fundId: fund.id, shareCount: '5', purchasePrice: '29.00', date: '2026-08-10' });
+      await db.insert(fundSales).values({ fundId: fund.id, shareCount: '4', salePrice: '30.00', date: '2026-08-15' });
+      const token = await login(user.email);
+
+      await request(app.getHttpServer()).delete(`/fund-purchases/${purchaseA.id}`).set('Authorization', auth(token)).expect(204);
     });
   });
 });

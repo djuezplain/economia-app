@@ -17,6 +17,7 @@ import * as fundsApi from '../api/funds';
 import * as fundPurchasesApi from '../api/fund-purchases';
 import * as fundValuationsApi from '../api/fund-valuations';
 import * as fundDividendsApi from '../api/fund-dividends';
+import * as fundSalesApi from '../api/fund-sales';
 import * as cryptosApi from '../api/cryptos';
 import * as cryptoPurchasesApi from '../api/crypto-purchases';
 import * as cryptoValuationsApi from '../api/crypto-valuations';
@@ -38,6 +39,7 @@ import type { Fund } from '../api/funds';
 import type { FundPurchase } from '../api/fund-purchases';
 import type { FundValuation } from '../api/fund-valuations';
 import type { FundDividend } from '../api/fund-dividends';
+import type { FundSale } from '../api/fund-sales';
 import type { Crypto } from '../api/cryptos';
 import type { CryptoPurchase } from '../api/crypto-purchases';
 import type { CryptoValuation } from '../api/crypto-valuations';
@@ -154,6 +156,16 @@ const FUND_DIVIDEND: FundDividend = {
   date: '2026-09-04',
   createdAt: '2026-09-04T00:00:00.000Z',
   updatedAt: '2026-09-04T00:00:00.000Z',
+};
+
+const FUND_SALE: FundSale = {
+  id: 'fund-sale-1',
+  fundId: 'fund-1',
+  shareCount: '4.0000',
+  salePrice: '32.00',
+  date: '2026-09-05',
+  createdAt: '2026-09-05T00:00:00.000Z',
+  updatedAt: '2026-09-05T00:00:00.000Z',
 };
 
 const CRYPTO: Crypto = {
@@ -316,6 +328,7 @@ describe('WealthPage', () => {
     vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
     vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
     vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+    vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
     vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
     vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
     vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -353,6 +366,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
@@ -395,6 +409,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -427,6 +442,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -460,6 +476,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -668,6 +685,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -1105,6 +1123,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
 
@@ -1117,14 +1136,15 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
       expect(within(list).getByText(/Vanguard Global Stock Index · MyInvestor/)).toBeInTheDocument();
       // 10.0000 participaciones × 20,00 €/participación (FUND_VALUATION) = 200,00 €.
       expect(within(list).getByText('200,00 €')).toBeInTheDocument();
-      expect(within(list).getByText(/10.00000000 participaciones · Coste total/)).toHaveTextContent(
+      expect(within(list).getByText(/10.00000000 participaciones en cartera · Coste total/)).toHaveTextContent(
         'Precio actual: 20,00 €/participación · Última fecha: 2026-09-04',
       );
       // Coste total 300,00 € (10 × 30,00 €), valor actual 200,00 € → -33.33% de pérdida, en rojo.
@@ -1147,10 +1167,11 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([{ ...FUND_VALUATION, pricePerShare: '36.00' }]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
       // Coste total 300,00 € (10 × 30,00 €), valor actual 360,00 € (10 × 36,00 €) → +20.00%, en verde.
       const gainLossEl = within(list).getByText('+20.00%');
       expect(gainLossEl).toHaveStyle({ color: 'var(--status-green)' });
@@ -1162,10 +1183,11 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
       await within(list).findByText(/Vanguard Global Stock Index · MyInvestor/);
       expect(within(list).queryByText(/%$/)).not.toBeInTheDocument();
     });
@@ -1176,10 +1198,11 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
       expect(within(list).getByText('Sin valoración')).toBeInTheDocument();
       expect(within(list).getByText('Todavía no hay ninguna compra registrada en este fondo.')).toBeInTheDocument();
       expect(within(list).getByText('Todavía no hay ninguna valoración registrada en este fondo.')).toBeInTheDocument();
@@ -1191,6 +1214,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir fondo' });
@@ -1209,6 +1233,7 @@ describe('WealthPage', () => {
       const listPurchasesSpy = vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const createFundSpy = vi.spyOn(fundsApi, 'createFund').mockResolvedValue(FUND);
       const createPurchaseSpy = vi.spyOn(fundPurchasesApi, 'createFundPurchase').mockResolvedValue(FUND_PURCHASE);
 
@@ -1242,10 +1267,11 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const updateSpy = vi.spyOn(fundsApi, 'updateFund').mockResolvedValue(FUND);
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Editar fondo: Vanguard Global Stock Index · MyInvestor' }));
       const editForm = screen.getByRole('form', { name: 'Editar fondo: Vanguard Global Stock Index' });
@@ -1263,10 +1289,11 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const deleteSpy = vi.spyOn(fundsApi, 'deleteFund').mockResolvedValue(undefined);
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Eliminar fondo: Vanguard Global Stock Index · MyInvestor' }));
 
@@ -1279,6 +1306,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir compra: Vanguard Global Stock Index' });
@@ -1295,6 +1323,7 @@ describe('WealthPage', () => {
       const listPurchasesSpy = vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const createSpy = vi.spyOn(fundPurchasesApi, 'createFundPurchase').mockResolvedValue(FUND_PURCHASE);
 
       renderPage();
@@ -1316,6 +1345,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const createSpy = vi.spyOn(fundPurchasesApi, 'createFundPurchase').mockResolvedValue(FUND_PURCHASE);
 
       renderPage();
@@ -1341,10 +1371,11 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const updateSpy = vi.spyOn(fundPurchasesApi, 'updateFundPurchase').mockResolvedValue(FUND_PURCHASE);
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
 
       const purchaseLabel = 'Editar compra de Vanguard Global Stock Index: 2026-09-04 · 10.0000 participaciones a 30.00€';
       await userEvent.click(screen.getByRole('button', { name: purchaseLabel }));
@@ -1365,11 +1396,12 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const deletePurchaseSpy = vi.spyOn(fundPurchasesApi, 'deleteFundPurchase').mockResolvedValue(undefined);
       const deleteFundSpy = vi.spyOn(fundsApi, 'deleteFund');
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
 
       await userEvent.click(
         screen.getByRole('button', { name: 'Eliminar compra de Vanguard Global Stock Index: 2026-09-04 · 10.0000 participaciones a 30.00€' }),
@@ -1385,6 +1417,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir valoración: Vanguard Global Stock Index' });
@@ -1398,6 +1431,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       const listValuationsSpy = vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const createSpy = vi.spyOn(fundValuationsApi, 'createFundValuation').mockResolvedValue(FUND_VALUATION);
 
       renderPage();
@@ -1416,6 +1450,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir valoración: Vanguard Global Stock Index' });
@@ -1432,10 +1467,11 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const updateSpy = vi.spyOn(fundValuationsApi, 'updateFundValuation').mockResolvedValue(FUND_VALUATION);
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Editar valoración de Vanguard Global Stock Index del 2026-09-04' }));
       const editForm = screen.getByRole('form', { name: 'Editar valoración de Vanguard Global Stock Index del 2026-09-04' });
@@ -1453,11 +1489,12 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const deleteValuationSpy = vi.spyOn(fundValuationsApi, 'deleteFundValuation').mockResolvedValue(undefined);
       const deleteFundSpy = vi.spyOn(fundsApi, 'deleteFund');
 
       renderPage();
-      await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Eliminar valoración de Vanguard Global Stock Index del 2026-09-04' }));
 
@@ -1494,6 +1531,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
 
@@ -1512,6 +1550,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
 
@@ -1535,6 +1574,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
       const form = await screen.findByRole('form', { name: 'Añadir dividendo: Inditex' });
@@ -1558,6 +1598,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const createSpy = vi.spyOn(stockDividendsApi, 'createStockDividend').mockResolvedValue(STOCK_DIVIDEND);
 
       renderPage();
@@ -1583,6 +1624,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const updateSpy = vi.spyOn(stockDividendsApi, 'updateStockDividend').mockResolvedValue(STOCK_DIVIDEND);
 
       renderPage();
@@ -1612,6 +1654,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const deleteDividendSpy = vi.spyOn(stockDividendsApi, 'deleteStockDividend').mockResolvedValue(undefined);
       const deleteStockSpy = vi.spyOn(stocksApi, 'deleteStock');
 
@@ -1635,10 +1678,11 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([FUND_DIVIDEND]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
 
-      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
       expect(within(list).getByText(/Dividendos cobrados: 40,50 €/)).toBeInTheDocument();
     });
 
@@ -1653,6 +1697,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       const listFundDividendsSpy = vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       const createSpy = vi.spyOn(fundDividendsApi, 'createFundDividend').mockResolvedValue(FUND_DIVIDEND);
 
       renderPage();
@@ -1678,6 +1723,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]); // sin valoración: el fondo tampoco aporta a "Total"
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([FUND_DIVIDEND]); // 40,50 €
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
       renderPage();
 
@@ -1723,6 +1769,7 @@ describe('WealthPage', () => {
         vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
         vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
         vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+        vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
         renderPage();
 
@@ -1746,6 +1793,7 @@ describe('WealthPage', () => {
         vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
         vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
         vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+        vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
         renderPage();
 
@@ -1772,10 +1820,11 @@ describe('WealthPage', () => {
         vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([
           { ...FUND_DIVIDEND, netAmount: '150.00', retentionPercent: '0.00' },
         ]);
+        vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
         renderPage();
 
-        const list = await screen.findByRole('list', { name: 'Tus fondos de inversión' });
+        const list = await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
         // Coste 300,00 €, valor actual 200,00 € → sin dividendos: (200−300)/300×100 = -33.33 % (rojo).
         // Con 150,00 € de dividendo (neto = bruto, 0% retención): (200+150−300)/300×100 = +16.67 % (verde), en ambas variantes.
         const gainLossEl = within(list).getByText('-33.33%');
@@ -1801,6 +1850,7 @@ describe('WealthPage', () => {
         vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
         vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
         vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([FUND_DIVIDEND]);
+        vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
         vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
         vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
         vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
@@ -1834,6 +1884,7 @@ describe('WealthPage', () => {
         mockAllApisFull();
         vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
         vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+        vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
 
         renderPage();
 
@@ -1853,6 +1904,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -2080,6 +2132,205 @@ describe('WealthPage', () => {
     });
   });
 
+  describe('Venta de fondos de inversión (spec 044)', () => {
+    function mockOtherApis() {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(bankAccountsApi, 'listBankAccounts').mockResolvedValue([]);
+      vi.spyOn(bankAccountBalancesApi, 'listBankAccountBalances').mockResolvedValue([]);
+      vi.spyOn(stocksApi, 'listStocks').mockResolvedValue([]);
+      vi.spyOn(stockPurchasesApi, 'listStockPurchases').mockResolvedValue([]);
+      vi.spyOn(stockSalesApi, 'listStockSales').mockResolvedValue([]);
+      vi.spyOn(stockValuationsApi, 'listStockValuations').mockResolvedValue([]);
+      vi.spyOn(stockDividendsApi, 'listStockDividends').mockResolvedValue([]);
+      vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
+      vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
+      vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
+      vi.spyOn(vehiclesApi, 'listVehicles').mockResolvedValue([]);
+      vi.spyOn(vehicleValuationsApi, 'listVehicleValuations').mockResolvedValue([]);
+      vi.spyOn(pensionPlansApi, 'listPensionPlans').mockResolvedValue([]);
+      vi.spyOn(pensionPlanContributionsApi, 'listPensionPlanContributions').mockResolvedValue([]);
+      vi.spyOn(pensionPlanValuationsApi, 'listPensionPlanValuations').mockResolvedValue([]);
+      vi.spyOn(cashHoldingsApi, 'listCashHoldings').mockResolvedValue([]);
+      vi.spyOn(cashBalancesApi, 'listCashBalances').mockResolvedValue([]);
+    }
+
+    // Dos compras a precios distintos: 10 @ 20,00 € (2026-08-01) y 10 @ 30,00 € (2026-08-10) —
+    // coste total 500,00 €, 20 participaciones. Vender 15 consume primero el lote de 20,00 € (FIFO).
+    const FUND_PURCHASE_LOT_A: FundPurchase = { ...FUND_PURCHASE, id: 'fund-purchase-a', shareCount: '10', purchasePrice: '20.00', date: '2026-08-01' };
+    const FUND_PURCHASE_LOT_B: FundPurchase = { ...FUND_PURCHASE, id: 'fund-purchase-b', shareCount: '10', purchasePrice: '30.00', date: '2026-08-10' };
+    const FUND_PARTIAL_SALE: FundSale = { ...FUND_SALE, id: 'fund-sale-partial', shareCount: '15', salePrice: '40.00', date: '2026-08-15' };
+
+    it('una venta que cruza dos lotes calcula la ganancia por FIFO y reduce lo que queda en cartera', async () => {
+      mockOtherApis();
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE_LOT_A, FUND_PURCHASE_LOT_B]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([FUND_PARTIAL_SALE]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([{ ...FUND_VALUATION, pricePerShare: '40.00' }]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
+      // FIFO: 10 participaciones a 20,00 € (200,00 €) + 5 a 30,00 € (150,00 €) = coste 350,00 €.
+      // Venta: 15 × 40,00 € = 600,00 € → ganancia realizada 600 − 350 = 250,00 €.
+      // En cartera: 5 participaciones a 30,00 € = 150,00 € de coste; valor actual 5 × 40,00 € = 200,00 €.
+      expect(within(list).getByText(/5.00000000 participaciones en cartera · Coste total: 150,00 €/)).toBeInTheDocument();
+      expect(within(list).getByText('200,00 €')).toBeInTheDocument();
+      expect(within(list).getByText(/Ganancia\/pérdida realizada: 250,00 €/)).toBeInTheDocument();
+
+      const salesHistory = within(list).getByRole('list', { name: 'Historial de ventas de Vanguard Global Stock Index · MyInvestor' });
+      expect(within(salesHistory).getByText('+250,00 €')).toBeInTheDocument();
+    });
+
+    it('sin ninguna venta, muestra "Sin ventas" en la ganancia/pérdida realizada', async () => {
+      mockOtherApis();
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
+
+      renderPage();
+
+      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
+      expect(within(list).getByText(/Ganancia\/pérdida realizada: Sin ventas/)).toBeInTheDocument();
+    });
+
+    it('vender toda la posición deja el coste y el valor actual a 0, sin % de ganancia/pérdida no realizada', async () => {
+      mockOtherApis();
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([{ ...FUND_SALE, shareCount: '10', salePrice: '35.00' }]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
+
+      renderPage();
+
+      await screen.findByText('No tienes ninguna posición abierta.');
+      const list = await screen.findByRole('list', { name: 'Tus fondos de inversión cerrados' });
+      expect(within(list).getByText(/0.00000000 participaciones en cartera · Coste total: 0,00 €/)).toBeInTheDocument();
+      expect(within(list).queryByText(/^[+-]\d+\.\d{2}%$/)).not.toBeInTheDocument();
+    });
+
+    it('el formulario de venta trae la fecha de hoy por defecto y calcula el valor de venta', async () => {
+      mockOtherApis();
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir venta: Vanguard Global Stock Index' });
+
+      expect(within(form).getByLabelText('Fecha de venta')).toHaveValue(todayIso());
+
+      await userEvent.type(within(form).getByLabelText('Número de participaciones vendidas'), '4');
+      await userEvent.type(within(form).getByLabelText('Precio de venta'), '32.00');
+
+      expect(within(form).getByText(/Valor de venta:/)).toHaveTextContent('128,00');
+    });
+
+    it('añade una venta a un fondo existente', async () => {
+      mockOtherApis();
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
+      const listSalesSpy = vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      const createSpy = vi.spyOn(fundSalesApi, 'createFundSale').mockResolvedValue(FUND_SALE);
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir venta: Vanguard Global Stock Index' });
+
+      await userEvent.type(within(form).getByLabelText('Número de participaciones vendidas'), '4');
+      await userEvent.type(within(form).getByLabelText('Precio de venta'), '32.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir venta' }));
+
+      await waitFor(() =>
+        expect(createSpy).toHaveBeenCalledWith({ fundId: FUND.id, shareCount: '4', salePrice: '32.00', date: todayIso() }),
+      );
+      await waitFor(() => expect(listSalesSpy).toHaveBeenCalledTimes(2));
+    });
+
+    it('vender más de lo disponible muestra el error del servidor', async () => {
+      mockOtherApis();
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'createFundSale').mockRejectedValue(
+        new ApiError(400, 'No puedes vender 999 participaciones: solo quedan 10.00000000 en cartera.'),
+      );
+
+      renderPage();
+      const form = await screen.findByRole('form', { name: 'Añadir venta: Vanguard Global Stock Index' });
+
+      await userEvent.type(within(form).getByLabelText('Número de participaciones vendidas'), '999');
+      await userEvent.type(within(form).getByLabelText('Precio de venta'), '32.00');
+      await userEvent.click(within(form).getByRole('button', { name: 'Añadir venta' }));
+
+      expect(await within(form).findByRole('alert')).toHaveTextContent('solo quedan 10.00000000 en cartera');
+    });
+
+    it('edita una venta del historial', async () => {
+      mockOtherApis();
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([FUND_SALE]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      const updateSpy = vi.spyOn(fundSalesApi, 'updateFundSale').mockResolvedValue(FUND_SALE);
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
+
+      const saleLabel = 'Editar venta de Vanguard Global Stock Index: 2026-09-05 · 4.0000 participaciones a 32.00€';
+      await userEvent.click(screen.getByRole('button', { name: saleLabel }));
+      const editForm = screen.getByRole('form', { name: saleLabel });
+      const shareCountInput = within(editForm).getByLabelText('Número de participaciones vendidas');
+      await userEvent.clear(shareCountInput);
+      await userEvent.type(shareCountInput, '3');
+      await userEvent.click(within(editForm).getByRole('button', { name: 'Guardar' }));
+
+      await waitFor(() => expect(updateSpy).toHaveBeenCalledWith(FUND_SALE.id, { shareCount: '3', salePrice: '32.00', date: '2026-09-05' }));
+    });
+
+    it('elimina una venta del historial, sin borrar el fondo', async () => {
+      mockOtherApis();
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([FUND_SALE]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
+      const deleteSaleSpy = vi.spyOn(fundSalesApi, 'deleteFundSale').mockResolvedValue(undefined);
+      const deleteFundSpy = vi.spyOn(fundsApi, 'deleteFund');
+
+      renderPage();
+      await screen.findByRole('list', { name: 'Tus fondos de inversión abiertos' });
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Eliminar venta de Vanguard Global Stock Index: 2026-09-05 · 4.0000 participaciones a 32.00€' }),
+      );
+
+      await waitFor(() => expect(deleteSaleSpy).toHaveBeenCalledWith(FUND_SALE.id));
+      expect(deleteFundSpy).not.toHaveBeenCalled();
+    });
+
+    it('la tarjeta "Total" y "Rentabilidad por categoría" reflejan lo que queda en cartera tras una venta', async () => {
+      mockOtherApis();
+      vi.spyOn(fundsApi, 'listFunds').mockResolvedValue([FUND]);
+      vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE_LOT_A, FUND_PURCHASE_LOT_B]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([FUND_PARTIAL_SALE]);
+      vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([{ ...FUND_VALUATION, pricePerShare: '40.00' }]);
+
+      renderPage();
+
+      // Valor actual en cartera: 5 participaciones × 40,00 € = 200,00 € (no 20 × 40 = 800,00 €, el total histórico).
+      await waitFor(() => expect(document.getElementById('wealth-total-summary')).toBeInTheDocument());
+      const totalCard = within(document.getElementById('wealth-total-summary')!);
+      expect(totalCard.getByText('200,00 €')).toBeInTheDocument();
+
+      const table = await screen.findByRole('table', { name: 'Rentabilidad por categoría (tabla)' });
+      // Coste en cartera 150,00 €, valor actual 200,00 € → (200−150)/150×100 = +33.3 %.
+      expect(within(table).getByText('Fondos Inversión').closest('tr')).toHaveTextContent('+33.3 %');
+    });
+  });
+
   describe('Cálculo de impuestos por venta de acciones', () => {
     function mockOtherApis() {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
@@ -2090,6 +2341,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -2314,6 +2566,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
     }
 
     it('sin ninguna posición, muestra el aviso de "todavía no tienes nada"', async () => {
@@ -2773,6 +3026,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -3039,6 +3293,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -3398,6 +3653,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -3590,6 +3846,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -3695,6 +3952,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([]);
@@ -3720,6 +3978,7 @@ describe('WealthPage', () => {
       vi.spyOn(fundPurchasesApi, 'listFundPurchases').mockResolvedValue([FUND_PURCHASE]);
       vi.spyOn(fundValuationsApi, 'listFundValuations').mockResolvedValue([FUND_VALUATION]);
       vi.spyOn(fundDividendsApi, 'listFundDividends').mockResolvedValue([]);
+      vi.spyOn(fundSalesApi, 'listFundSales').mockResolvedValue([]);
       vi.spyOn(cryptosApi, 'listCryptos').mockResolvedValue([CRYPTO]);
       vi.spyOn(cryptoPurchasesApi, 'listCryptoPurchases').mockResolvedValue([CRYPTO_PURCHASE]);
       vi.spyOn(cryptoValuationsApi, 'listCryptoValuations').mockResolvedValue([CRYPTO_VALUATION]);
