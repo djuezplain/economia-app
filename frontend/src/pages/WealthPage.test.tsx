@@ -3772,8 +3772,12 @@ describe('WealthPage', () => {
         await userEvent.selectOptions(viewSelect, 'liquidity');
 
         // Líquido: 1500 (BANK_BALANCE). Total: 1500 + 15000 (VEHICLE_VALUATION) = 16500. Ratio: 9,1%.
+        // El valor no cambia entre semanas (sin nuevos datos), así que varias filas comparten el mismo
+        // % redondeado: se comprueba la fila de la semana más reciente en vez de asumir un texto único.
         const table = await screen.findByRole('table', { name: 'Liquidez del patrimonio por semana (tabla)' });
-        expect(within(table).getByText('9.1 %')).toBeInTheDocument();
+        const rows = within(table).getAllByRole('row');
+        const lastRow = rows[rows.length - 1];
+        expect(within(lastRow).getByText('9.1 %')).toBeInTheDocument();
       });
     });
 
