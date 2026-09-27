@@ -1,7 +1,7 @@
 # Spec 044 — Venta de fondos de inversión, con historial y ganancia/pérdida realizada
 
-**Estado:** Aprobada (decidida directamente con Diego en conversación)
-**Fase:** 1 de 4 (Spec → Plan → Tasks → Implementación)
+**Estado:** Implementada (decidida y construida directamente con Diego en conversación)
+**Fase:** 4 de 4 (Spec → Plan → Tasks → Implementación)
 **Basado en:** spec 031 (venta de acciones) — misma lógica, aplicada a Fondos Inversión en vez de Acciones (decisión explícita de Diego al pedir esta spec).
 
 ## 0. Qué cambia
