@@ -20,7 +20,7 @@ import { SyncStatusPanel } from './SyncStatusPanel';
 // plegables dentro de la misma página, spec 016/018) — el enlace lleva un
 // hash al `id` de cada `<details>`, y `useOpenSectionFromHash` (en cada
 // página) lo abre y hace scroll hasta él al navegar. Solo se muestran al
-// hacer clic en la entrada principal (petición de Diego, ver `expandedItems`
+// hacer clic en la entrada principal (petición de Diego, ver `expandedItem`
 // más abajo).
 const NAV_ITEMS = [
   { to: '/', end: true, label: 'Inicio', icon: '🏠' },
@@ -83,24 +83,6 @@ const NAV_ITEMS = [
   { to: '/profile', end: false, label: 'Tu perfil', icon: '👤' },
   { to: '/sessions', end: false, label: 'Dispositivos y sesiones', icon: '🔐' },
 ] as const;
-
-/**
- * Petición de Diego: las subsecciones ya no se muestran siempre, solo al
- * hacer clic en la entrada principal a la que pertenecen (antes de esto,
- * el estado no existía y `children` se pintaba entero sin más condición
- * que `!isCollapsed`). Independiente por entrada (no acordeón): abrir una
- * no cierra las demás, para no sorprender al usuario cerrando algo que ya
- * tenía abierto. Arranca con la sección de la ruta actual ya abierta (si
- * la hay) para no perder ese contexto nada más cargar la página.
- */
-function initialExpandedItems(pathname: string): Set<string> {
-  const expanded = new Set<string>();
-  for (const item of NAV_ITEMS) {
-    if (!('children' in item)) continue;
-    if (pathname === item.to || pathname.startsWith(`${item.to}/`)) expanded.add(item.to);
-  }
-  return expanded;
-}
 
 /**
  * Enlace de subsección del menú lateral. A diferencia de `NavLink`, calcula
@@ -170,17 +152,20 @@ const BOTTOM_NAV_ITEMS = [
  */
 export function AppLayout() {
   const { isAuthenticated, isLoading, isOffline, logout } = useAuth();
-  const location = useLocation();
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [expandedItems, setExpandedItems] = useState(() => initialExpandedItems(location.pathname));
+  const [isCollapsed,setIsCollapsed] = useState(false);
+  // Petición de Diego: las subsecciones solo se muestran al hacer clic en la
+  // entrada principal, y se comportan como un desplegable — una sola abierta
+  // a la vez, y se cierra al elegir una subsección, al hacer clic fuera del
+  // menú o con Escape (antes quedaba abierto hasta volver a pulsar la
+  // entrada principal, y arrancaba abierto con la sección de la ruta actual).
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
 
   function toggleExpanded(to: string) {
-    setExpandedItems((current) => {
-      const next = new Set(current);
-      if (next.has(to)) next.delete(to);
-      else next.add(to);
-      return next;
-    });
+    setExpandedItem((current) => (current === to ? null : to));
+  }
+
+  function closeSubmenu() {
+    setExpandedItem(null);
   }
   // Spec 009 (adaptación a móvil), plan.md §1. Estado independiente de
   // `isCollapsed`: en escritorio el menú se pliega a una franja estrecha
@@ -243,6 +228,23 @@ export function AppLayout() {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isMobileMenuOpen]);
+
+  // Cierra el submenú abierto al hacer clic fuera del menú o pulsar Escape.
+  useEffect(() => {
+    if (expandedItem === null) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (!sidebarRef.current?.contains(event.target as Node)) closeSubmenu();
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') closeSubmenu();
+    }
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [expandedItem]);
 
   // H5 criterio 2 (spec 007): con el menú plegado, el `<ul>` ya no se oculta
   // por completo (antes sí, spec 005) — cada icono sigue siendo visible y
@@ -311,7 +313,7 @@ export function AppLayout() {
             {NAV_ITEMS.map((item) => {
               const { to, end, label, icon } = item;
               const children = 'children' in item ? item.children : undefined;
-              const isExpanded = expandedItems.has(to);
+              const isExpanded = expandedItem === to;
               const sublistId = `nav-sublist-${to}`;
               return (
                 <li key={to}>
@@ -322,6 +324,7 @@ export function AppLayout() {
                     onClick={() => {
                       closeMobileMenu();
                       if (children) toggleExpanded(to);
+                      else closeSubmenu();
                     }}
                     {...(children ? { 'aria-expanded': isExpanded, 'aria-controls': sublistId } : {})}
                     {...collapsedLabel(label)}
@@ -345,7 +348,10 @@ export function AppLayout() {
                             end={child.end}
                             label={child.label}
                             icon={child.icon}
-                            onNavigate={closeMobileMenu}
+                            onNavigate={() => {
+                              closeMobileMenu();
+                              closeSubmenu();
+                            }}
                           />
                         </li>
                       ))}
