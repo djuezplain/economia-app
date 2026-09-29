@@ -138,21 +138,58 @@ describe('AppLayout', () => {
     expect(screen.queryByRole('link', { name: 'Comparativa temporal' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Cuentas Bancarias' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: 'Ingresos y gastos' }));
-    await user.click(screen.getByRole('link', { name: 'Dashboard' }));
-    await user.click(screen.getByRole('link', { name: 'Resumen Patrimonio' }));
-
-    for (const [label, href] of [
-      ['Movimientos', '/movements'],
-      ['Resumen', '/movements/summary'],
-      ['Registrar', '/movements/register'],
-      ['Comparativa temporal', '/dashboard#dashboard-comparativa-temporal'],
-      ['Vista anual', '/dashboard#dashboard-vista-anual'],
-      ['Cuentas Bancarias', '/patrimonio#wealth-cuentas-bancarias'],
-      ['Efectivo', '/patrimonio#wealth-efectivo'],
-    ] as const) {
-      expect(screen.getByRole('link', { name: label })).toHaveAttribute('href', href);
+    const groups = [
+      ['Ingresos y gastos', [['Movimientos', '/movements'], ['Resumen', '/movements/summary'], ['Registrar', '/movements/register']]],
+      ['Dashboard', [['Comparativa temporal', '/dashboard#dashboard-comparativa-temporal'], ['Vista anual', '/dashboard#dashboard-vista-anual']]],
+      ['Resumen Patrimonio', [['Cuentas Bancarias', '/patrimonio#wealth-cuentas-bancarias'], ['Efectivo', '/patrimonio#wealth-efectivo']]],
+    ] as const;
+    for (const [parent, children] of groups) {
+      await user.click(screen.getByRole('link', { name: parent }));
+      for (const [label, href] of children) {
+        expect(screen.getByRole('link', { name: label })).toHaveAttribute('href', href);
+      }
     }
+  });
+
+  it('solo hay un submenú abierto a la vez: abrir otro cierra el anterior', async () => {
+    mockLoggedIn();
+    const user = userEvent.setup();
+    renderLayout();
+
+    await user.click(await screen.findByRole('link', { name: 'Ingresos y gastos' }));
+    expect(screen.getByRole('link', { name: 'Movimientos' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: 'Dashboard' }));
+    expect(screen.getByRole('link', { name: 'Comparativa temporal' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Movimientos' })).not.toBeInTheDocument();
+  });
+
+  it('el submenú se cierra al elegir una de sus subsecciones', async () => {
+    mockLoggedIn();
+    const user = userEvent.setup();
+    renderLayout();
+
+    await user.click(await screen.findByRole('link', { name: 'Ingresos y gastos' }));
+    await user.click(screen.getByRole('link', { name: 'Resumen' }));
+
+    expect(screen.queryByRole('link', { name: 'Movimientos' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ingresos y gastos' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('el submenú se cierra al hacer clic fuera del menú o pulsar Escape', async () => {
+    mockLoggedIn();
+    const user = userEvent.setup();
+    renderLayout();
+
+    await user.click(await screen.findByRole('link', { name: 'Ingresos y gastos' }));
+    expect(screen.getByRole('link', { name: 'Movimientos' })).toBeInTheDocument();
+    await user.click(document.body);
+    expect(screen.queryByRole('link', { name: 'Movimientos' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: 'Ingresos y gastos' }));
+    expect(screen.getByRole('link', { name: 'Movimientos' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('link', { name: 'Movimientos' })).not.toBeInTheDocument();
   });
 
   it('un segundo clic en la entrada principal vuelve a ocultar sus subsecciones', async () => {
@@ -172,14 +209,13 @@ describe('AppLayout', () => {
     expect(link).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('al cargar una página que pertenece a una entrada con subsecciones, esa entrada empieza ya desplegada', async () => {
+  it('al cargar una página que pertenece a una entrada con subsecciones, su submenú empieza cerrado', async () => {
     mockLoggedIn();
     renderLayout('/movements');
 
-    expect(await screen.findByRole('link', { name: 'Movimientos' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ingresos y gastos' })).toHaveAttribute('aria-expanded', 'true');
-    // Las otras entradas con subsecciones no se ven afectadas.
-    expect(screen.queryByRole('link', { name: 'Comparativa temporal' })).not.toBeInTheDocument();
+    const link = await screen.findByRole('link', { name: 'Ingresos y gastos' });
+    expect(link).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('link', { name: 'Movimientos' })).not.toBeInTheDocument();
   });
 
   it('oculta las subsecciones con el menú plegado, aunque estuvieran desplegadas', async () => {
@@ -188,13 +224,11 @@ describe('AppLayout', () => {
     renderLayout();
 
     await user.click(await screen.findByRole('link', { name: 'Ingresos y gastos' }));
-    await user.click(screen.getByRole('link', { name: 'Dashboard' }));
     await screen.findByRole('link', { name: 'Movimientos' });
 
     await user.click(screen.getByRole('button', { name: 'Ocultar menú' }));
 
     expect(screen.queryByRole('link', { name: 'Movimientos' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Comparativa temporal' })).not.toBeInTheDocument();
   });
 
   it('marca como activo solo el enlace de la ruta actual, incluido "Inicio" solo en la home', async () => {
