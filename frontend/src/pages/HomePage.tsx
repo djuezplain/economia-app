@@ -1,21 +1,79 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { listCategories } from '../api/categories';
 import type { Category } from '../api/categories';
-import { getMonthSummary } from '../api/dashboard';
-import type { MonthSummary } from '../api/dashboard';
+import { getMonthSummary, getYearSummary } from '../api/dashboard';
+import type { MonthSummary, MonthlyEvolutionEntry } from '../api/dashboard';
 import { getMonthProgress } from '../api/goals-progress';
 import type { GoalProgress } from '../api/goals-progress';
 import { listTransactions } from '../api/transactions';
 import type { Transaction } from '../api/transactions';
 import { ApiError } from '../api/client';
 import { categoryName } from './movements-shared';
-import { formatCurrency, formatDate, lastDayOfMonth } from './home-shared';
+import { formatCurrency, formatDate, lastDayOfMonth, monthOverMonthChange } from './home-shared';
+import { Sparkline } from '../components/Sparkline';
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
+}
+
+/** 'YYYY-MM' del mes anterior, o `null` en enero (la evolución anual solo
+ *  cubre el año en curso, spec 045 H3 criterio 3). */
+function previousMonthInYear(month: string): string | null {
+  const [year, monthNumber] = month.split('-');
+  if (monthNumber === '01') return null;
+  return `${year}-${String(parseInt(monthNumber, 10) - 1).padStart(2, '0')}`;
+}
+
+const PERCENT_FORMATTER = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
+
+/**
+ * Spec 045 (rediseño oscuro), H3. Tarjeta KPI de Inicio: etiqueta, cifra,
+ * variación respecto al mes anterior (flecha + %, verde si es favorable y
+ * rojo si no — para Gastos, subir es desfavorable) y mini-gráfico del año
+ * en curso. La variación y el mini-gráfico son opcionales: sin evolución
+ * anual (o sin base con la que comparar) la tarjeta se ve solo con la cifra.
+ */
+function KpiCard({
+  label,
+  amount,
+  change,
+  higherIsBetter,
+  series,
+  color,
+  children,
+}: {
+  label: string;
+  amount: string;
+  change: number | null;
+  higherIsBetter: boolean;
+  series: number[] | null;
+  color: string;
+  children?: ReactNode;
+}) {
+  const tone = change === null || change === 0 ? 'neutral' : change > 0 === higherIsBetter ? 'positive' : 'negative';
+  return (
+    <div className="card kpi-card">
+      <p className="card-kicker">{label}</p>
+      <p className="card-amount">{formatCurrency(amount)}</p>
+      {(change !== null || series) && (
+        <div className="kpi-footer">
+          {change !== null && (
+            <span className="kpi-delta" data-tone={tone}>
+              <span aria-hidden="true">{change > 0 ? '↑' : change < 0 ? '↓' : '→'}</span>{' '}
+              {change > 0 ? '+' : change < 0 ? '−' : ''}
+              {PERCENT_FORMATTER.format(Math.abs(change))} % vs. mes anterior
+            </span>
+          )}
+          {series && <Sparkline values={series} color={color} />}
+        </div>
+      )}
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -45,6 +103,10 @@ export function HomePage() {
   const [goalError, setGoalError] = useState<string | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[] | null>(null);
   const [movementsError, setMovementsError] = useState<string | null>(null);
+  // Spec 045, H3: evolución mensual del año en curso para la variación y el
+  // mini-gráfico de las tarjetas KPI. Sin estado de error propio: si falla,
+  // las tarjetas se ven igual, sin variación ni mini-gráfico (criterio 3).
+  const [yearMonths, setYearMonths] = useState<MonthlyEvolutionEntry[] | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated || !isOnline) return;
@@ -73,6 +135,22 @@ export function HomePage() {
         if (!cancelled) setMonthSummary(summary);
       } catch (err) {
         if (!cancelled) setMonthError(err instanceof ApiError ? err.message : 'No se ha podido cargar el resumen del mes.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline, month]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const summary = await getYearSummary(month.slice(0, 4));
+        if (!cancelled) setYearMonths(summary.months);
+      } catch {
+        // Ver comentario de `yearMonths`: opcional, no bloquea Inicio.
       }
     })();
     return () => {
@@ -116,6 +194,15 @@ export function HomePage() {
 
   const isEmptyMonth = monthSummary?.income === '0.00' && monthSummary?.expense === '0.00';
 
+  // Spec 045, H3: meses del año hasta el actual (la evolución anual trae los
+  // 12, con los futuros a 0) y el mes anterior, si lo hay en el mismo año.
+  const monthsSoFar = yearMonths?.filter((entry) => entry.month <= month) ?? [];
+  const previousMonth = previousMonthInYear(month);
+  const previousEntry = previousMonth ? monthsSoFar.find((entry) => entry.month === previousMonth) : undefined;
+  const seriesOf = (pick: (entry: MonthlyEvolutionEntry) => string) =>
+    monthsSoFar.length >= 2 ? monthsSoFar.map((entry) => parseFloat(pick(entry))) : null;
+  const balance = monthSummary ? (parseFloat(monthSummary.income) - parseFloat(monthSummary.expense)).toFixed(2) : '0.00';
+
   return (
     <main>
       <h1>App de Gestión de Economía Personal</h1>
@@ -144,9 +231,14 @@ export function HomePage() {
 
           {monthSummary && !isEmptyMonth && (
             <div id="home-summary">
-              <div className="card elev-sm">
-                <p className="card-kicker">Balance del mes</p>
-                <p className="card-amount">{formatCurrency((parseFloat(monthSummary.income) - parseFloat(monthSummary.expense)).toFixed(2))}</p>
+              <KpiCard
+                label="Balance del mes"
+                amount={balance}
+                change={monthOverMonthChange(balance, previousEntry?.savings)}
+                higherIsBetter
+                series={seriesOf((entry) => entry.savings)}
+                color="var(--accent)"
+              >
                 <p className="card-body">
                   {savingsGoal?.targetAmount !== null && savingsGoal?.targetAmount !== undefined ? (
                     `Sobre un objetivo de ${formatCurrency(savingsGoal.targetAmount)}`
@@ -156,15 +248,23 @@ export function HomePage() {
                     </>
                   )}
                 </p>
-              </div>
-              <div className="card elev-sm">
-                <p className="card-kicker">Ingresos</p>
-                <p className="card-amount">{formatCurrency(monthSummary.income)}</p>
-              </div>
-              <div className="card elev-sm">
-                <p className="card-kicker">Gastos</p>
-                <p className="card-amount">{formatCurrency(monthSummary.expense)}</p>
-              </div>
+              </KpiCard>
+              <KpiCard
+                label="Ingresos"
+                amount={monthSummary.income}
+                change={monthOverMonthChange(monthSummary.income, previousEntry?.income)}
+                higherIsBetter
+                series={seriesOf((entry) => entry.income)}
+                color="var(--status-green)"
+              />
+              <KpiCard
+                label="Gastos"
+                amount={monthSummary.expense}
+                change={monthOverMonthChange(monthSummary.expense, previousEntry?.expense)}
+                higherIsBetter={false}
+                series={seriesOf((entry) => entry.expense)}
+                color="var(--status-red)"
+              />
             </div>
           )}
 

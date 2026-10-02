@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCurrency, formatDate, lastDayOfMonth } from './home-shared';
+import { formatCurrency, formatDate, lastDayOfMonth, monthOverMonthChange } from './home-shared';
 
 // `Intl.NumberFormat` separa la cifra del símbolo de moneda con un espacio
 // de no separación (U+00A0), no un espacio normal — de ahí este helper en
@@ -63,5 +63,35 @@ describe('lastDayOfMonth', () => {
 
   it('resuelve febrero en año bisiesto', () => {
     expect(lastDayOfMonth('2028-02')).toBe(29);
+  });
+});
+
+describe('monthOverMonthChange (spec 045, H3)', () => {
+  it('sin mes anterior devuelve null', () => {
+    expect(monthOverMonthChange('100.00', undefined)).toBeNull();
+  });
+
+  it('con el mes anterior a 0 devuelve null (no hay base con la que comparar)', () => {
+    expect(monthOverMonthChange('100.00', '0.00')).toBeNull();
+  });
+
+  it('calcula una subida redondeada a 1 decimal', () => {
+    expect(monthOverMonthChange('1150.00', '1000.00')).toBe(15);
+    expect(monthOverMonthChange('1333.33', '1200.00')).toBe(11.1);
+  });
+
+  it('calcula una bajada como porcentaje negativo', () => {
+    expect(monthOverMonthChange('900.00', '1200.00')).toBe(-25);
+  });
+
+  it('sin cambios devuelve 0', () => {
+    expect(monthOverMonthChange('500.00', '500.00')).toBe(0);
+  });
+
+  it('con una base negativa, el signo sigue indicando si el importe ha subido o bajado', () => {
+    // Balance de -200 € a 100 €: ha subido 300 €, un 150 % sobre |−200|.
+    expect(monthOverMonthChange('100.00', '-200.00')).toBe(150);
+    // Balance de -200 € a -300 €: ha bajado.
+    expect(monthOverMonthChange('-300.00', '-200.00')).toBe(-50);
   });
 });
