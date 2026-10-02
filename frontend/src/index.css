@@ -24,52 +24,30 @@
   --code-bg: #0f0f12;
   --accent: #f97316;
   --accent-2: #a855f7;
-  --social-bg: rgba(19, 19, 22, 0.5);
   --fab-bg: var(--accent);
   --fab-fg: #0b0b0d;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
 
   --neutral-100: #1f1f23;
   --neutral-200: #2a2a30;
   --neutral-300: #3a3a41;
   --neutral-400: #52525b;
-  --neutral-500: #71717a;
-  --neutral-600: #a1a1aa;
   --neutral-700: #d4d4d8;
-  --neutral-800: #e4e4e7;
-  --neutral-900: #f4f4f5;
 
   /* Rampa naranja (Tailwind orange), invertida. */
   --accent-100: #2a160a;
-  --accent-200: #431f0b;
-  --accent-300: #7c2d12;
   --accent-400: #c2410c;
-  --accent-500: #ea580c;
   --accent-600: #fb923c;
   --accent-700: #fdba74;
   --accent-800: #fed7aa;
-  --accent-900: #ffedd5;
-  --accent-bg: var(--accent-100);
-  --accent-border: var(--accent-400);
 
   /* Rampa morada (antes rosa), invertida. */
-  --accent-2-100: #1f1030;
-  --accent-2-200: #3b0764;
-  --accent-2-300: #6b21a8;
-  --accent-2-400: #9333ea;
   --accent-2-500: #a855f7;
-  --accent-2-600: #c084fc;
   --accent-2-700: #d8b4fe;
-  --accent-2-800: #e9d5ff;
-  --accent-2-900: #f3e8ff;
 
   /* Spec 007 (mejoras visuales): rampa de progreso de objetivos/presupuestos
      — mismo papel, tonos de la captura. */
   --status-green: #22c55e;
-  --status-amber: #eab308;
-  --status-orange: #f97316;
   --status-red: #ef4444;
 
   /* Spec 028 (composición/rentabilidad de patrimonio): colores fijos por
@@ -1113,12 +1091,6 @@ a.card-title:hover {
   gap: 6px;
   font-size: 12px;
   color: var(--text-muted);
-}
-/* Spec 045: la captura separa las tarjetas por borde, no por sombra — las
-   clases de elevación se mantienen (las usan muchas pantallas) sin efecto. */
-.elev-sm,
-.elev-md {
-  box-shadow: none;
 }
 
 /* — etiquetas — */

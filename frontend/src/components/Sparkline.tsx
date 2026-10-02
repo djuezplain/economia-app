@@ -8,9 +8,8 @@ import { Area, AreaChart, ResponsiveContainer } from 'recharts';
  * (`aria-hidden`): la cifra y la variación ya están en texto en la tarjeta.
  */
 export function Sparkline({ values, color }: { values: number[]; color: string }) {
-  // `useId` puede contener ':' — no vale tal cual dentro de `url(#...)`.
-  const gradientId = `sparkline-${useId().replace(/:/g, '')}`;
-  const data = values.map((value, index) => ({ index, value }));
+  const gradientId = useId();
+  const data = values.map((value) => ({ value }));
 
   return (
     <div className="sparkline" aria-hidden="true">

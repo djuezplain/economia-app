@@ -34,9 +34,7 @@ import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
 import {
   CHART_AXIS_PROPS,
-  CHART_CATEGORY_AXIS_PROPS,
   CHART_GRID_PROPS,
-  CHART_HBAR_RADIUS,
   CHART_LEGEND_PROPS,
   CHART_LINE_PROPS,
   CHART_TOOLTIP_PROPS,
@@ -700,9 +698,9 @@ export function DashboardPage() {
                     <BarChart data={byCategoryChartData} layout="vertical" margin={{ left: 24 }}>
                       <CartesianGrid {...CHART_GRID_PROPS} vertical horizontal={false} />
                       <XAxis type="number" {...CHART_AXIS_PROPS} />
-                      <YAxis type="category" dataKey="name" width={120} {...CHART_CATEGORY_AXIS_PROPS} />
+                      <YAxis type="category" dataKey="name" width={120} {...CHART_AXIS_PROPS} tick={{ ...CHART_AXIS_PROPS.tick, fill: 'var(--text)' }} />
                       <Tooltip {...CHART_TOOLTIP_PROPS} />
-                      <Bar dataKey="total" name="Gasto" fill={COLOR_CATEGORY_BAR} radius={CHART_HBAR_RADIUS} barSize={14} />
+                      <Bar dataKey="total" name="Gasto" fill={COLOR_CATEGORY_BAR} radius={[0, 4, 4, 0]} barSize={14} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
