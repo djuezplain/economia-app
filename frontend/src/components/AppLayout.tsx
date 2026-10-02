@@ -300,7 +300,12 @@ export function AppLayout() {
           {/* Spec 008 (rediseño Broadsheet), plan.md §4 (H4). Siempre visible,
               plegado o no — a diferencia del texto de los enlaces, no depende
               de `isCollapsed`. */}
-          <p id="app-sidebar-brand">Ledger</p>
+          <p id="app-sidebar-brand">
+            <span id="app-sidebar-logo" aria-hidden="true">
+              L
+            </span>
+            <span>Ledger</span>
+          </p>
           <button
             type="button"
             className="btn btn-secondary"
