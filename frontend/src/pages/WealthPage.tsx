@@ -148,17 +148,22 @@ import {
   isFundPositionClosed,
   totalRealizedGainLoss as fundTotalRealizedGainLoss,
 } from './fund-shared';
+import {
+  CHART_AXIS_PROPS,
+  CHART_BAR_RADIUS,
+  CHART_GRID_PROPS,
+  CHART_LEGEND_PROPS,
+  CHART_LINE_PROPS,
+  CHART_TOOLTIP_PROPS,
+} from '../components/chart-theme';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Spec 027: mismos tokens de estilo que `DashboardPage.tsx` (`CHART_TICK_STYLE`/
-// `CHART_TOOLTIP_STYLE`), duplicados aquí en vez de extraer un módulo
-// compartido — no hay todavía una tercera consumidora (plan.md §3).
-const WEALTH_CHART_TICK_STYLE = { fontFamily: 'var(--font-body)', fontSize: 12, fill: 'var(--text)' };
-const WEALTH_CHART_TOOLTIP_STYLE = { fontFamily: 'var(--font-body)', fontSize: 13 };
-const COLOR_WEALTH_TOTAL = 'var(--accent-300)';
+// Spec 045 (rediseño oscuro): estilo de ejes/rejilla/tooltip común en
+// `chart-theme.ts`; la serie principal (total, liquidez) en el naranja de acento.
+const COLOR_WEALTH_TOTAL = 'var(--accent)';
 
 const RANGE_MODE_OPTIONS: Array<{ value: WealthEvolutionRangeMode; label: string }> = [
   { value: 'last12Months', label: 'Últimos 12 meses' },
@@ -3045,15 +3050,12 @@ export function WealthPage() {
           <div style={{ width: '100%', height: 140 }}>
             <ResponsiveContainer>
               <BarChart data={[compositionData.row]} layout="vertical" margin={{ left: 8 }}>
-                <XAxis type="number" tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} tick={WEALTH_CHART_TICK_STYLE} />
+                <XAxis type="number" tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} {...CHART_AXIS_PROPS} />
                 <YAxis type="category" dataKey="name" hide />
-                <Tooltip
-                  contentStyle={WEALTH_CHART_TOOLTIP_STYLE}
-                  formatter={(value) => formatCurrency(Number(value).toFixed(2))}
-                />
-                <Legend wrapperStyle={WEALTH_CHART_TOOLTIP_STYLE} />
+                <Tooltip {...CHART_TOOLTIP_PROPS} formatter={(value) => formatCurrency(Number(value).toFixed(2))} />
+                <Legend {...CHART_LEGEND_PROPS} />
                 {compositionData.rows.map((row) => (
-                  <Bar key={row.key} dataKey={row.key} name={row.label} stackId="composition" fill={row.color} />
+                  <Bar key={row.key} dataKey={row.key} name={row.label} stackId="composition" fill={row.color} barSize={22} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -3086,16 +3088,13 @@ export function WealthPage() {
           <div style={{ width: '100%', height: 280 }}>
             <ResponsiveContainer>
               <BarChart data={contributionVsValueData.rows} margin={{ left: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="category" tick={WEALTH_CHART_TICK_STYLE} />
-                <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} tick={WEALTH_CHART_TICK_STYLE} />
-                <Tooltip
-                  contentStyle={WEALTH_CHART_TOOLTIP_STYLE}
-                  formatter={(value) => formatCurrency(Number(value).toFixed(2))}
-                />
-                <Legend wrapperStyle={WEALTH_CHART_TOOLTIP_STYLE} />
-                <Bar dataKey="aportado" name="Aportado" fill="var(--neutral-500)" />
-                <Bar dataKey="valorActual" name="Valor actual" fill="var(--accent-500)" />
+                <CartesianGrid {...CHART_GRID_PROPS} />
+                <XAxis dataKey="category" {...CHART_AXIS_PROPS} />
+                <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} {...CHART_AXIS_PROPS} />
+                <Tooltip {...CHART_TOOLTIP_PROPS} formatter={(value) => formatCurrency(Number(value).toFixed(2))} />
+                <Legend {...CHART_LEGEND_PROPS} />
+                <Bar dataKey="aportado" name="Aportado" fill="var(--neutral-400)" radius={CHART_BAR_RADIUS} maxBarSize={28} />
+                <Bar dataKey="valorActual" name="Valor actual" fill="var(--accent)" radius={CHART_BAR_RADIUS} maxBarSize={28} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -3138,16 +3137,16 @@ export function WealthPage() {
           <div style={{ width: '100%', height: 280 }}>
             <ResponsiveContainer>
               <BarChart data={profitabilityData} margin={{ left: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="category" tick={WEALTH_CHART_TICK_STYLE} />
+                <CartesianGrid {...CHART_GRID_PROPS} />
+                <XAxis dataKey="category" {...CHART_AXIS_PROPS} />
                 <YAxis
                   domain={[(min: number) => Math.min(min, 0), (max: number) => Math.max(max, 0)]}
                   tickFormatter={(value: number) => `${value.toFixed(0)} %`}
-                  tick={WEALTH_CHART_TICK_STYLE}
+                  {...CHART_AXIS_PROPS}
                 />
-                <Tooltip contentStyle={WEALTH_CHART_TOOLTIP_STYLE} formatter={(value) => `${Number(value).toFixed(1)} %`} />
-                <ReferenceLine y={0} stroke="var(--border)" />
-                <Bar dataKey="pct" name="Rentabilidad">
+                <Tooltip {...CHART_TOOLTIP_PROPS} formatter={(value) => `${Number(value).toFixed(1)} %`} />
+                <ReferenceLine y={0} stroke="var(--neutral-400)" />
+                <Bar dataKey="pct" name="Rentabilidad" radius={CHART_BAR_RADIUS} maxBarSize={36}>
                   {profitabilityData.map((row) => (
                     <Cell key={row.category} fill={row.pct >= 0 ? 'var(--status-green)' : 'var(--status-red)'} />
                   ))}
@@ -3247,15 +3246,15 @@ export function WealthPage() {
               <div style={{ width: '100%', height: 320 }}>
                 <ResponsiveContainer>
                   <LineChart data={wealthEvolutionPoints} margin={{ left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="weekEnding" tickFormatter={formatDate} tick={WEALTH_CHART_TICK_STYLE} />
-                    <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} tick={WEALTH_CHART_TICK_STYLE} />
+                    <CartesianGrid {...CHART_GRID_PROPS} />
+                    <XAxis dataKey="weekEnding" tickFormatter={formatDate} {...CHART_AXIS_PROPS} />
+                    <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} {...CHART_AXIS_PROPS} />
                     <Tooltip
-                      contentStyle={WEALTH_CHART_TOOLTIP_STYLE}
+                      {...CHART_TOOLTIP_PROPS}
                       labelFormatter={(label) => formatDate(String(label))}
                       formatter={(value) => [formatCurrency(Number(value).toFixed(2)), 'Patrimonio total']}
                     />
-                    <Line type="monotone" dataKey="total" name="Patrimonio total" stroke={COLOR_WEALTH_TOTAL} strokeWidth={2} dot={{ r: 3 }} />
+                    <Line {...CHART_LINE_PROPS} dataKey="total" name="Patrimonio total" stroke={COLOR_WEALTH_TOTAL} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -3286,15 +3285,15 @@ export function WealthPage() {
               <div style={{ width: '100%', height: 320 }}>
                 <ResponsiveContainer>
                   <AreaChart data={wealthEvolutionByCategoryPoints} margin={{ left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="weekEnding" tickFormatter={formatDate} tick={WEALTH_CHART_TICK_STYLE} />
-                    <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} tick={WEALTH_CHART_TICK_STYLE} />
+                    <CartesianGrid {...CHART_GRID_PROPS} />
+                    <XAxis dataKey="weekEnding" tickFormatter={formatDate} {...CHART_AXIS_PROPS} />
+                    <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} {...CHART_AXIS_PROPS} />
                     <Tooltip
-                      contentStyle={WEALTH_CHART_TOOLTIP_STYLE}
+                      {...CHART_TOOLTIP_PROPS}
                       labelFormatter={(label) => formatDate(String(label))}
                       formatter={(value) => formatCurrency(Number(value).toFixed(2))}
                     />
-                    <Legend wrapperStyle={WEALTH_CHART_TOOLTIP_STYLE} />
+                    <Legend {...CHART_LEGEND_PROPS} />
                     {activeWealthCategories.map((category) => (
                       <Area
                         key={category.key}
@@ -3303,8 +3302,9 @@ export function WealthPage() {
                         name={category.label}
                         stackId="wealth-by-category"
                         stroke={category.color}
+                        strokeWidth={1.5}
                         fill={category.color}
-                        fillOpacity={0.85}
+                        fillOpacity={0.45}
                       />
                     ))}
                   </AreaChart>
@@ -3343,21 +3343,23 @@ export function WealthPage() {
               <div style={{ width: '100%', height: 320 }}>
                 <ResponsiveContainer>
                   <LineChart data={liquidityPoints} margin={{ left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="weekEnding" tickFormatter={formatDate} tick={WEALTH_CHART_TICK_STYLE} />
-                    <YAxis tickFormatter={(value: number) => `${value.toFixed(0)} %`} tick={WEALTH_CHART_TICK_STYLE} />
+                    <CartesianGrid {...CHART_GRID_PROPS} />
+                    <XAxis dataKey="weekEnding" tickFormatter={formatDate} {...CHART_AXIS_PROPS} />
+                    <YAxis tickFormatter={(value: number) => `${value.toFixed(0)} %`} {...CHART_AXIS_PROPS} />
                     <Tooltip
-                      contentStyle={WEALTH_CHART_TOOLTIP_STYLE}
+                      {...CHART_TOOLTIP_PROPS}
                       labelFormatter={(label) => formatDate(String(label))}
                       formatter={(value) => [`${Number(value).toFixed(1)} %`, 'Liquidez']}
                     />
+                    {/* Con puntos (a diferencia del resto, `CHART_LINE_PROPS`): sin
+                        `connectNulls`, una semana suelta entre huecos sin datos
+                        no tendría línea y desaparecería del todo sin su punto. */}
                     <Line
-                      type="monotone"
+                      {...CHART_LINE_PROPS}
                       dataKey="ratioPercent"
                       name="Liquidez"
                       stroke={COLOR_WEALTH_TOTAL}
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
+                      dot={{ r: 2, strokeWidth: 0, fill: COLOR_WEALTH_TOTAL }}
                       connectNulls={false}
                     />
                   </LineChart>
