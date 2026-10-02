@@ -1,96 +1,102 @@
-/* Rediseño "app oscura" (petición de Diego, captura de referencia tipo
-   historial de mantenimiento): tipografía sans-serif redondeada, en vez de
-   la serif del rediseño editorial (spec 010). Reemplaza a Source Serif 4;
-   se mantiene el nombre de variable `--font-body` para no tocar cada
-   consumidor. */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+/* Spec 045 (rediseño oscuro), plan.md §1: Inter para todo el texto y
+   JetBrains Mono para código, como la captura de referencia (panel de
+   observabilidad). Sustituye a Plus Jakarta Sans; se mantienen los nombres
+   de variable (`--font-body`, `--heading`, `--mono`) para no tocar a sus
+   consumidores. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
+/* Spec 045, plan.md §1: un único tema, oscuro (decisión de Diego) — se
+   elimina el bloque `prefers-color-scheme` de antes y sus valores pasan a
+   ser los únicos. Las rampas siguen "invertidas" como en el oscuro anterior
+   (100 = tono más oscuro, pensado para fondos; 900 = el más claro, para
+   texto sobre esos fondos), así `.tag-accent` y compañía no cambian. */
 :root {
-  /* Modo claro: se mantiene como el esquema por defecto (decisión de
-     Diego) — solo cambian el acento (verde, antes turquesa) y los radios
-     de borde (ver más abajo), no la paleta neutra de fondo/tarjeta. */
-  --text: #201e1d;
-  --text-h: #201e1d;
-  --bg: #f3f2f2;
-  --border: color-mix(in srgb, #201e1d 16%, transparent);
-  --code-bg: #eae9e9;
-  --accent: #16a34a;
-  --accent-2: #d6006c;
-  --card-bg: #eae9e9;
-  --social-bg: rgba(244, 243, 236, 0.5);
-  /* Botón flotante "+" (petición de Diego, captura de referencia): en claro
-     sigue el acento de siempre; en oscuro pasa a círculo claro con icono
-     oscuro (ver bloque @media más abajo), como en la captura. */
+  --text: #c9c9d1;
+  --text-h: #f4f4f5;
+  --text-muted: #8a8a94;
+  --bg: #0b0b0d;
+  --card-bg: #131316;
+  /* Superficie secundaria: inputs, hover, controles segmentados — un paso
+     por encima de la tarjeta, como los botones "Share"/"Timeline" de la
+     captura. */
+  --surface-2: #1b1b1f;
+  --border: #26262b;
+  --code-bg: #0f0f12;
+  --accent: #f97316;
+  --accent-2: #a855f7;
+  --social-bg: rgba(19, 19, 22, 0.5);
   --fab-bg: var(--accent);
-  --fab-fg: var(--bg);
-  --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
-  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
+  --fab-fg: #0b0b0d;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
 
-  /* Rampas tonales de 9 pasos (spec 010). --accent-bg/--accent-border se
-     mantienen apuntando a la rampa para no romper nada que ya las use. */
-  --neutral-100: #f8f4f4;
-  --neutral-200: #eae7e7;
-  --neutral-300: #d7d3d3;
-  --neutral-400: #bab6b6;
-  --neutral-500: #9b9797;
-  --neutral-600: #7d7979;
-  --neutral-700: #605d5d;
-  --neutral-800: #444141;
-  --neutral-900: #2d2b2b;
+  --neutral-100: #1f1f23;
+  --neutral-200: #2a2a30;
+  --neutral-300: #3a3a41;
+  --neutral-400: #52525b;
+  --neutral-500: #71717a;
+  --neutral-600: #a1a1aa;
+  --neutral-700: #d4d4d8;
+  --neutral-800: #e4e4e7;
+  --neutral-900: #f4f4f5;
 
-  /* Rampa de verde (Tailwind green 100-900) — sustituye a la turquesa
-     anterior para acercar el acento al de la captura de referencia. */
-  --accent-100: #dcfce7;
-  --accent-200: #bbf7d0;
-  --accent-300: #86efac;
-  --accent-400: #4ade80;
-  --accent-500: #22c55e;
-  --accent-600: #16a34a;
-  --accent-700: #15803d;
-  --accent-800: #166534;
-  --accent-900: #14532d;
+  /* Rampa naranja (Tailwind orange), invertida. */
+  --accent-100: #2a160a;
+  --accent-200: #431f0b;
+  --accent-300: #7c2d12;
+  --accent-400: #c2410c;
+  --accent-500: #ea580c;
+  --accent-600: #fb923c;
+  --accent-700: #fdba74;
+  --accent-800: #fed7aa;
+  --accent-900: #ffedd5;
   --accent-bg: var(--accent-100);
   --accent-border: var(--accent-400);
 
-  --accent-2-100: #fff1f4;
-  --accent-2-200: #ffdee6;
-  --accent-2-300: #ffc0d0;
-  --accent-2-400: #ff90b1;
-  --accent-2-500: #ff458e;
-  --accent-2-600: #d82071;
-  --accent-2-700: #aa0b56;
-  --accent-2-800: #790e3d;
-  --accent-2-900: #4b1528;
+  /* Rampa morada (antes rosa), invertida. */
+  --accent-2-100: #1f1030;
+  --accent-2-200: #3b0764;
+  --accent-2-300: #6b21a8;
+  --accent-2-400: #9333ea;
+  --accent-2-500: #a855f7;
+  --accent-2-600: #c084fc;
+  --accent-2-700: #d8b4fe;
+  --accent-2-800: #e9d5ff;
+  --accent-2-900: #f3e8ff;
 
-  /* Spec 007 (mejoras visuales), plan.md §1 — sin cambios: rampa de 4
-     niveles para el progreso de objetivos/presupuestos, decisión de
-     negocio ajena al handoff (spec 010 plan.md §5). */
-  --status-green: #1baf7a;
-  --status-amber: #d6a92a;
-  --status-orange: #eb6834;
-  --status-red: #d64545;
+  /* Spec 007 (mejoras visuales): rampa de progreso de objetivos/presupuestos
+     — mismo papel, tonos de la captura. */
+  --status-green: #22c55e;
+  --status-amber: #eab308;
+  --status-orange: #f97316;
+  --status-red: #ef4444;
 
-  /* Spec 028 (composición/rentabilidad de patrimonio) — primera paleta
-     categórica multi-serie de la app (7 categorías de patrimonio). Instancia
-     validada de la skill de dataviz (slots 1-7 de 8, orden fijo — cada
-     categoría siempre tiene el mismo color, spec.md decisión de negocio),
-     comprobada con `validate_palette.js` contra la superficie real de las
-     tarjetas de esta app (`--card-bg`), no la de la skill por defecto. */
-  --wealth-cat-bank: #2a78d6;
-  --wealth-cat-stocks: #eb6834;
-  --wealth-cat-funds: #1baf7a;
-  --wealth-cat-crypto: #eda100;
-  --wealth-cat-vehicles: #e87ba4;
-  --wealth-cat-pension: #008300;
-  --wealth-cat-cash: #4a3aa7;
+  /* Spec 028 (composición/rentabilidad de patrimonio): colores fijos por
+     categoría — mismos valores que el tema oscuro anterior. */
+  --wealth-cat-bank: #3987e5;
+  --wealth-cat-stocks: #d95926;
+  --wealth-cat-funds: #199e70;
+  --wealth-cat-crypto: #c98500;
+  --wealth-cat-vehicles: #d55181;
+  --wealth-cat-pension: #2f9e44;
+  --wealth-cat-cash: #9085e9;
 
-  --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --heading: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* Spec 045, plan.md §4: paleta común de series de gráficos (orden fijo,
+     se asigna por posición cuando una serie no tiene color propio) y rejilla
+     muy tenue, como la de la captura. */
+  --chart-1: #f97316;
+  --chart-2: #22c55e;
+  --chart-3: #a855f7;
+  --chart-4: #3b82f6;
+  --chart-5: #ef4444;
+  --chart-6: #06b6d4;
+  --chart-grid: #1f1f24;
 
-  /* Escala de espaciado (spec 010) — sustituye a los valores sueltos
-     (16px, 24px, 32px...) usados desde spec 007/008. */
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --heading: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+
   --space-1: 5px;
   --space-2: 10px;
   --space-3: 15px;
@@ -98,104 +104,29 @@
   --space-6: 30px;
   --space-8: 40px;
 
-  /* Radios grandes (antes 1/2/4px, look "editorial" recto): la captura de
-     referencia usa tarjetas y botones muy redondeados. Ampliados de nuevo
-     (8/14/20 → 10/18/28, petición de Diego, captura de referencia tipo
-     Microsoft Rewards): tarjetas y botones "pill", más redondeados
-     todavía. */
-  --radius-sm: 10px;
-  --radius-md: 18px;
-  --radius-lg: 28px;
+  /* Spec 045, plan.md §1: radios moderados (antes 10/18/28px, "pill") —
+     la captura usa tarjetas y botones con esquinas suaves, no píldoras. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 
-  font: 15px/155% var(--font-body);
+  font: 14px/1.5 var(--font-body);
   letter-spacing: normal;
-  color-scheme: light dark;
+  color-scheme: dark;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 14px;
-  }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Pulido del tema oscuro (petición de Diego, nueva captura de
-       referencia tipo app de portfolio): fondo casi negro puro (antes
-       #121212, un gris ya visible) y tarjetas ligeramente más elevadas
-       sobre ese fondo, para que el contraste tarjeta/fondo se note más,
-       como en la captura. */
-    --text: #d4d4d4;
-    --text-h: #f5f5f5;
-    --bg: #0a0a0a;
-    --border: color-mix(in srgb, #f5f5f5 14%, transparent);
-    --code-bg: #171717;
-    --accent: #4ade80;
-    --accent-2: #ff6fa8;
-    /* Más clara que antes (#171717 → #1c1c1c, petición de Diego, captura de
-       referencia tipo Microsoft Rewards): más contraste entre el fondo casi
-       negro y las tarjetas, que quedan claramente "elevadas" sobre él. */
-    --card-bg: #1c1c1c;
-    --social-bg: rgba(28, 28, 28, 0.5);
-    --fab-bg: #f5f5f5;
-    --fab-fg: #121212;
-    --shadow: rgba(0, 0, 0, 0.5) 0 10px 15px -3px, rgba(0, 0, 0, 0.35) 0 4px 6px -2px;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.45);
+body {
+  background: var(--bg);
+}
 
-    --neutral-100: #2d2b2b;
-    --neutral-200: #444141;
-    --neutral-300: #605d5d;
-    --neutral-400: #7d7979;
-    --neutral-500: #9b9797;
-    --neutral-600: #bab6b6;
-    --neutral-700: #d7d3d3;
-    --neutral-800: #eae7e7;
-    --neutral-900: #f8f4f4;
-
-    --accent-100: #14532d;
-    --accent-200: #166534;
-    --accent-300: #15803d;
-    --accent-400: #16a34a;
-    --accent-500: #22c55e;
-    --accent-600: #4ade80;
-    --accent-700: #86efac;
-    --accent-800: #bbf7d0;
-    --accent-900: #dcfce7;
-    --accent-bg: var(--accent-100);
-    --accent-border: var(--accent-400);
-
-    --accent-2-100: #4b1528;
-    --accent-2-200: #790e3d;
-    --accent-2-300: #aa0b56;
-    --accent-2-400: #d82071;
-    --accent-2-500: #ff458e;
-    --accent-2-600: #ff90b1;
-    --accent-2-700: #ffc0d0;
-    --accent-2-800: #ffdee6;
-    --accent-2-900: #fff1f4;
-
-    --status-green: #34d399;
-    --status-amber: #eab308;
-    --status-orange: #f97316;
-    --status-red: #f87171;
-
-    --wealth-cat-bank: #3987e5;
-    --wealth-cat-stocks: #d95926;
-    --wealth-cat-funds: #199e70;
-    --wealth-cat-crypto: #c98500;
-    --wealth-cat-vehicles: #d55181;
-    --wealth-cat-pension: #008300;
-    --wealth-cat-cash: #9085e9;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+a {
+  color: var(--accent);
 }
 
 /* Spec 008 (rediseño Broadsheet), plan.md §2: se quita el ancho fijo
@@ -232,245 +163,248 @@ h4,
 h5,
 h6 {
   font-family: var(--heading);
-  /* 800 (antes 600, spec 010): titulares bien gruesos, como en la captura
-     de referencia — el sans-serif redondeado necesita más peso que la
-     serif anterior para leerse igual de "sólido". */
-  font-weight: 800;
-  line-height: 1.12;
-  letter-spacing: -0.015em;
+  /* Spec 045, plan.md §1: peso 600 y tamaños contenidos (antes 800 y hasta
+     42px) — la captura de referencia jerarquiza con peso y color, no con
+     titulares enormes. */
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
   color: var(--text-h);
   margin: 0 0 var(--space-2);
 }
 
 h1 {
-  font-size: 42px;
-  margin: var(--space-6) 0;
-  @media (max-width: 1024px) {
-    font-size: 32px;
-  }
+  font-size: 24px;
+  margin: 0 0 var(--space-4);
 }
 h2 {
-  font-size: 32px;
+  font-size: 18px;
+  margin-top: var(--space-6);
 }
 h3 {
-  font-size: 25px;
+  font-size: 15px;
 }
 h4 {
-  font-size: 20px;
+  font-size: 14px;
 }
 h5 {
-  font-size: 16px;
+  font-size: 13px;
 }
 h6 {
-  font-size: 13px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--text-muted);
 }
 p {
   margin: 0;
 }
 
-/* Spec 005 (navegación), plan.md §6. Único CSS de `AppLayout`: por `id`,
-   igual que `#root`/`#social` — el proyecto no usa `className` en ninguna
-   página, así que no se introduce esa convención solo para el menú. */
-/* Columna (antes fila, spec 005): la barra superior ocupa su propia fila
-   y el contenido va debajo a ancho completo, en vez de sidebar + contenido
-   lado a lado. */
+/* Spec 005 (navegación), plan.md §6. CSS de `AppLayout`, por `id` (igual
+   que `#root`).
+
+   Spec 045 (rediseño oscuro), plan.md §2: vuelve a ser menú lateral fijo a
+   la izquierda (antes barra superior), como la captura de referencia —
+   `#app-shell` pasa de columna a fila: menú + contenido lado a lado. El
+   `id`, `aria-label` y el estado (`isCollapsed`/`expandedItem`/menú móvil)
+   de `AppLayout.tsx` no cambian, solo su disposición visual. */
 #app-shell {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: stretch;
   flex: 1;
   text-align: left;
 }
 
-/* Spec 010 (rediseño editorial), plan.md §3: ancho 236px/68px (antes fijo
-   220px, spec 008) con transición — antes `isCollapsed` solo ocultaba el
-   texto sin cambiar el ancho real; ahora el panel se estrecha de verdad,
-   como en el handoff. `overflow-x: hidden` evita que el texto oculto
-   (`.sr-only`) provoque scroll horizontal durante la animación.
-
-   `position: sticky` (petición de Diego): sin esto, al añadirse las
-   subsecciones el menú pasó a ser más alto que el contenido corto de
-   algunas páginas y, siendo un elemento normal del flujo dentro de
-   `#app-shell` (flex `align-items: stretch`, que lo estira tanto como su
-   hermano `#app-content`), se desplazaba fuera de la vista al hacer scroll
-   en vez de quedarse fijo. `align-self: flex-start` anula ese estirado (si
-   no, `max-height` no tendría efecto, ya estaría estirado a la altura del
-   contenido) y `overflow-y: auto` permite que el propio menú haga scroll
-   interno si sus enlaces no caben en una pantalla. Solo aplica en
-   escritorio: en móvil el menú ya usa `position: fixed` (ver media query
-   más abajo), que sustituye a este `sticky`. */
-/* Barra de navegación superior (antes menú lateral, petición de Diego,
-   captura de referencia tipo Microsoft Rewards: logo + pestañas en una
-   franja horizontal fija arriba, en vez de un panel a la izquierda). El
-   `id`, `aria-label` y el estado (`isCollapsed`/`expandedItems`/menú móvil)
-   de `AppLayout.tsx` no cambian — solo su disposición visual, por eso todos
-   los tests de comportamiento (roles, aria-*, sr-only...) siguen pasando
-   igual. `#app-shell` pasa a columna (ver más abajo) en vez de fila: la
-   barra ocupa una fila propia y el contenido va debajo, a ancho completo. */
+/* Columna fija a toda la altura de la ventana (`sticky` + `height: 100svh`)
+   con scroll interno propio si las entradas no caben — el contenido de al
+   lado hace scroll sin arrastrar el menú. */
 #app-sidebar {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-  width: 100%;
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--border);
+  flex-direction: column;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 248px;
+  height: 100svh;
+  padding: var(--space-4) var(--space-3);
+  border-right: 1px solid var(--border);
   background: var(--bg);
   position: sticky;
   top: 0;
   z-index: 15;
-  overflow: visible;
+  overflow-x: hidden;
+  overflow-y: auto;
+  transition: width 0.18s ease;
 }
 
-/* Spec 008, plan.md §4 (H4). Marca visual de la barra. */
+/* Plegado a solo iconos (H5 criterio 2, spec 007): el texto ya pasa a
+   `.sr-only` desde `AppLayout.tsx`; aquí solo se estrecha la columna. */
+#app-sidebar[data-collapsed='true'] {
+  width: 68px;
+}
+
+/* Spec 008, plan.md §4 (H4). Marca visual del menú — el cuadrado naranja
+   (`#app-sidebar-logo`, decorativo) imita el logo de la captura. */
 #app-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--heading);
-  font-weight: 600;
-  font-size: 19px;
+  font-weight: 700;
+  font-size: 18px;
   letter-spacing: -0.01em;
   color: var(--text-h);
-  margin: 0;
+  margin: 0 0 0 var(--space-1);
   white-space: nowrap;
+}
+#app-sidebar-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 15px;
+  font-weight: 800;
+}
+#app-sidebar[data-collapsed='true'] #app-sidebar-brand > span:last-child {
+  display: none;
+}
+
+/* Botón "Ocultar/Mostrar menú": discreto, a ancho completo bajo la marca. */
+#app-sidebar > button {
+  font-size: 12px;
+  padding: 6px 10px;
+  white-space: nowrap;
 }
 
 #app-sidebar > ul {
   list-style: none;
   display: flex;
-  align-items: center;
-  /* `wrap` (antes `nowrap` + scroll horizontal en la propia barra): con 9
-     secciones + cerrar sesión no siempre caben todas en una sola fila en un
-     portátil de ancho medio — mejor que la barra ocupe dos filas a que
-     algunas entradas queden fuera de la vista sin que se note (petición de
-     Diego, "el menú se corta"). */
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
+  flex-direction: column;
+  gap: 2px;
   margin: 0;
   padding: 0;
   flex: 1;
-  min-width: 0;
 }
 
 #app-sidebar li {
   margin: 0;
-  /* Ancla de posición para el desplegable de subsecciones (`.nav-sublist`
-     más abajo), que ahora flota bajo su entrada en vez de indentarse en el
-     flujo normal. */
-  position: relative;
+  padding: 0;
+  border: none;
 }
 
-/* La entrada de "Cerrar sesión" es siempre la última del `<ul>` — se separa
-   del resto de secciones al otro extremo de la barra, como el avatar de la
-   captura de referencia. */
+/* "Cerrar sesión" (siempre el último `li`) se empuja al pie de la columna. */
 #app-sidebar > ul > li:last-child {
-  margin-inline-start: auto;
+  margin-top: auto;
+  padding-top: var(--space-3);
+}
+#app-sidebar > ul > li:last-child > .btn {
+  width: 100%;
+  justify-content: flex-start;
+  border-color: transparent;
+  color: var(--text);
+  font-weight: 500;
+  padding: 8px 10px;
+}
+#app-sidebar > ul > li:last-child > p {
+  margin-top: var(--space-2);
+  font-size: 12px;
 }
 
-/* Spec 010, plan.md §3. Base de cada enlace del menú — el color de la
-   sección activa lo sigue decidiendo el selector por descendencia de más
-   abajo (`a[aria-current='page']`), no esta clase. */
+/* Spec 010, plan.md §3. Base de cada enlace del menú. */
 .nav-link {
   display: flex;
   align-items: center;
+  gap: 2px;
   padding: 8px 10px;
   border-radius: var(--radius-md);
   font-size: 14px;
+  font-weight: 500;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 .nav-link:hover {
-  background: color-mix(in srgb, var(--text) 6%, transparent);
+  background: var(--surface-2);
+}
+/* El texto de la entrada cede espacio (con puntos suspensivos) antes que la
+   flecha de subsecciones — "Tickets de supermercado" no cabe entero. */
+.nav-link > span:not(.nav-icon):not(.nav-chevron) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Spec 008 (rediseño Broadsheet), plan.md §5 (H5), corrección encontrada al
-   verificar visualmente (T8): sin esto, los enlaces del menú heredaban el
-   azul/subrayado por defecto del navegador — nunca se había notado antes
-   porque el resto de la app tampoco tenía una paleta propia con la que
-   contrastara. El mockup solo colorea de acento la sección activa; el
-   resto va en el mismo tono que el texto normal, sin subrayado. */
 #app-sidebar a {
-  color: var(--text-h);
+  color: var(--text);
   text-decoration: none;
 }
+#app-sidebar a:hover {
+  color: var(--text-h);
+}
 
+/* Spec 045, plan.md §2: entrada activa con fondo y texto naranja, como
+   "Traces" en la captura de referencia. */
 #app-sidebar a[aria-current='page'] {
   color: var(--accent);
   font-weight: 600;
 }
+#app-sidebar .nav-link[aria-current='page'] {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+}
 
-/* Spec 008 (rediseño Broadsheet), plan.md §5 (H5). Excepción a "sin
-   className" del proyecto (junto a `.progress-bar` y `.sr-only` de spec
-   007): elemento reutilizable instanciado varias veces por página (en la
-   lista de Inicio, `#home-recent-list`). El color de "activo" en el menú
-   lateral ya no depende de esta clase (spec del icono por entrada, petición
-   de Diego): ver `.nav-icon`/`a[aria-current='page']` más abajo. */
 .dot {
   display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--border);
+  background: var(--neutral-400);
 }
 .dot-accent {
-  background: var(--accent);
+  background: var(--status-green);
 }
 
-/* Icono de cada entrada del menú lateral (petición de Diego), en vez del
-   punto de color anterior — mismo emoji que el encabezado de la sección a
-   la que lleva cuando existe (p. ej. "📈 Acciones" en `WealthPage`, mismo
-   📈 aquí). Ancho fijo: con el menú plegado es el único contenido visible
-   del enlace (el texto pasa a `.sr-only`) y necesita quedar centrado, no
-   pegado al borde izquierdo. */
+/* Icono de cada entrada del menú (emoji). Spec 045: en gris mientras la
+   entrada no está activa — la captura usa iconos de línea monocromos, y los
+   emojis a todo color rompían esa sobriedad; la entrada activa recupera su
+   color. */
 .nav-icon {
   display: inline-flex;
   justify-content: center;
-  width: 20px;
+  width: 22px;
   flex-shrink: 0;
 }
+#app-sidebar .nav-icon {
+  filter: grayscale(1);
+  opacity: 0.75;
+}
+#app-sidebar a[aria-current='page'] .nav-icon,
+#app-sidebar a:hover .nav-icon {
+  filter: none;
+  opacity: 1;
+}
 
-/* Flecha de plegar/desplegar subsecciones (petición de Diego: ya no se
-   muestran siempre, solo al hacer clic en la entrada principal — ver
-   `expandedItems` en `AppLayout.tsx`). `margin-inline-start: auto` la
-   empuja al borde derecho del `.nav-link` (que es `flex`); rota 90° al
-   expandirse en vez de cambiar de glifo, para que la transición sea un giro
-   suave y no un parpadeo de caracteres distintos. */
+/* Flecha de plegar/desplegar subsecciones: gira 90° al expandirse. */
 .nav-chevron {
   margin-inline-start: auto;
+  color: var(--text-muted);
   transition: transform 0.15s ease;
 }
 .nav-chevron[data-expanded='true'] {
   transform: rotate(90deg);
 }
 
-/* Subsecciones de cada entrada del menú lateral (petición de Diego): lista
-   anidada bajo el `.nav-link` de su padre, indentada y en un tamaño menor —
-   el color de "activo" ya lo cubre `#app-sidebar a[aria-current='page']` de
-   arriba, sin necesidad de repetirlo aquí. 34px para que el texto de la
-   subsección quede claramente a la derecha del icono del padre (`.nav-icon`,
-   20px de ancho) y no justo debajo de él. Selector `#app-sidebar .nav-sublist`
-   (no solo `.nav-sublist`): corrección pedida por Diego — con solo la clase,
-   `#app-sidebar ul` (arriba, un ID + elemento, más específico que una sola
-   clase) ganaba y el `padding-left` nunca llegaba a aplicarse, dejando las
-   subsecciones a la misma indentación que la entrada principal. */
+/* Spec 045, plan.md §2: las subsecciones vuelven a ir en el propio flujo,
+   indentadas bajo su entrada con una línea guía vertical (como el árbol de
+   la captura), en vez del desplegable flotante de la barra superior. */
 #app-sidebar .nav-sublist {
   list-style: none;
-  /* Dropdown flotante bajo la entrada principal (antes lista indentada en
-     el propio flujo, pensada para un menú vertical) — misma tarjeta
-     elevada que el resto de la app (`--card-bg`/`--shadow-md`), en vez de
-     heredar el fondo de la barra. */
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin: 6px 0 0;
-  padding: var(--space-2);
-  min-width: 220px;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  z-index: 20;
+  margin: 2px 0 6px 20px;
+  padding: 0 0 0 10px;
+  border-left: 1px solid var(--border);
 }
 .nav-sublist li {
   margin: 1px 0;
@@ -488,7 +422,7 @@ p {
   font-size: 12px;
 }
 .nav-sublink:hover {
-  background: color-mix(in srgb, var(--text) 6%, transparent);
+  background: var(--surface-2);
 }
 
 /* Insignia circular con el emoji de una categoría (CategoriesPage) — mismo
@@ -507,26 +441,26 @@ p {
   background: var(--neutral-100);
 }
 .category-icon-accent {
-  background: var(--accent-100);
+  background: color-mix(in srgb, var(--status-green) 16%, transparent);
 }
 
 #app-content {
   flex: 1;
   min-width: 0;
-  /* Spec 008, plan.md §2: antes el contenido no tenía relleno propio (se
-     apoyaba en el margen de #root); con el layout a ancho completo necesita
-     el suyo. */
-  padding: 32px 40px;
+  padding: 28px 32px 40px;
 }
 
 /* Spec 009 (adaptación a móvil), plan.md §1. Botón de apertura del menú
-   superpuesto — oculto en escritorio, visible solo por debajo del
-   breakpoint de móvil (regla de abajo). */
+   superpuesto — oculto en escritorio, visible solo en móvil. */
 #app-mobile-menu-toggle {
   display: none;
 }
 
 @media (max-width: 768px) {
+  #app-shell {
+    flex-direction: column;
+  }
+
   #app-mobile-menu-toggle {
     display: inline-flex;
     position: fixed;
@@ -535,88 +469,44 @@ p {
     z-index: 30;
   }
 
-  /* El botón de plegar/desplegar de escritorio no aplica en móvil: el
-     panel está oculto del todo o abierto a un ancho legible, sin estado
-     intermedio "colapsado". Seleccionado por posición (único `<button>`
-     hijo directo, antes de la lista), sin clase nueva. */
+  /* El botón de plegar/desplegar de escritorio no aplica en móvil. */
   #app-sidebar > button {
     display: none;
   }
 
-  #app-sidebar {
-    /* Vuelve a ser un panel vertical superpuesto (antes barra horizontal,
-       ver regla base más arriba): la barra superior solo tiene sentido en
-       escritorio, con sitio para las 9 secciones en fila — en móvil sigue
-       siendo el cajón lateral de siempre (spec 009), abierto con
-       "Abrir menú". */
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    border-bottom: none;
+  /* Cajón superpuesto (spec 009), abierto con "Abrir menú". El hueco
+     superior deja sitio al botón fijo de apertura, que queda por encima del
+     panel (spec 010 T11). */
+  #app-sidebar,
+  #app-sidebar[data-collapsed='true'] {
     position: fixed;
     inset-block: 0;
     inset-inline-start: 0;
     z-index: 25;
     width: min(280px, 82vw);
+    height: auto;
     transform: translateX(-100%);
     transition: transform 0.2s ease;
-    background: var(--bg);
-    overflow-x: visible;
-    overflow-y: auto;
-    padding: var(--space-4) var(--space-3);
-    /* Spec 010 (rediseño editorial), plan.md §6/T11 (verificación de
-       H11): `#app-mobile-menu-toggle` es `position:fixed;top:12px` con
-       z-index por encima del panel (para seguir siendo clicable con el
-       menú abierto, spec 009 §1.2) — con el padding-top normal del panel
-       (20px), su propio botón "Cerrar menú" tapaba la marca "Ledger" al
-       abrir. Se sube el hueco superior solo en móvil para dejar sitio al
-       botón fijo; no afecta a escritorio, donde el botón no existe. */
     padding-top: 56px;
+    /* "Cerrar sesión" va al pie del cajón: sin este hueco quedaría tapado
+       por la barra de navegación inferior (`#app-bottom-nav`, 68px). */
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
   #app-sidebar[data-mobile-open='true'] {
     transform: translateX(0);
-  }
-  #app-sidebar-brand {
-    margin: 0 0 var(--space-4);
-  }
-  #app-sidebar > ul {
-    flex-direction: column;
-    flex-wrap: nowrap;
-    align-items: stretch;
-    gap: 0;
-    margin: var(--space-4) 0 0;
-  }
-  #app-sidebar > ul > li:last-child {
-    margin-inline-start: 0;
-  }
-  #app-sidebar li {
-    margin: var(--space-1) 0;
-  }
-  /* Las subsecciones vuelven a indentarse en el propio flujo (antes
-     dropdown flotante, pensado para la barra de escritorio) — mismo
-     aspecto que un menú lateral clásico. */
-  #app-sidebar .nav-sublist {
-    position: static;
-    margin: 2px 0 6px;
-    padding: 0 0 0 34px;
-    min-width: 0;
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    box-shadow: none;
   }
 
   #app-sidebar-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.6);
     z-index: 20;
   }
 
   /* Deja hueco para el botón de apertura (arriba) y la barra de navegación
-     inferior + botón flotante (abajo, ver #app-bottom-nav más adelante). */
+     inferior + botón flotante (abajo). */
   #app-content {
-    padding: 72px 20px 88px;
+    padding: 72px 16px 88px;
   }
 }
 
@@ -730,12 +620,11 @@ p {
    red de seguridad contra el scroll horizontal en anchos de móvil. */
 @media (max-width: 768px) {
   h1 {
-    font-size: 28px;
-    letter-spacing: -0.6px;
-    margin: 16px 0;
+    font-size: 22px;
+    margin: 0 0 16px;
   }
   h2 {
-    font-size: 18px;
+    font-size: 17px;
   }
 
   main form {
@@ -763,7 +652,7 @@ p {
      apilan en vertical, igual criterio que el resto de listados de esta
      spec (H3, decisión "apilar en bloques"). */
   #home-summary {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   /* Pulido del tema oscuro en móvil (petición de Diego, captura de
@@ -772,8 +661,7 @@ p {
      interlineado más ajustado que en escritorio, donde conviven varias
      tarjetas en fila y no hace falta tanto peso visual. */
   .card-amount {
-    font-size: 32px;
-    letter-spacing: -0.02em;
+    font-size: 26px;
   }
 }
 
@@ -882,8 +770,9 @@ p {
    (fuera de `.progress-bar`, ver más abajo). */
 main form {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  padding: var(--space-4);
   margin: 16px 0;
   text-align: start;
   /* Spec 008, plan.md §2 (H2 criterio 2): con el layout a ancho completo,
@@ -903,17 +792,32 @@ main table {
   border-collapse: collapse;
   width: 100%;
 }
+main table caption {
+  caption-side: top;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: var(--space-3) 0 var(--space-1);
+}
 main table th,
 main table td {
   padding: 10px 12px;
   text-align: start;
 }
+main table {
+  font-variant-numeric: tabular-nums;
+}
 main table thead th {
-  background: var(--code-bg);
-  border-bottom: 2px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
 }
 main table tbody tr:not(:last-child) {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--chart-grid);
+}
+main table tbody tr:hover {
+  background: color-mix(in srgb, var(--text-h) 3%, transparent);
 }
 
 main ul li {
@@ -955,14 +859,21 @@ main ul li:last-child {
   cursor: pointer;
   text-decoration: none;
   font-family: var(--heading);
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: 500;
+  font-size: 13px;
   line-height: 1.2;
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
-  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  padding: 8px 14px;
   border-radius: var(--radius-md);
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .btn:disabled {
   opacity: 0.45;
@@ -971,6 +882,7 @@ main ul li:last-child {
 .btn-primary {
   background: var(--accent);
   color: var(--bg);
+  font-weight: 600;
 }
 .btn-primary:hover {
   background: var(--accent-600);
@@ -979,14 +891,15 @@ main ul li:last-child {
   background: var(--accent-700);
 }
 .btn-secondary {
+  background: var(--surface-2);
   border-color: var(--border);
   color: var(--text-h);
 }
 .btn-secondary:hover {
-  background: color-mix(in srgb, var(--text) 7%, transparent);
+  background: var(--neutral-200);
 }
 .btn-secondary:active {
-  background: color-mix(in srgb, var(--text) 14%, transparent);
+  background: var(--neutral-300);
 }
 .btn-ghost {
   color: var(--accent);
@@ -1008,7 +921,7 @@ main ul li:last-child {
   display: block;
   font-size: 12px;
   margin-bottom: 5px;
-  color: color-mix(in srgb, var(--text) 70%, transparent);
+  color: var(--text-muted);
 }
 .input {
   /* Sin esto, `width:100%` toma el ancho del contenido y el
@@ -1028,21 +941,24 @@ main ul li:last-child {
   font-size: 14px;
   color: var(--text-h);
   caret-color: var(--accent);
-  background: var(--bg);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 .input:hover {
-  border-color: color-mix(in srgb, var(--text) 45%, transparent);
+  border-color: var(--neutral-400);
 }
 .input:focus-visible {
   border-color: var(--accent);
-  outline: 2px solid var(--accent);
+  outline: 3px solid color-mix(in srgb, var(--accent) 25%, transparent);
   outline-offset: 0;
 }
 .seg {
   display: inline-flex;
+  gap: 2px;
+  padding: 3px;
   overflow: hidden;
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
@@ -1050,8 +966,10 @@ main ul li:last-child {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 12px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
+  color: var(--text-muted);
   cursor: pointer;
 }
 .seg-opt input {
@@ -1061,15 +979,13 @@ main ul li:last-child {
   height: 0;
   pointer-events: none;
 }
-.seg-opt + .seg-opt {
-  border-left: 1px solid var(--border);
-}
 .seg-opt:has(input:checked) {
-  background: var(--accent);
-  color: var(--bg);
+  background: var(--neutral-200);
+  color: var(--text-h);
+  font-weight: 500;
 }
 .seg-opt:not(:has(input:checked)):hover {
-  background: color-mix(in srgb, var(--text) 7%, transparent);
+  color: var(--text-h);
 }
 .seg-opt:has(input:focus-visible) {
   outline: 2px solid var(--accent);
@@ -1081,15 +997,20 @@ main ul li:last-child {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
   background: var(--card-bg);
   /* Borde + sombra por defecto (antes solo con `.elev-sm`/`.elev-md`,
      petición de Diego, captura de referencia tipo Microsoft Rewards): toda
      tarjeta de la app queda "elevada" sobre el fondo, no solo las que
      marcaban explícitamente una clase de elevación. */
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+}
+/* Spec 045: tarjetas sueltas una tras otra dentro de una página (p. ej. Total,
+   Dividendos y Evolución en Resumen Patrimonio) — separadas como los paneles
+   de la captura; las listas/rejillas de tarjetas ya ponen su propio `gap`. */
+main > .card {
+  margin-bottom: var(--space-3);
 }
 /* Spec 010 (rediseño editorial), plan.md §4.7 (Tu perfil) y §4.6 (editar
    presupuesto en línea, T8): la regla global `main form` (spec 007) da a
@@ -1124,15 +1045,15 @@ main ul li:last-child {
   flex-shrink: 0;
 }
 .card-kicker {
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
 }
 .card-title {
   font-family: var(--heading);
   font-weight: 600;
-  font-size: 17px;
+  font-size: 15px;
+  color: var(--text-h);
   line-height: 1.2;
 }
 /* Spec 010 (rediseño editorial), plan.md §4.1. Importe grande de las
@@ -1140,8 +1061,10 @@ main ul li:last-child {
    de una regla `#home-summary > div > p:nth-child(2)` como antes (spec
    008), por si otra pantalla necesita el mismo tratamiento. */
 .card-amount {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 28px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
   color: var(--text-h);
 }
 /* Spec 018/019/020/021 (Resumen Patrimonio): cabecera de una fila (cuenta
@@ -1181,43 +1104,45 @@ a.card-title:hover {
 .card-body {
   margin: 0;
   font-size: 13px;
-  opacity: 0.8;
+  color: var(--text-muted);
   flex: 1;
 }
 .card-meta {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  color: color-mix(in srgb, var(--text) 50%, transparent);
+  font-size: 12px;
+  color: var(--text-muted);
 }
-.elev-sm {
-  box-shadow: var(--shadow-sm);
-}
+/* Spec 045: la captura separa las tarjetas por borde, no por sombra — las
+   clases de elevación se mantienen (las usan muchas pantallas) sin efecto. */
+.elev-sm,
 .elev-md {
-  box-shadow: var(--shadow-md);
+  box-shadow: none;
 }
 
 /* — etiquetas — */
 .tag {
   display: inline-flex;
   align-items: center;
-  font-size: 11px;
-  letter-spacing: 0.02em;
-  padding: 3px 10px;
-  border-radius: calc(var(--radius-md) * 0.75);
+  font-size: 12px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
 }
 .tag-accent {
-  background: var(--accent-100);
-  color: var(--accent-800);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent-700);
 }
 .tag-accent-2 {
-  background: var(--accent-2-100);
-  color: var(--accent-2-800);
+  background: color-mix(in srgb, var(--accent-2) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-2) 30%, transparent);
+  color: var(--accent-2-700);
 }
 .tag-neutral {
-  background: var(--neutral-100);
-  color: var(--neutral-800);
+  color: var(--neutral-700);
 }
 
 /* — comparativa temporal (Dashboard, spec 013) — */
@@ -1234,7 +1159,7 @@ a.card-title:hover {
   gap: var(--space-2);
   margin-bottom: var(--space-3);
   font-size: 13px;
-  opacity: 0.75;
+  color: var(--text-muted);
 }
 .comparison-grid {
   display: grid;
@@ -1245,14 +1170,21 @@ a.card-title:hover {
 .callout {
   margin: 0 0 var(--space-6);
   padding: var(--space-3);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--neutral-100);
-  font-size: 14px;
+  background: var(--surface-2);
+  font-size: 13px;
 }
 
 /* — secciones plegables del Dashboard (spec 016) — */
+/* Spec 045: cada sección plegable es una tarjeta, como los paneles de la
+   captura de referencia. */
 .dashboard-section {
-  margin: 0 0 var(--space-6);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 .dashboard-section > summary {
   display: flex;
@@ -1277,9 +1209,9 @@ a.card-title:hover {
   content: '+';
   margin-inline-start: auto;
   padding-inline-start: var(--space-3);
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
-  color: color-mix(in srgb, var(--text) 60%, transparent);
+  color: var(--text-muted);
 }
 .dashboard-section[open] > summary::after {
   content: '−';
@@ -1293,24 +1225,36 @@ a.card-title:hover {
 }
 
 /* — navegación (pestañas, p. ej. MovementsLayout) — */
+/* Spec 045: pestañas subrayadas, como "Trace | Logs | Artifacts" de la
+   captura — línea base gris y la activa en naranja. */
 .nav ul {
   display: flex;
   gap: var(--space-4);
   list-style: none;
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-4);
   padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+.nav li {
+  padding: 0;
+  border: none;
 }
 .nav a {
-  color: inherit;
+  display: inline-block;
+  padding: 0 2px 10px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
   text-decoration: none;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
 }
-.nav a:hover,
+.nav a:hover {
+  color: var(--text-h);
+}
 .nav a[aria-current='page'] {
   color: var(--accent);
-}
-.nav a[aria-current='page'] {
-  font-weight: 600;
+  border-bottom-color: var(--accent);
 }
 
 /* — tabla (mapeada sobre `main table`, mismo aspecto, nombre explícito para
@@ -1318,42 +1262,95 @@ a.card-title:hover {
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 .table th {
   text-align: left;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--text) 60%, transparent);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
   padding: var(--space-2);
   border-bottom: 1px solid var(--border);
 }
 .table td {
   padding: var(--space-2);
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+  border-bottom: 1px solid var(--chart-grid);
 }
 
 /* Spec 010 (rediseño editorial), plan.md §4.1. Las propias tarjetas
    (fondo, radio, relleno) ya las da `.card.elev-sm`; aquí solo queda la
    disposición en fila de `#home-summary` como contenedor. */
 #home-summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--space-3);
-  margin: var(--space-6) 0;
-}
-#home-summary > .card {
-  flex: 1;
+  margin: var(--space-4) 0 var(--space-6);
 }
 
+/* Spec 045 (rediseño oscuro), H3: tarjeta KPI como "Total Runs" de la
+   captura — etiqueta gris, cifra grande y, abajo, la variación respecto al
+   mes anterior a la izquierda y el mini-gráfico a la derecha. */
+.kpi-card {
+  gap: var(--space-1);
+}
+.kpi-card .card-body {
+  margin-top: var(--space-1);
+}
+.kpi-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 36px;
+}
+.kpi-delta {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.kpi-delta[data-tone='positive'] {
+  color: var(--status-green);
+}
+.kpi-delta[data-tone='negative'] {
+  color: var(--status-red);
+}
+.sparkline {
+  flex: 1;
+  max-width: 120px;
+  height: 36px;
+  margin-inline-start: auto;
+}
+
+/* Últimos movimientos: una única tarjeta con filas separadas por línea
+   tenue (como las listas de la captura), en vez de filas sueltas. */
+#home-recent-list {
+  list-style: none;
+  margin: var(--space-3) 0;
+  padding: 0;
+  max-width: 760px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
 #home-recent-list li {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 12px var(--space-4);
+  border-bottom: 1px solid var(--chart-grid);
+}
+#home-recent-list li:last-child {
+  border-bottom: none;
+}
+#home-recent-list small {
+  color: var(--text-muted);
 }
 #home-recent-list li > span:last-child {
   margin-inline-start: auto;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--text-h);
 }
 
@@ -1455,7 +1452,7 @@ a.card-title:hover {
   width: 100%;
   height: 8px;
   border-radius: 999px;
-  background: var(--border);
+  background: var(--surface-2);
   overflow: hidden;
 }
 .bar-fill {
@@ -1536,9 +1533,9 @@ a.card-title:hover {
 .progress-bar {
   position: relative;
   width: 100%;
-  height: 10px;
+  height: 8px;
   border-radius: 999px;
-  background: var(--border);
+  background: var(--surface-2);
   overflow: hidden;
 }
 
@@ -1581,10 +1578,11 @@ code,
 }
 
 code {
-  font-size: 15px;
+  font-size: 13px;
   line-height: 135%;
-  padding: 4px 8px;
+  padding: 2px 6px;
   background: var(--code-bg);
+  border: 1px solid var(--border);
 }
 
 /* Spec 031 (venta de acciones), "Imprimir resumen" del detalle de una acción: oculta todo el

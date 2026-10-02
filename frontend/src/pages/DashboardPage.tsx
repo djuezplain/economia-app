@@ -32,6 +32,15 @@ import type {
 } from '../api/dashboard';
 import { ApiError } from '../api/client';
 import { formatCurrency } from './home-shared';
+import {
+  CHART_AXIS_PROPS,
+  CHART_CATEGORY_AXIS_PROPS,
+  CHART_GRID_PROPS,
+  CHART_HBAR_RADIUS,
+  CHART_LEGEND_PROPS,
+  CHART_LINE_PROPS,
+  CHART_TOOLTIP_PROPS,
+} from '../components/chart-theme';
 
 // El desglose de gastos por categoría (H4 criterio 2) no usa un color por
 // categoría (podrían ser más de 8 y romper el presupuesto categórico) — es
@@ -39,22 +48,14 @@ import { formatCurrency } from './home-shared';
 // etiqueta en el eje, así que lleva un único tono (secuencial) en vez de
 // gastar el canal de identidad sin falta.
 //
-// Spec 010 (rediseño editorial), plan.md §4.4: estos 3 colores eran antes
-// una paleta categórica fija (azul/naranja/aqua) validada por la skill de
-// dataviz; se sustituyen a propósito por los tokens del nuevo sistema
-// visual (decisión aprobada por Diego) — siguen siendo 3 tonos claramente
-// distinguibles (azul claro/gris/magenta), solo cambia de dónde salen.
-const COLOR_INCOME = 'var(--accent-300)';
-const COLOR_EXPENSE = 'var(--neutral-600)';
+// Spec 045 (rediseño oscuro), plan.md §4: ingresos/gastos con la misma
+// semántica verde/rojo que el resto de la app, ahorro en morado (`--accent-2`)
+// y las barras de categoría en el naranja de acento. El estilo de ejes,
+// rejilla y tooltip sale de `chart-theme.ts`, común a todos los gráficos.
+const COLOR_INCOME = 'var(--status-green)';
+const COLOR_EXPENSE = 'var(--status-red)';
 const COLOR_SAVINGS = 'var(--accent-2)';
 const COLOR_CATEGORY_BAR = 'var(--accent)';
-
-// Spec 010 (rediseño editorial), plan.md §4.4: tipografía de ejes/leyenda a
-// Source Serif 4 (antes la fuente por defecto de Recharts) vía las propias
-// opciones del gráfico, sin CSS global (los `<text>` de un SVG no heredan
-// de `body`).
-const CHART_TICK_STYLE = { fontFamily: 'var(--font-body)', fontSize: 12, fill: 'var(--text)' };
-const CHART_TOOLTIP_STYLE = { fontFamily: 'var(--font-body)', fontSize: 13 };
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -697,11 +698,11 @@ export function DashboardPage() {
                 <div style={{ width: '100%', height: Math.max(byCategoryChartData.length * 32 + 40, 120) }}>
                   <ResponsiveContainer>
                     <BarChart data={byCategoryChartData} layout="vertical" margin={{ left: 24 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" tick={CHART_TICK_STYLE} />
-                      <YAxis type="category" dataKey="name" width={120} tick={CHART_TICK_STYLE} />
-                      <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                      <Bar dataKey="total" name="Gasto" fill={COLOR_CATEGORY_BAR} radius={4} />
+                      <CartesianGrid {...CHART_GRID_PROPS} vertical horizontal={false} />
+                      <XAxis type="number" {...CHART_AXIS_PROPS} />
+                      <YAxis type="category" dataKey="name" width={120} {...CHART_CATEGORY_AXIS_PROPS} />
+                      <Tooltip {...CHART_TOOLTIP_PROPS} />
+                      <Bar dataKey="total" name="Gasto" fill={COLOR_CATEGORY_BAR} radius={CHART_HBAR_RADIUS} barSize={14} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -769,14 +770,14 @@ export function DashboardPage() {
             <div style={{ width: '100%', height: 320 }}>
               <ResponsiveContainer>
                 <LineChart data={yearSummary.months} margin={{ left: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={CHART_TICK_STYLE} />
-                  <YAxis tick={CHART_TICK_STYLE} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={CHART_TOOLTIP_STYLE} />
-                  <Line type="monotone" dataKey="income" name="Ingresos" stroke={COLOR_INCOME} strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="expense" name="Gastos" stroke={COLOR_EXPENSE} strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="savings" name="Ahorro" stroke={COLOR_SAVINGS} strokeWidth={2} dot={{ r: 3 }} />
+                  <CartesianGrid {...CHART_GRID_PROPS} />
+                  <XAxis dataKey="month" {...CHART_AXIS_PROPS} />
+                  <YAxis {...CHART_AXIS_PROPS} />
+                  <Tooltip {...CHART_TOOLTIP_PROPS} />
+                  <Legend {...CHART_LEGEND_PROPS} />
+                  <Line {...CHART_LINE_PROPS} dataKey="income" name="Ingresos" stroke={COLOR_INCOME} />
+                  <Line {...CHART_LINE_PROPS} dataKey="expense" name="Gastos" stroke={COLOR_EXPENSE} />
+                  <Line {...CHART_LINE_PROPS} dataKey="savings" name="Ahorro" stroke={COLOR_SAVINGS} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

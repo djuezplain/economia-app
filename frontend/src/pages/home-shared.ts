@@ -1,3 +1,5 @@
+import Decimal from 'decimal.js';
+
 // Spec 008 (rediseño Broadsheet), plan.md §3. Ningún otro sitio de la app
 // formatea moneda hoy (DashboardPage/GoalsPage muestran los importes tal
 // cual llegan del backend, p. ej. "648.20"); este helper solo lo usa
@@ -28,4 +30,19 @@ export function formatDate(isoDate: string): string {
 export function lastDayOfMonth(month: string): number {
   const [year, monthNumber] = month.split('-').map(Number);
   return new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+}
+
+/**
+ * Spec 045 (rediseño oscuro), H3. Variación porcentual de un importe
+ * respecto al mes anterior, redondeada a 1 decimal, para las tarjetas KPI de
+ * Inicio. `null` si no hay mes anterior o vale 0 (no hay base con la que
+ * comparar). Se divide entre el valor absoluto del mes anterior para que el
+ * signo indique siempre si el importe ha subido o bajado, también cuando la
+ * base es negativa (un balance mensual puede serlo).
+ */
+export function monthOverMonthChange(current: string, previous: string | undefined): number | null {
+  if (previous === undefined) return null;
+  const base = new Decimal(previous);
+  if (base.isZero()) return null;
+  return new Decimal(current).minus(base).div(base.abs()).times(100).toDecimalPlaces(1).toNumber();
 }

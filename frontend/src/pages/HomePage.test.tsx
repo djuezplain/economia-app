@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from './HomePage';
 import { AuthProvider } from '../auth/AuthContext';
 import * as authApi from '../api/auth';
@@ -8,7 +8,7 @@ import * as usersApi from '../api/users';
 import * as dashboardApi from '../api/dashboard';
 import * as goalsProgressApi from '../api/goals-progress';
 import * as transactionsApi from '../api/transactions';
-import type { MonthSummary } from '../api/dashboard';
+import type { MonthSummary, YearSummary } from '../api/dashboard';
 import type { MonthProgress, GoalProgress } from '../api/goals-progress';
 import type { ListTransactionsResult, Transaction } from '../api/transactions';
 import { ApiError } from '../api/client';
@@ -45,6 +45,20 @@ function monthSummary(overrides: Partial<MonthSummary> = {}): MonthSummary {
     byCategory: [],
     dailyAverages: { income: '0.00', expense: '0.00', savings: '0.00' },
     ...overrides,
+  };
+}
+
+/** Evolución mensual de 2026 con los meses indicados (el resto a 0, como
+ *  los meses futuros que devuelve el backend). */
+function yearSummary(months: Record<string, { income: string; expense: string }>): YearSummary {
+  return {
+    year: 2026,
+    months: Array.from({ length: 12 }, (_, index) => {
+      const month = `2026-${String(index + 1).padStart(2, '0')}`;
+      const { income, expense } = months[month] ?? { income: '0.00', expense: '0.00' };
+      return { month, income, expense, savings: (parseFloat(income) - parseFloat(expense)).toFixed(2) };
+    }),
+    totals: { income: '0.00', expense: '0.00', savings: '0.00', savingsPercent: null },
   };
 }
 
@@ -96,6 +110,13 @@ describe('HomePage', () => {
     // Mismo motivo que siempre: sin esto, AuthProvider intentaría un
     // refresco silencioso real contra la red al montar.
     vi.spyOn(authApi, 'refresh').mockRejectedValue(new ApiError(401, 'No hay sesión.'));
+    // Spec 045 (H3): la evolución anual de las tarjetas KPI es opcional — por
+    // defecto falla, y los tests que la necesitan la sobrescriben.
+    vi.spyOn(dashboardApi, 'getYearSummary').mockRejectedValue(new ApiError(500, 'Sin evolución anual.'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   function renderHome() {
@@ -238,5 +259,66 @@ describe('HomePage', () => {
     renderHome();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Todavía no has verificado tu email.');
+  });
+
+  describe('tarjetas KPI (spec 045, H3)', () => {
+    beforeEach(() => {
+      // Solo se falsea `Date` (no los temporizadores): fija el "mes actual"
+      // de Inicio a agosto de 2026 sin afectar a las promesas del test.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-08-15T12:00:00Z'));
+    });
+
+    it('muestra la variación respecto al mes anterior, en verde si es favorable y en rojo si no', async () => {
+      mockLoggedIn();
+      vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(monthSummary({ income: '2200.00', expense: '1100.00' }));
+      vi.spyOn(goalsProgressApi, 'getMonthProgress').mockResolvedValue(monthProgress(null));
+      vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(transactionsResult([transaction()]));
+      vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(
+        yearSummary({
+          '2026-07': { income: '2000.00', expense: '1000.00' },
+          '2026-08': { income: '2200.00', expense: '1100.00' },
+        }),
+      );
+
+      renderHome();
+
+      // Ingresos +10 % (favorable) y gastos +10 % (desfavorable); balance de
+      // 1000 € a 1100 €, +10 % (favorable).
+      const deltas = await screen.findAllByText(/\+10 % vs\. mes anterior/);
+      expect(deltas).toHaveLength(3);
+      expect(deltas.map((delta) => delta.getAttribute('data-tone'))).toEqual(['positive', 'positive', 'negative']);
+      expect(dashboardApi.getYearSummary).toHaveBeenCalledWith('2026');
+    });
+
+    it('sin datos del mes anterior (vale 0), no muestra variación', async () => {
+      mockLoggedIn();
+      vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(monthSummary({ income: '2200.00', expense: '1100.00' }));
+      vi.spyOn(goalsProgressApi, 'getMonthProgress').mockResolvedValue(monthProgress(null));
+      vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(transactionsResult([transaction()]));
+      vi.spyOn(dashboardApi, 'getYearSummary').mockResolvedValue(yearSummary({ '2026-08': { income: '2200.00', expense: '1100.00' } }));
+
+      renderHome();
+
+      expect(await screen.findByText(eur('2200.00'))).toBeInTheDocument();
+      await screen.findByText('Café');
+      expect(screen.queryByText(/vs\. mes anterior/)).not.toBeInTheDocument();
+    });
+
+    it('si falla la evolución anual, las tarjetas se ven igual, sin variación ni error', async () => {
+      mockLoggedIn();
+      vi.spyOn(dashboardApi, 'getMonthSummary').mockResolvedValue(monthSummary({ income: '2200.00', expense: '900.00' }));
+      vi.spyOn(goalsProgressApi, 'getMonthProgress').mockResolvedValue(monthProgress(null));
+      vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(transactionsResult([transaction()]));
+
+      renderHome();
+
+      expect(await screen.findByText(eur('2200.00'))).toBeInTheDocument();
+      expect(screen.getByText(eur('900.00'))).toBeInTheDocument();
+      expect(screen.getByText(eur('1300.00'))).toBeInTheDocument();
+      await screen.findByText('Café');
+      expect(screen.queryByText(/vs\. mes anterior/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
   });
 });

@@ -19,16 +19,12 @@ import type { StockSale } from '../api/stock-sales';
 import type { StockValuation } from '../api/stock-valuations';
 import type { StockDividend } from '../api/stock-dividends';
 import { ApiError } from '../api/client';
+import { CHART_AXIS_PROPS, CHART_GRID_PROPS, CHART_LINE_PROPS, CHART_TOOLTIP_PROPS } from '../components/chart-theme';
 import { formatCurrency } from './home-shared';
 import { stocksTotal } from './stock-shared';
 import { stockDetailStats, stockOperationsTimeline, stockRealizedGainLossByYear } from './stock-detail.calculations';
 import type { StockOperation } from './stock-detail.calculations';
 
-// Mismos tokens de estilo que los gráficos de `WealthPage.tsx`/`DashboardPage.tsx`, duplicados
-// aquí en vez de extraer un módulo compartido — mismo criterio ya explicado en esos ficheros
-// (no hay hoy una utilidad de gráficos común, solo el mismo objeto repetido).
-const CHART_TICK_STYLE = { fontFamily: 'var(--font-body)', fontSize: 12, fill: 'var(--text)' };
-const CHART_TOOLTIP_STYLE = { fontFamily: 'var(--font-body)', fontSize: 13 };
 
 const OPERATION_LABELS: Record<StockOperation['kind'], string> = {
   purchase: 'Compra',
@@ -556,11 +552,11 @@ export function StockDetailPage() {
               <div style={{ width: '100%', height: 280 }}>
                 <ResponsiveContainer>
                   <LineChart data={valuationChartData} margin={{ left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" tick={CHART_TICK_STYLE} />
-                    <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} tick={CHART_TICK_STYLE} />
-                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value) => [formatCurrency(Number(value).toFixed(2)), 'Precio/acción']} />
-                    <Line type="monotone" dataKey="price" name="Precio/acción" stroke="var(--accent-300)" strokeWidth={2} dot={{ r: 3 }} />
+                    <CartesianGrid {...CHART_GRID_PROPS} />
+                    <XAxis dataKey="date" {...CHART_AXIS_PROPS} />
+                    <YAxis tickFormatter={(value: number) => formatCurrency(value.toFixed(2))} {...CHART_AXIS_PROPS} />
+                    <Tooltip {...CHART_TOOLTIP_PROPS} formatter={(value) => [formatCurrency(Number(value).toFixed(2)), 'Precio/acción']} />
+                    <Line {...CHART_LINE_PROPS} dataKey="price" name="Precio/acción" stroke="var(--accent)" />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

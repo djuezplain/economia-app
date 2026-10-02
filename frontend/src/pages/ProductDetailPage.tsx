@@ -6,6 +6,7 @@ import { useConnectivity } from '../hooks/useConnectivity';
 import { getProduct, getProductPrices, mergeProducts, updateProduct } from '../api/groceries';
 import type { Product, ProductPrice } from '../api/groceries';
 import { ApiError } from '../api/client';
+import { CHART_AXIS_PROPS, CHART_GRID_PROPS, CHART_LEGEND_PROPS, CHART_LINE_PROPS, CHART_SERIES_COLORS, CHART_TOOLTIP_PROPS } from '../components/chart-theme';
 
 /** Cuerpo del 409 que `ProductsService.update` manda cuando el nombre ya lo usa otro producto (spec 038, H2). */
 function duplicateProductIdFrom(body: unknown): string | null {
@@ -16,10 +17,8 @@ function duplicateProductIdFrom(body: unknown): string | null {
   return null;
 }
 
-const CHART_TICK_STYLE = { fontFamily: 'var(--font-body)', fontSize: 12, fill: 'var(--text)' };
-const CHART_TOOLTIP_STYLE = { fontFamily: 'var(--font-body)', fontSize: 13 };
-/** Sin un color fijo por supermercado en el resto de la app — se asigna por posición (orden alfabético, estable entre renders), cíclico si hay más supermercados que colores. */
-const CHART_LINE_COLORS = ['var(--accent-500)', 'var(--accent-2-500)', 'var(--neutral-700)', 'var(--accent-300)', 'var(--accent-2-300)', 'var(--neutral-500)'];
+/** Sin un color fijo por supermercado en el resto de la app — se asigna por posición (orden alfabético, estable entre renders), cíclico si hay más supermercados que colores (paleta común de spec 045). */
+const CHART_LINE_COLORS = CHART_SERIES_COLORS;
 
 interface ProductStats {
   minPrice: number;
@@ -253,20 +252,18 @@ export function ProductDetailPage() {
               <div style={{ width: '100%', height: 280 }}>
                 <ResponsiveContainer>
                   <LineChart data={chartData} margin={{ left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" tick={CHART_TICK_STYLE} />
-                    <YAxis tickFormatter={(value: number) => `${value.toFixed(2)} €`} tick={CHART_TICK_STYLE} />
-                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value) => `${Number(value).toFixed(2)} €`} />
-                    <Legend wrapperStyle={CHART_TOOLTIP_STYLE} />
+                    <CartesianGrid {...CHART_GRID_PROPS} />
+                    <XAxis dataKey="date" {...CHART_AXIS_PROPS} />
+                    <YAxis tickFormatter={(value: number) => `${value.toFixed(2)} €`} {...CHART_AXIS_PROPS} />
+                    <Tooltip {...CHART_TOOLTIP_PROPS} formatter={(value) => `${Number(value).toFixed(2)} €`} />
+                    <Legend {...CHART_LEGEND_PROPS} />
                     {supermarketNames.map((name, index) => (
                       <Line
                         key={name}
-                        type="monotone"
+                        {...CHART_LINE_PROPS}
                         dataKey={name}
                         name={name}
                         stroke={CHART_LINE_COLORS[index % CHART_LINE_COLORS.length]}
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
                         connectNulls
                       />
                     ))}
