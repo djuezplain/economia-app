@@ -36,6 +36,7 @@ const NAV_ITEMS = [
       { to: '/movements/register', end: false, label: 'Registrar', icon: '➕' },
     ],
   },
+  { to: '/calendar', end: false, label: 'Calendario', icon: '📅' },
   {
     to: '/dashboard',
     end: false,
