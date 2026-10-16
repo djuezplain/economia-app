@@ -17,8 +17,6 @@ function duplicateProductIdFrom(body: unknown): string | null {
   return null;
 }
 
-/** Sin un color fijo por supermercado en el resto de la app — se asigna por posición (orden alfabético, estable entre renders), cíclico si hay más supermercados que colores (paleta común de spec 045). */
-const CHART_LINE_COLORS = CHART_SERIES_COLORS;
 
 interface ProductStats {
   minPrice: number;
@@ -263,7 +261,8 @@ export function ProductDetailPage() {
                         {...CHART_LINE_PROPS}
                         dataKey={name}
                         name={name}
-                        stroke={CHART_LINE_COLORS[index % CHART_LINE_COLORS.length]}
+                        // Sin color fijo por supermercado: por posición (orden alfabético, estable entre renders), cíclico.
+                        stroke={CHART_SERIES_COLORS[index % CHART_SERIES_COLORS.length]}
                         connectNulls
                       />
                     ))}

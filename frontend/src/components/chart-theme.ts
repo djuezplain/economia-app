@@ -21,12 +21,6 @@ export const CHART_AXIS_PROPS = {
   tickLine: false,
 } as const;
 
-/** Para gráficos de barras horizontales (eje Y con etiquetas de categoría). */
-export const CHART_CATEGORY_AXIS_PROPS = {
-  ...CHART_AXIS_PROPS,
-  tick: { ...CHART_AXIS_PROPS.tick, fill: 'var(--text)' },
-} as const;
-
 export const CHART_TOOLTIP_PROPS = {
   contentStyle: {
     fontFamily: 'var(--font-body)',
@@ -57,8 +51,6 @@ export const CHART_LINE_PROPS = {
 
 /** Esquinas superiores redondeadas (barras verticales). */
 export const CHART_BAR_RADIUS: [number, number, number, number] = [4, 4, 0, 0];
-/** Esquinas del extremo derecho redondeadas (barras horizontales). */
-export const CHART_HBAR_RADIUS: [number, number, number, number] = [0, 4, 4, 0];
 
 /** Paleta común de series, en orden fijo (se asigna por posición). */
 export const CHART_SERIES_COLORS = [

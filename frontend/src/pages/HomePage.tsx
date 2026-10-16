@@ -20,15 +20,7 @@ function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
 }
 
-/** 'YYYY-MM' del mes anterior, o `null` en enero (la evolución anual solo
- *  cubre el año en curso, spec 045 H3 criterio 3). */
-function previousMonthInYear(month: string): string | null {
-  const [year, monthNumber] = month.split('-');
-  if (monthNumber === '01') return null;
-  return `${year}-${String(parseInt(monthNumber, 10) - 1).padStart(2, '0')}`;
-}
-
-const PERCENT_FORMATTER = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
+const PERCENT_FORMATTER = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1, signDisplay: 'exceptZero' });
 
 /**
  * Spec 045 (rediseño oscuro), H3. Tarjeta KPI de Inicio: etiqueta, cifra,
@@ -63,9 +55,8 @@ function KpiCard({
         <div className="kpi-footer">
           {change !== null && (
             <span className="kpi-delta" data-tone={tone}>
-              <span aria-hidden="true">{change > 0 ? '↑' : change < 0 ? '↓' : '→'}</span>{' '}
-              {change > 0 ? '+' : change < 0 ? '−' : ''}
-              {PERCENT_FORMATTER.format(Math.abs(change))} % vs. mes anterior
+              <span aria-hidden="true">{change > 0 ? '↑' : change < 0 ? '↓' : '→'}</span> {PERCENT_FORMATTER.format(change)} % vs.
+              mes anterior
             </span>
           )}
           {series && <Sparkline values={series} color={color} />}
@@ -195,10 +186,10 @@ export function HomePage() {
   const isEmptyMonth = monthSummary?.income === '0.00' && monthSummary?.expense === '0.00';
 
   // Spec 045, H3: meses del año hasta el actual (la evolución anual trae los
-  // 12, con los futuros a 0) y el mes anterior, si lo hay en el mismo año.
+  // 12 desde enero, con los futuros a 0) — el penúltimo es el mes anterior,
+  // si lo hay en el mismo año (en enero no hay).
   const monthsSoFar = yearMonths?.filter((entry) => entry.month <= month) ?? [];
-  const previousMonth = previousMonthInYear(month);
-  const previousEntry = previousMonth ? monthsSoFar.find((entry) => entry.month === previousMonth) : undefined;
+  const previousEntry = monthsSoFar.at(-2);
   const seriesOf = (pick: (entry: MonthlyEvolutionEntry) => string) =>
     monthsSoFar.length >= 2 ? monthsSoFar.map((entry) => parseFloat(pick(entry))) : null;
   const balance = monthSummary ? (parseFloat(monthSummary.income) - parseFloat(monthSummary.expense)).toFixed(2) : '0.00';
