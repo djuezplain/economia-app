@@ -41,6 +41,7 @@ import {
   CHART_LINE_PROPS,
   CHART_TOOLTIP_PROPS,
 } from '../components/chart-theme';
+import { CashFlowSankey } from '../components/CashFlowSankey';
 
 // El desglose de gastos por categoría (H4 criterio 2) no usa un color por
 // categoría (podrían ser más de 8 y romper el presupuesto categórico) — es
@@ -690,6 +691,18 @@ export function DashboardPage() {
               <li>Gasto medio/día: {monthSummary.dailyAverages.expense}</li>
               <li>Ahorro medio/día: {monthSummary.dailyAverages.savings}</li>
             </ul>
+
+            <h3>Flujo de caja</h3>
+            {parseFloat(monthSummary.income) > 0 || parseFloat(monthSummary.expense) > 0 ? (
+              <CashFlowSankey
+                income={parseFloat(monthSummary.income)}
+                expense={parseFloat(monthSummary.expense)}
+                savings={parseFloat(monthSummary.savings)}
+                categories={byCategoryChartData}
+              />
+            ) : (
+              <p>Sin movimientos en este mes.</p>
+            )}
 
             <h3>Gastos por categoría</h3>
             {byCategoryChartData.length === 0 && <p>Sin gastos en este mes.</p>}
