@@ -8,6 +8,8 @@ import {
   bankAccounts,
   cashBalances,
   cashHoldings,
+  recurringOccurrenceResolutions,
+  recurringTransactions,
   categories,
   cryptoPurchases,
   cryptoValuations,
@@ -66,7 +68,7 @@ export interface UserProfile {
  * quedó anotado como tarea en `plan.md`: hueco encontrado al desglosar
  * `tasks.md`, corregido aquí (T2.2), no un cambio de alcance nuevo.
  *
- * Spec 032 (plan.md §2) amplía `economicData` de 2 a las 24 tablas de datos
+ * Spec 032 (plan.md §2) amplía `economicData` de 2 a las 26 tablas de datos
  * económicos que existen hoy (specs 019-031 habían quedado fuera) y añade
  * `formatVersion` — este mismo endpoint (`GET /users/me/export`) pasa a
  * servir a la vez para la obligación RGPD (H8) y como copia de seguridad
@@ -179,6 +181,7 @@ export class UsersService {
       userVehicles,
       userPensionPlans,
       userCashHoldings,
+      userRecurringTransactions,
     ] = await Promise.all([
       this.db.query.categories.findMany({ where: eq(categories.userId, userId) }),
       this.db.query.transactions.findMany({ where: eq(transactions.userId, userId) }),
@@ -191,6 +194,7 @@ export class UsersService {
       this.db.query.vehicles.findMany({ where: eq(vehicles.userId, userId) }),
       this.db.query.pensionPlans.findMany({ where: eq(pensionPlans.userId, userId) }),
       this.db.query.cashHoldings.findMany({ where: eq(cashHoldings.userId, userId) }),
+      this.db.query.recurringTransactions.findMany({ where: eq(recurringTransactions.userId, userId) }),
     ]);
 
     const bankAccountIds = userBankAccounts.map((a) => a.id);
@@ -200,6 +204,7 @@ export class UsersService {
     const vehicleIds = userVehicles.map((v) => v.id);
     const pensionPlanIds = userPensionPlans.map((p) => p.id);
     const cashHoldingIds = userCashHoldings.map((h) => h.id);
+    const recurringIds = userRecurringTransactions.map((r) => r.id);
 
     const [
       userBankAccountBalances,
@@ -216,6 +221,7 @@ export class UsersService {
       userPensionPlanContributions,
       userPensionPlanValuations,
       userCashBalances,
+      userRecurringResolutions,
     ] = await Promise.all([
       bankAccountIds.length
         ? this.db.query.bankAccountBalances.findMany({ where: inArray(bankAccountBalances.bankAccountId, bankAccountIds) })
@@ -237,6 +243,9 @@ export class UsersService {
         ? this.db.query.pensionPlanValuations.findMany({ where: inArray(pensionPlanValuations.pensionPlanId, pensionPlanIds) })
         : [],
       cashHoldingIds.length ? this.db.query.cashBalances.findMany({ where: inArray(cashBalances.cashHoldingId, cashHoldingIds) }) : [],
+      recurringIds.length
+        ? this.db.query.recurringOccurrenceResolutions.findMany({ where: inArray(recurringOccurrenceResolutions.recurringId, recurringIds) })
+        : [],
     ]);
 
     return {
@@ -269,6 +278,8 @@ export class UsersService {
         pensionPlanValuations: userPensionPlanValuations,
         cashHoldings: userCashHoldings,
         cashBalances: userCashBalances,
+        recurringTransactions: userRecurringTransactions,
+        recurringOccurrenceResolutions: userRecurringResolutions,
       },
     };
   }

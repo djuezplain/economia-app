@@ -218,6 +218,13 @@
       "when": 1790535889913,
       "tag": "0030_perpetual_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792233159940,
+      "tag": "0031_add_recurring_transactions",
+      "breakpoints": true
     }
   ]
 }

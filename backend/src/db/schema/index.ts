@@ -7,3 +7,4 @@ export * from './google-drive.schema.js';
 export * from './groceries.schema.js';
 export * from './scheduled-export.schema.js';
 export * from './shopping-lists.schema.js';
+export * from './recurring.schema.js';

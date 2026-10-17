@@ -15,6 +15,8 @@ import type {
   pensionPlanContributions,
   pensionPlanValuations,
   pensionPlans,
+  recurringOccurrenceResolutions,
+  recurringTransactions,
   savingsGoals,
   stockDividends,
   stockPurchases,
@@ -58,6 +60,8 @@ export type PensionPlanContributionRow = typeof pensionPlanContributions.$inferS
 export type PensionPlanValuationRow = typeof pensionPlanValuations.$inferSelect;
 export type CashHoldingRow = typeof cashHoldings.$inferSelect;
 export type CashBalanceRow = typeof cashBalances.$inferSelect;
+export type RecurringTransactionRow = typeof recurringTransactions.$inferSelect;
+export type RecurringOccurrenceResolutionRow = typeof recurringOccurrenceResolutions.$inferSelect;
 
 /**
  * Spec 032, plan.md §1. Todo el dato económico del usuario, en 24 arrays
@@ -96,6 +100,9 @@ export interface EconomicData {
   pensionPlanValuations: PensionPlanValuationRow[];
   cashHoldings: CashHoldingRow[];
   cashBalances: CashBalanceRow[];
+  // Spec 047: copias de seguridad anteriores no traen estas dos claves — el import las tolera ausentes (`OPTIONAL_ECONOMIC_DATA_KEYS`).
+  recurringTransactions: RecurringTransactionRow[];
+  recurringOccurrenceResolutions: RecurringOccurrenceResolutionRow[];
 }
 
 /**
@@ -138,4 +145,9 @@ export const ECONOMIC_DATA_TABLE_ORDER: (keyof EconomicData)[] = [
   'pensionPlanValuations',
   'cashHoldings',
   'cashBalances',
+  'recurringTransactions',
+  'recurringOccurrenceResolutions',
 ];
+
+/** Spec 047: claves añadidas después de la versión 1 original del formato; un fichero antiguo puede no traerlas. */
+export const OPTIONAL_ECONOMIC_DATA_KEYS: (keyof EconomicData)[] = ['recurringTransactions', 'recurringOccurrenceResolutions'];

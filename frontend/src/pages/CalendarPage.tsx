@@ -4,6 +4,9 @@ import { useAuth } from '../auth/auth-context';
 import { useCategoriesForType } from '../hooks/useCategoriesForType';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { listTransactions } from '../api/transactions';
+import { listOccurrences } from '../api/recurring-transactions';
+import type { Occurrence } from '../api/recurring-transactions';
+import { OccurrenceRow } from '../components/OccurrenceRow';
 import type { Transaction } from '../api/transactions';
 import { ApiError } from '../api/client';
 import { getAllCachedTransactions, getMeta } from '../offline/db';
@@ -31,6 +34,11 @@ async function loadMonth(month: string): Promise<Transaction[]> {
  * Spec 046 (calendario). Movimientos del mes sobre una cuadrícula lun–dom, con
  * resumen del mes y detalle del día seleccionado. Online lee de la API
  * (paginando hasta traer todo el mes); offline, de la copia local.
+ *
+ * Spec 047 (recurrentes). Online, además, se pintan las ocurrencias previstas
+ * (pendientes o vencidas) con un estilo discontinuo y, en el detalle del día,
+ * con Confirmar / Omitir. No entran en el resumen del mes: solo cuentan los
+ * movimientos reales. Si no se pueden cargar, el calendario sigue con los reales.
  */
 export function CalendarPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -48,6 +56,10 @@ export function CalendarPage() {
   const [transactions, setTransactions] = useState<Transaction[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
+  const [occurrencesError, setOccurrencesError] = useState<string | null>(null);
+  // Se incrementa al confirmar/omitir una ocurrencia para recargar reales y previstas.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -71,7 +83,28 @@ export function CalendarPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, isOnline, month]);
+  }, [isAuthenticated, isOnline, month, reloadKey]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { dateFrom, dateTo } = monthRange(month);
+        const list = await listOccurrences(dateFrom, dateTo);
+        if (cancelled) return;
+        setOccurrences(list.filter((o) => o.status === 'PENDING' || o.status === 'OVERDUE'));
+        setOccurrencesError(null);
+      } catch {
+        if (cancelled) return;
+        setOccurrences([]);
+        setOccurrencesError('No se han podido cargar los movimientos previstos.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isOnline, month, reloadKey]);
 
   function goToMonth(next: string) {
     setMonth(next);
@@ -82,6 +115,8 @@ export function CalendarPage() {
 
   const grid = useMemo(() => buildMonthGrid(month), [month]);
   const byDate = useMemo(() => groupByDate(transactions ?? []), [transactions]);
+  // Sin conexión no hay previstos (v1 de recurrentes: confirmar exige red).
+  const plannedByDate = useMemo(() => groupByDate(isOnline ? occurrences : []), [isOnline, occurrences]);
   const totals = useMemo(() => monthTotals(transactions ?? []), [transactions]);
 
   if (isAuthLoading) {
@@ -105,6 +140,7 @@ export function CalendarPage() {
   }
 
   const selectedItems = byDate.get(selected) ?? [];
+  const selectedPlanned = plannedByDate.get(selected) ?? [];
 
   return (
     <main>
@@ -131,6 +167,7 @@ export function CalendarPage() {
         </p>
       )}
       {loadError && <p role="alert">{loadError}</p>}
+      {occurrencesError && <p role="status">{occurrencesError}</p>}
 
       <dl className="cal-totals">
         <div className="card">
@@ -158,7 +195,12 @@ export function CalendarPage() {
         {grid.map((week) => (
           <div className="cal-week" role="row" key={week[0].date}>
             {week.map((cell) => {
-              const items = byDate.get(cell.date) ?? [];
+              const real = byDate.get(cell.date) ?? [];
+              const planned = plannedByDate.get(cell.date) ?? [];
+              const chips = [
+                ...real.map((t) => ({ key: t.id, type: t.type, categoryId: t.categoryId, isPlanned: false })),
+                ...planned.map((o) => ({ key: `${o.recurringId}|${o.date}`, type: o.type, categoryId: o.categoryId, isPlanned: true })),
+              ];
               const classes = ['cal-day'];
               if (!cell.inMonth) classes.push('cal-day-out');
               if (cell.date === today) classes.push('cal-day-today');
@@ -170,7 +212,7 @@ export function CalendarPage() {
                   key={cell.date}
                   className={classes.join(' ')}
                   aria-selected={cell.date === selected}
-                  aria-label={`${longDayLabel(cell.date)}${items.length ? `, ${items.length} movimiento${items.length > 1 ? 's' : ''}` : ''}`}
+                  aria-label={`${longDayLabel(cell.date)}${real.length ? `, ${real.length} movimiento${real.length > 1 ? 's' : ''}` : ''}${planned.length ? `, ${planned.length} previsto${planned.length > 1 ? 's' : ''}` : ''}`}
                   onClick={() => {
                     setSelected(cell.date);
                     // Pulsar un día atenuado de otro mes salta a ese mes.
@@ -179,12 +221,15 @@ export function CalendarPage() {
                 >
                   <span className="cal-day-number">{cell.day}</span>
                   <span className="cal-chips" aria-hidden="true">
-                    {items.slice(0, items.length > MAX_CHIPS ? MAX_CHIPS - 1 : MAX_CHIPS).map((t) => (
-                      <span key={t.id} className={`cal-chip ${t.type === 'INCOME' ? 'cal-chip-income' : 'cal-chip-expense'}`}>
-                        {categoryIcon(categories, t.categoryId)}
+                    {chips.slice(0, chips.length > MAX_CHIPS ? MAX_CHIPS - 1 : MAX_CHIPS).map((c) => (
+                      <span
+                        key={c.key}
+                        className={`cal-chip ${c.type === 'INCOME' ? 'cal-chip-income' : 'cal-chip-expense'}${c.isPlanned ? ' cal-chip-planned' : ''}`}
+                      >
+                        {categoryIcon(categories, c.categoryId)}
                       </span>
                     ))}
-                    {items.length > MAX_CHIPS && <span className="cal-more">+{items.length - (MAX_CHIPS - 1)}</span>}
+                    {chips.length > MAX_CHIPS && <span className="cal-more">+{chips.length - (MAX_CHIPS - 1)}</span>}
                   </span>
                 </button>
               );
@@ -195,7 +240,19 @@ export function CalendarPage() {
 
       <section aria-label={`Movimientos del ${longDayLabel(selected)}`}>
         <h2>{longDayLabel(selected)}</h2>
-        {transactions && selectedItems.length === 0 && <p>No hay movimientos este día.</p>}
+        {transactions && selectedItems.length === 0 && selectedPlanned.length === 0 && <p>No hay movimientos este día.</p>}
+        {selectedPlanned.length > 0 && (
+          <ul id="calendar-day-planned">
+            {selectedPlanned.map((o) => (
+              <OccurrenceRow
+                key={`${o.recurringId}|${o.date}`}
+                occurrence={o}
+                categories={categories}
+                onResolved={() => setReloadKey((k) => k + 1)}
+              />
+            ))}
+          </ul>
+        )}
         {selectedItems.length > 0 && (
           <ul id="calendar-day-list">
             {selectedItems.map((t) => (

@@ -182,7 +182,7 @@ export class TransactionsService {
   }
 
   /** H1/H2 (spec.md §4): los campos de gasto no aplican a un ingreso. */
-  private assertExpenseOnlyFields(
+  assertExpenseOnlyFields(
     type: MovementType,
     fields: { subcategoryId?: string; merchant?: string; paymentMethod?: string },
   ): void {
@@ -199,7 +199,7 @@ export class TransactionsService {
    * un desajuste de tipo con una categoría que sí existe y es propia es un
    * error de datos del cliente (400), no un problema de autorización.
    */
-  private async validateCategoryAssignment(
+  async validateCategoryAssignment(
     userId: string,
     type: MovementType,
     categoryId: string,

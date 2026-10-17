@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { getTableColumns, inArray } from 'drizzle-orm';
+import { and, eq, getTableColumns, inArray } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { isUUID } from 'class-validator';
 import { DB } from '../db/db.module.js';
@@ -21,6 +21,8 @@ import {
   pensionPlanContributions,
   pensionPlanValuations,
   pensionPlans,
+  recurringOccurrenceResolutions,
+  recurringTransactions,
   savingsGoals,
   stockDividends,
   stockPurchases,
@@ -31,7 +33,7 @@ import {
   vehicleValuations,
   vehicles,
 } from '../db/schema/index.js';
-import { ECONOMIC_DATA_TABLE_ORDER, EXPORT_FORMAT_VERSION } from '../data-export/account-export.types.js';
+import { ECONOMIC_DATA_TABLE_ORDER, EXPORT_FORMAT_VERSION, OPTIONAL_ECONOMIC_DATA_KEYS } from '../data-export/account-export.types.js';
 import type { AccountExportFile, EconomicData } from '../data-export/account-export.types.js';
 import type { DataImportSummary, TableImportSummary } from './data-import.types.js';
 
@@ -42,7 +44,7 @@ interface TableEntry {
 }
 
 /** Plan.md §3.2 — mismo orden que `ECONOMIC_DATA_TABLE_ORDER`; aquí solo se asocia cada clave con su tabla real. */
-const TABLES: Record<keyof EconomicData, TableEntry> = {
+const TABLES: Record<Exclude<keyof EconomicData, 'recurringOccurrenceResolutions'>, TableEntry> = {
   categories: { table: categories, hasUserId: true },
   transactions: { table: transactions, hasUserId: true },
   savingsGoals: { table: savingsGoals, hasUserId: true },
@@ -68,6 +70,7 @@ const TABLES: Record<keyof EconomicData, TableEntry> = {
   pensionPlanValuations: { table: pensionPlanValuations },
   cashHoldings: { table: cashHoldings, hasUserId: true },
   cashBalances: { table: cashBalances },
+  recurringTransactions: { table: recurringTransactions, hasUserId: true },
 };
 
 /** `db.transaction(async (tx) => ...)` sin anotar el tipo del callback (mismo criterio que `ImportService.importWorkbook`) infiere el tipo de `tx` — se reutiliza aquí para poder compartir la misma lógica entre `preview` (solo lectura, sin transacción) y `confirm`. */
@@ -77,6 +80,17 @@ type Row = Record<string, unknown>;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Spec 047: las resoluciones no tienen `id` propio, su clave es (`recurringId`, `occurrenceDate`). */
+function isValidResolutionRow(row: unknown): row is Row {
+  return (
+    isPlainObject(row) &&
+    typeof row.recurringId === 'string' &&
+    isUUID(row.recurringId) &&
+    typeof row.occurrenceDate === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(row.occurrenceDate)
+  );
 }
 
 function isValidRow(row: unknown): row is Row {
@@ -171,14 +185,21 @@ export class DataImportService {
     }
     const economicData = parsed.economicData;
     const expectedKeys = ECONOMIC_DATA_TABLE_ORDER as string[];
+    const requiredKeys = ECONOMIC_DATA_TABLE_ORDER.filter((key) => !OPTIONAL_ECONOMIC_DATA_KEYS.includes(key));
     const actualKeys = Object.keys(economicData);
-    if (actualKeys.length !== expectedKeys.length || actualKeys.some((key) => !expectedKeys.includes(key))) {
+    if (actualKeys.some((key) => !expectedKeys.includes(key)) || requiredKeys.some((key) => !actualKeys.includes(key))) {
       throw new BadRequestException('El fichero no tiene el formato esperado.');
     }
 
     for (const key of ECONOMIC_DATA_TABLE_ORDER) {
+      // Spec 047: una copia anterior no trae las claves opcionales — se tratan como vacías.
+      if (economicData[key] === undefined && OPTIONAL_ECONOMIC_DATA_KEYS.includes(key)) {
+        economicData[key] = [];
+        continue;
+      }
       const rows = economicData[key];
-      if (!Array.isArray(rows) || !rows.every(isValidRow)) {
+      const isValid = key === 'recurringOccurrenceResolutions' ? isValidResolutionRow : isValidRow;
+      if (!Array.isArray(rows) || !rows.every(isValid)) {
         throw new BadRequestException(`El fichero no tiene el formato esperado (${key}).`);
       }
     }
@@ -195,6 +216,10 @@ export class DataImportService {
     const summary = {} as DataImportSummary;
     for (const key of ECONOMIC_DATA_TABLE_ORDER) {
       const rows = file.economicData[key] as unknown as Row[];
+      if (key === 'recurringOccurrenceResolutions') {
+        summary[key] = await this.mergeResolutions(executor, file, userId, write);
+        continue;
+      }
       summary[key] =
         key === 'categories'
           ? await this.mergeCategories(executor, rows, userId, write)
@@ -250,5 +275,62 @@ export class DataImportService {
     }
 
     return { total: rows.length, toImport: toInsert.length, alreadyExisting: existingIds.size };
+  }
+
+  /**
+   * Spec 047. Las resoluciones de ocurrencias recurrentes no tienen `id`
+   * propio (PK compuesta), así que no pasan por `mergeTable`. Solo se
+   * importan las que cuelgan de una plantilla del propio usuario (ya existente
+   * o recién importada en este mismo fichero) — nunca de una plantilla ajena
+   * cuyo `id` coincida —, y se conserva `transactionId` solo si apunta a un
+   * movimiento propio; si no, queda en `null` (la ocurrencia sigue resuelta).
+   */
+  private async mergeResolutions(executor: Executor, file: AccountExportFile, userId: string, write: boolean): Promise<TableImportSummary> {
+    const rows = file.economicData.recurringOccurrenceResolutions as unknown as Row[];
+    if (rows.length === 0) return { total: 0, toImport: 0, alreadyExisting: 0 };
+
+    const recurringIds = [...new Set(rows.map((row) => row.recurringId as string))];
+    const templateRows = await executor
+      .select({ id: recurringTransactions.id, userId: recurringTransactions.userId })
+      .from(recurringTransactions)
+      .where(inArray(recurringTransactions.id, recurringIds));
+    const foreignTemplates = new Set(templateRows.filter((t) => t.userId !== userId).map((t) => t.id));
+    const fileTemplateIds = new Set((file.economicData.recurringTransactions as unknown as Row[]).map((t) => t.id as string));
+    const ownedOrImportable = (id: string) => !foreignTemplates.has(id) && (fileTemplateIds.has(id) || templateRows.some((t) => t.id === id));
+
+    const existing = await executor
+      .select({ recurringId: recurringOccurrenceResolutions.recurringId, occurrenceDate: recurringOccurrenceResolutions.occurrenceDate })
+      .from(recurringOccurrenceResolutions)
+      .where(inArray(recurringOccurrenceResolutions.recurringId, recurringIds));
+    const existingKeys = new Set(existing.map((r) => `${r.recurringId}|${r.occurrenceDate}`));
+
+    const transactionIds = rows.map((row) => row.transactionId).filter((id): id is string => typeof id === 'string');
+    const ownTransactions = transactionIds.length
+      ? await executor
+          .select({ id: transactions.id })
+          .from(transactions)
+          .where(and(inArray(transactions.id, transactionIds), eq(transactions.userId, userId)))
+      : [];
+    const importedTransactionIds = new Set((file.economicData.transactions as unknown as Row[]).map((t) => t.id as string));
+    const foreignTransactions = transactionIds.length
+      ? await executor.select({ id: transactions.id, userId: transactions.userId }).from(transactions).where(inArray(transactions.id, transactionIds))
+      : [];
+    const foreignTransactionIds = new Set(foreignTransactions.filter((t) => t.userId !== userId).map((t) => t.id));
+    const keepTransactionId = (id: unknown): string | null =>
+      typeof id === 'string' &&
+      !foreignTransactionIds.has(id) &&
+      (ownTransactions.some((t) => t.id === id) || importedTransactionIds.has(id))
+        ? id
+        : null;
+
+    const candidates = rows.filter((row) => ownedOrImportable(row.recurringId as string));
+    const toInsert = candidates
+      .filter((row) => !existingKeys.has(`${row.recurringId}|${row.occurrenceDate}`))
+      .map((row) => coerceTimestamps(recurringOccurrenceResolutions, { ...row, transactionId: keepTransactionId(row.transactionId) }));
+
+    if (write && toInsert.length > 0) {
+      await executor.insert(recurringOccurrenceResolutions).values(toInsert as never[]).onConflictDoNothing();
+    }
+    return { total: rows.length, toImport: toInsert.length, alreadyExisting: candidates.length - toInsert.length };
   }
 }

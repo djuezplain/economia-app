@@ -17,6 +17,7 @@ import { MovementsListPage } from './pages/MovementsListPage';
 import { MovementsSummaryPage } from './pages/MovementsSummaryPage';
 import { RegisterMovementPage } from './pages/RegisterMovementPage';
 import { CalendarPage } from './pages/CalendarPage';
+import { RecurringPage } from './pages/RecurringPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ImportPage } from './pages/ImportPage';
 import { GoalsPage } from './pages/GoalsPage';
@@ -51,6 +52,7 @@ function App() {
               <Route path="register/:id" element={<RegisterMovementPage />} />
             </Route>
             <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/recurring" element={<RecurringPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/patrimonio" element={<WealthPage />} />
             <Route path="/patrimonio/acciones/importar" element={<StockImportPage />} />
