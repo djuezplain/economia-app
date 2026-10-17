@@ -9,7 +9,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
-import { categories, stockPurchases, stocks, transactions, users } from '../src/db/schema/index.js';
+import { categories, recurringOccurrenceResolutions, recurringTransactions, stockPurchases, stocks, transactions, users } from '../src/db/schema/index.js';
 import { ECONOMIC_DATA_TABLE_ORDER, EXPORT_FORMAT_VERSION } from '../src/data-export/account-export.types.js';
 import type { EconomicData } from '../src/data-export/account-export.types.js';
 
@@ -237,5 +237,80 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
 
     const remainingTransactions = await db.select().from(transactions).where(eq(transactions.userId, user.id));
     expect(remainingTransactions).toHaveLength(0);
+  });
+
+  describe('movimientos recurrentes (spec 047)', () => {
+    const now = () => new Date().toISOString();
+    const category = (id: string) => ({ id, userId: randomUUID(), type: 'EXPENSE', name: 'Vivienda', parentId: null, isDefault: false, icon: null, createdAt: now() });
+    const template = (id: string, categoryId: string) => ({
+      id, userId: randomUUID(), type: 'EXPENSE', categoryId, subcategoryId: null, concept: 'Alquiler', merchant: null, amount: '600.00',
+      paymentMethod: null, frequency: 'MONTHLY', startDate: '2026-01-05', endDate: null, active: true, createdAt: now(), updatedAt: now(),
+    });
+
+    it('un fichero de una copia anterior (sin las claves de recurrentes) se sigue importando', async () => {
+      const user = await createUser('import-sin-recurrentes@example.com');
+      const token = await login(user.email);
+      const file = buildFile({ categories: [category(randomUUID())] });
+      delete (file.economicData as unknown as Record<string, unknown>).recurringTransactions;
+      delete (file.economicData as unknown as Record<string, unknown>).recurringOccurrenceResolutions;
+
+      const res = await attach('/data-import/confirm', token, file).expect(201);
+      expect(res.body.categories.toImport).toBe(1);
+      expect(res.body.recurringTransactions).toEqual({ total: 0, toImport: 0, alreadyExisting: 0 });
+    });
+
+    it('importa plantillas y sus resoluciones bajo el usuario autenticado, y reimportar no duplica', async () => {
+      const user = await createUser('import-recurrentes@example.com');
+      const token = await login(user.email);
+      const categoryId = randomUUID();
+      const templateId = randomUUID();
+      const transactionId = randomUUID();
+      const file = buildFile({
+        categories: [category(categoryId)],
+        transactions: [
+          { id: transactionId, userId: randomUUID(), type: 'EXPENSE', date: '2026-03-05', categoryId, subcategoryId: null, concept: 'Alquiler', merchant: null, amount: '600.00', paymentMethod: null, createdAt: now(), updatedAt: now() },
+        ] as never,
+        recurringTransactions: [template(templateId, categoryId)] as never,
+        recurringOccurrenceResolutions: [
+          { recurringId: templateId, occurrenceDate: '2026-03-05', status: 'CONFIRMED', transactionId, createdAt: now() },
+          { recurringId: templateId, occurrenceDate: '2026-04-05', status: 'SKIPPED', transactionId: randomUUID(), createdAt: now() },
+        ] as never,
+      });
+
+      const res = await attach('/data-import/confirm', token, file).expect(201);
+      expect(res.body.recurringTransactions.toImport).toBe(1);
+      expect(res.body.recurringOccurrenceResolutions).toEqual({ total: 2, toImport: 2, alreadyExisting: 0 });
+
+      const [saved] = await db.select().from(recurringTransactions).where(eq(recurringTransactions.userId, user.id));
+      expect(saved.id).toBe(templateId);
+      const resolutions = await db.select().from(recurringOccurrenceResolutions).where(eq(recurringOccurrenceResolutions.recurringId, templateId));
+      expect(resolutions.map((r) => [r.occurrenceDate, r.transactionId])).toEqual(
+        expect.arrayContaining([['2026-03-05', transactionId], ['2026-04-05', null]]), // transactionId desconocido → null
+      );
+
+      const again = await attach('/data-import/confirm', token, file).expect(201);
+      expect(again.body.recurringTransactions.toImport).toBe(0);
+      expect(again.body.recurringOccurrenceResolutions.toImport).toBe(0);
+      expect(await db.select().from(recurringOccurrenceResolutions)).toHaveLength(2);
+    });
+
+    it('una resolución que apunta a una plantilla de otra cuenta no se importa', async () => {
+      const owner = await createUser('import-recurrentes-dueno@example.com');
+      const [ownerCategory] = await db.insert(categories).values({ userId: owner.id, type: 'EXPENSE', name: 'Vivienda' }).returning();
+      const [foreign] = await db
+        .insert(recurringTransactions)
+        .values({ userId: owner.id, type: 'EXPENSE', categoryId: ownerCategory.id, concept: 'Ajeno', amount: '10.00', frequency: 'MONTHLY', startDate: '2026-01-05' })
+        .returning();
+
+      const attacker = await createUser('import-recurrentes-atacante@example.com');
+      const token = await login(attacker.email);
+      const file = buildFile({
+        recurringOccurrenceResolutions: [{ recurringId: foreign.id, occurrenceDate: '2026-03-05', status: 'SKIPPED', transactionId: null, createdAt: now() }] as never,
+      });
+
+      const res = await attach('/data-import/confirm', token, file).expect(201);
+      expect(res.body.recurringOccurrenceResolutions.toImport).toBe(0);
+      expect(await db.select().from(recurringOccurrenceResolutions)).toHaveLength(0);
+    });
   });
 });

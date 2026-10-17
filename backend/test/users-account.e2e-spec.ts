@@ -82,7 +82,7 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       await request(app.getHttpServer()).get('/users/me/export').expect(401);
     });
 
-    it('sin datos, devuelve el perfil con las 24 tablas de economicData vacías (H8 criterio 1 / spec 032 H1)', async () => {
+    it('sin datos, devuelve el perfil con las 26 tablas de economicData vacías (H8 criterio 1 / spec 032 H1)', async () => {
       const user = await createActiveUser('exportar-vacio@example.com');
       const accessToken = await login(user.email);
 

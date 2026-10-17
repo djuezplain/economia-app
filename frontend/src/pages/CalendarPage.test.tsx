@@ -8,6 +8,8 @@ import * as authApi from '../api/auth';
 import * as usersApi from '../api/users';
 import * as categoriesApi from '../api/categories';
 import * as transactionsApi from '../api/transactions';
+import * as recurringApi from '../api/recurring-transactions';
+import type { Occurrence } from '../api/recurring-transactions';
 import type { Category } from '../api/categories';
 import type { ListTransactionsResult, Transaction } from '../api/transactions';
 import { ApiError } from '../api/client';
@@ -53,6 +55,8 @@ describe('CalendarPage', () => {
       id: 'user-1', email: 'ana@example.com', name: 'Ana', currency: 'EUR', locale: 'es',
       status: 'ACTIVE', createdAt: '2026-01-01T00:00:00.000Z', hasPassword: true,
     });
+    // Spec 047: por defecto, sin recurrentes (cada test que los necesita lo sobrescribe).
+    vi.spyOn(recurringApi, 'listOccurrences').mockResolvedValue([]);
     vi.spyOn(categoriesApi, 'listCategories').mockImplementation(async (type) =>
       type === 'INCOME' ? [INCOME_CATEGORY] : [EXPENSE_CATEGORY],
     );
@@ -130,5 +134,92 @@ describe('CalendarPage', () => {
     expect(await screen.findByText('Alquiler')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'septiembre 2026' })).toBeInTheDocument();
     expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ dateFrom: '2026-09-01', dateTo: '2026-09-30' }));
+  });
+
+  describe('movimientos previstos (spec 047)', () => {
+    function occurrence(overrides: Partial<Occurrence> = {}): Occurrence {
+      return {
+        recurringId: 'rec-1', date: '2026-08-05', status: 'PENDING', transactionId: null, type: 'EXPENSE',
+        categoryId: 'cat-expense-1', subcategoryId: null, concept: 'Alquiler', merchant: null, amount: '600.00',
+        paymentMethod: null, ...overrides,
+      };
+    }
+
+    it('pide las ocurrencias del mes y las muestra como previstas en el detalle del día, sin tocar los totales', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 't' });
+      vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(result(AUGUST));
+      const list = vi.spyOn(recurringApi, 'listOccurrences').mockResolvedValue([
+        occurrence(),
+        occurrence({ date: '2026-08-06', concept: 'Ya confirmado', status: 'CONFIRMED' }),
+      ]);
+      renderPage();
+
+      expect(await screen.findByText('Alquiler')).toBeInTheDocument();
+      expect(list).toHaveBeenCalledWith('2026-08-01', '2026-08-31');
+      expect(screen.getByText('previsto')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Confirmar' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Omitir' })).toBeInTheDocument();
+      // Las confirmadas no se pintan como previstas.
+      expect(screen.queryByText('Ya confirmado')).not.toBeInTheDocument();
+      // Total de gastos sigue siendo solo el de los reales (45 + 30).
+      expect((document.querySelector('.cal-totals') as HTMLElement).textContent).toMatch(/75,00/);
+      expect(screen.getByRole('gridcell', { name: /5 de agosto, 2 movimientos, 1 previsto/ })).toBeInTheDocument();
+    });
+
+    it('confirmar llama a la API con el importe ajustado y recarga movimientos y previstos', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 't' });
+      const listTx = vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(result(AUGUST));
+      const listOcc = vi.spyOn(recurringApi, 'listOccurrences').mockResolvedValue([occurrence()]);
+      const confirm = vi.spyOn(recurringApi, 'confirmOccurrence').mockResolvedValue(tx({ id: 'nuevo' }));
+      renderPage();
+      await screen.findByText('Alquiler');
+
+      const input = screen.getByLabelText('Importe real de Alquiler');
+      await userEvent.clear(input);
+      await userEvent.type(input, '612.34');
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+      expect(confirm).toHaveBeenCalledWith('rec-1', '2026-08-05', '612.34');
+      await vi.waitFor(() => expect(listTx).toHaveBeenCalledTimes(2));
+      expect(listOcc).toHaveBeenCalledTimes(2);
+    });
+
+    it('confirmar sin cambiar el importe no lo envía, y omitir llama a skip', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 't' });
+      vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(result(AUGUST));
+      vi.spyOn(recurringApi, 'listOccurrences').mockResolvedValue([occurrence()]);
+      const confirm = vi.spyOn(recurringApi, 'confirmOccurrence').mockResolvedValue(tx({}));
+      const skip = vi.spyOn(recurringApi, 'skipOccurrence').mockResolvedValue(undefined);
+      renderPage();
+      await screen.findByText('Alquiler');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+      expect(confirm).toHaveBeenCalledWith('rec-1', '2026-08-05', undefined);
+      await userEvent.click(screen.getByRole('button', { name: 'Omitir' }));
+      expect(skip).toHaveBeenCalledWith('rec-1', '2026-08-05');
+    });
+
+    it('si fallan las ocurrencias, el calendario sigue con los movimientos reales y avisa', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 't' });
+      vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(result(AUGUST));
+      vi.spyOn(recurringApi, 'listOccurrences').mockRejectedValue(new ApiError(500, 'boom'));
+      renderPage();
+
+      expect(await screen.findByText('Gasolina')).toBeInTheDocument();
+      expect(await screen.findByText('No se han podido cargar los movimientos previstos.')).toBeInTheDocument();
+    });
+
+    it('un error al confirmar se muestra y no recarga', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 't' });
+      const listTx = vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(result(AUGUST));
+      vi.spyOn(recurringApi, 'listOccurrences').mockResolvedValue([occurrence()]);
+      vi.spyOn(recurringApi, 'confirmOccurrence').mockRejectedValue(new ApiError(409, 'Esta ocurrencia ya estaba resuelta.'));
+      renderPage();
+      await screen.findByText('Alquiler');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+      expect(await screen.findByText('Esta ocurrencia ya estaba resuelta.')).toBeInTheDocument();
+      expect(listTx).toHaveBeenCalledTimes(1);
+    });
   });
 });

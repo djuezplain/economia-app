@@ -21,6 +21,7 @@ import { ReceiptImportModule } from './receipt-import/receipt-import.module.js';
 import { GroceriesModule } from './groceries/groceries.module.js';
 import { ScheduledExportsModule } from './scheduled-exports/scheduled-exports.module.js';
 import { ShoppingListsModule } from './shopping-lists/shopping-lists.module.js';
+import { RecurringTransactionsModule } from './recurring-transactions/recurring-transactions.module.js';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { ShoppingListsModule } from './shopping-lists/shopping-lists.module.js';
     GroceriesModule,
     ScheduledExportsModule,
     ShoppingListsModule,
+    RecurringTransactionsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

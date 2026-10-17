@@ -37,6 +37,8 @@ export const DATA_TABLE_LABELS: Record<string, string> = {
   pensionPlanValuations: 'Valoraciones de planes de pensiones',
   cashHoldings: 'Efectivo',
   cashBalances: 'Saldos de efectivo',
+  recurringTransactions: 'Movimientos recurrentes',
+  recurringOccurrenceResolutions: 'Ocurrencias recurrentes resueltas',
 };
 
 function fileFormData(file: File): FormData {

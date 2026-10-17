@@ -37,6 +37,7 @@ const NAV_ITEMS = [
     ],
   },
   { to: '/calendar', end: false, label: 'Calendario', icon: '📅' },
+  { to: '/recurring', end: false, label: 'Recurrentes', icon: '🔁' },
   {
     to: '/dashboard',
     end: false,
