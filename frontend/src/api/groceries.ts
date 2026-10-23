@@ -1,5 +1,6 @@
 import { api } from './client';
 import type { ConfirmReceiptPayload } from './receipt-import';
+import type { Transaction } from './transactions';
 
 // Spec 034, plan.md §3 (grupo 5, lado de consulta).
 export interface Supermarket {
@@ -42,6 +43,8 @@ export interface ReceiptSummary {
   linesTotal: string;
   /** Spec 048: el importe del ticket (suma de líneas o, sin líneas, el total impreso). */
   total: string | null;
+  /** Spec 048 H3: el movimiento enlazado, o `null`. */
+  transactionId: string | null;
   /** Spec 048 H1: el documento original (foto o PDF), o `null` si el ticket no tiene. */
   document: ReceiptDocumentInfo | null;
 }
@@ -156,4 +159,19 @@ export function uploadReceiptDocument(receiptId: string, file: File): Promise<Re
 
 export function deleteReceiptDocument(receiptId: string): Promise<void> {
   return api.delete<void>(`/receipts/${receiptId}/document`);
+}
+
+// --- Spec 048 H3: enlace con el movimiento ---------------------------------
+
+/** Gastos sin ticket que pueden corresponder a este, ordenados (nunca crea movimientos). */
+export function getLinkCandidates(receiptId: string): Promise<Transaction[]> {
+  return api.get<Transaction[]>(`/receipts/${receiptId}/transaction-candidates`);
+}
+
+export function linkReceiptTransaction(receiptId: string, transactionId: string): Promise<ReceiptDetail> {
+  return api.put<ReceiptDetail>(`/receipts/${receiptId}/transaction`, { transactionId });
+}
+
+export function unlinkReceiptTransaction(receiptId: string): Promise<void> {
+  return api.delete<void>(`/receipts/${receiptId}/transaction`);
 }

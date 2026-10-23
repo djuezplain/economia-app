@@ -20,6 +20,11 @@ export interface Transaction {
   paymentMethod: PaymentMethod | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Spec 048 H3 criterio 4: el ticket enlazado. Opcional porque un
+   * movimiento de la copia sin conexión, o creado sin conexión, no lo trae.
+   */
+  receiptId?: string | null;
 }
 
 export interface TransactionsSummary {

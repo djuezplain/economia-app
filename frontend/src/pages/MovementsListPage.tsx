@@ -254,6 +254,12 @@ export function MovementsListPage() {
                       que se sincroniza (grupo 5 procesa la cola y lo quita
                       de la caché con `pending: false`). */}
                   {(t as CachedTransaction).pending && <span className="tag tag-accent">pendiente de sincronizar</span>}
+                  {/* Spec 048 H3 criterio 4. */}
+                  {t.receiptId && (
+                    <Link className="tag tag-neutral" to={`/tickets/${t.receiptId}`} aria-label={`Ver el ticket de ${t.concept}`}>
+                      🧾 ticket
+                    </Link>
+                  )}
                   <p className="card-meta">
                     {[t.merchant, t.paymentMethod ? PAYMENT_METHOD_LABELS[t.paymentMethod] : null, t.date]
                       .filter((part): part is string => Boolean(part))

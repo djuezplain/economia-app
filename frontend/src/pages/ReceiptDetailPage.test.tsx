@@ -28,6 +28,7 @@ const RECEIPT: ReceiptDetail = {
   printedTotal: '1.30',
   linesTotal: '1.30',
   total: '1.30',
+  transactionId: null,
   document: null,
   lines: [
     { id: 'l1', description: 'CHOCOLATE CLASSIC', quantity: '1', unit: 'unidad', pricePerUnit: '1.300', amount: '1.30', productId: 'p1', productName: 'Chocolate Classic' },
@@ -41,6 +42,8 @@ describe('ReceiptDetailPage', () => {
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
     vi.spyOn(groceriesApi, 'listSupermarkets').mockResolvedValue([{ id: 's1', name: 'Mercadona' }]);
     vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue([{ id: 'p1', name: 'Chocolate Classic' }]);
+    // Spec 048 H3: la sección "Movimiento" pide candidatos al cargar.
+    vi.spyOn(groceriesApi, 'getLinkCandidates').mockResolvedValue([]);
   });
 
   function renderPage() {

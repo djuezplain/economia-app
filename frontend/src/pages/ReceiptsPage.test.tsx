@@ -29,6 +29,7 @@ const RECEIPTS: ReceiptSummary[] = [
     printedTotal: '20.00',
     linesTotal: '20.00',
     total: '20.00',
+    transactionId: null,
     document: null,
   },
   {
@@ -39,6 +40,7 @@ const RECEIPTS: ReceiptSummary[] = [
     printedTotal: '10.00',
     linesTotal: '10.00',
     total: '10.00',
+    transactionId: null,
     document: null,
   },
 ];

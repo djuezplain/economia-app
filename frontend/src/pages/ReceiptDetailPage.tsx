@@ -8,6 +8,7 @@ import type { ConfirmReceiptPayload } from '../api/receipt-import';
 import { ApiError } from '../api/client';
 import { ReceiptFieldsEditor } from '../components/ReceiptFieldsEditor';
 import { ReceiptDocumentSection } from '../components/ReceiptDocumentSection';
+import { ReceiptMovementSection } from '../components/ReceiptMovementSection';
 import { canSaveReceipt, NEW_OPTION_VALUE, newLineKey, NO_PRODUCT_VALUE, toConfirmLines } from '../components/receipt-line.types';
 import type { EditableLine } from '../components/receipt-line.types';
 
@@ -236,6 +237,13 @@ export function ReceiptDetailPage() {
             receiptId={receipt.id}
             document={receipt.document}
             onChanged={(document) => setReceipt((current) => (current ? { ...current, document } : current))}
+          />
+
+          <ReceiptMovementSection
+            receiptId={receipt.id}
+            receiptDate={receipt.date}
+            transactionId={receipt.transactionId}
+            onChanged={(transactionId) => setReceipt((current) => (current ? { ...current, transactionId } : current))}
           />
         </>
       )}
