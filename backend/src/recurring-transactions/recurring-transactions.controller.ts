@@ -22,12 +22,17 @@ import { CreateRecurringTransactionDto } from './dto/create-recurring-transactio
 import { UpdateRecurringTransactionDto } from './dto/update-recurring-transaction.dto.js';
 import { OccurrencesQueryDto } from './dto/occurrences-query.dto.js';
 import { ConfirmOccurrenceDto } from './dto/confirm-occurrence.dto.js';
+import { TransactionRefDto } from './dto/transaction-ref.dto.js';
+import { RecurringReconciliationService } from './recurring-reconciliation.service.js';
 
 /** Spec 047. Mismo guard que `/transactions`. */
 @Controller('recurring-transactions')
 @UseGuards(AuthGuard, RequireActiveUserGuard)
 export class RecurringTransactionsController {
-  constructor(private readonly recurring: RecurringTransactionsService) {}
+  constructor(
+    private readonly recurring: RecurringTransactionsService,
+    private readonly reconciliation: RecurringReconciliationService,
+  ) {}
 
   @Get()
   list(@Req() req: Request & { user: RequestUser }) {
@@ -79,5 +84,48 @@ export class RecurringTransactionsController {
     @Param('date') date: string,
   ) {
     await this.recurring.skip(req.user.id, id, date);
+  }
+
+  // --- Spec 049 H3: conciliación manual -----------------------------------
+
+  @Get(':id/occurrences/:date/candidates')
+  candidates(
+    @Req() req: Request & { user: RequestUser },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('date') date: string,
+  ) {
+    return this.reconciliation.candidatesFor(req.user.id, id, date);
+  }
+
+  @Post(':id/occurrences/:date/reconcile')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async reconcile(
+    @Req() req: Request & { user: RequestUser },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('date') date: string,
+    @Body() dto: TransactionRefDto,
+  ) {
+    await this.reconciliation.reconcile(req.user.id, id, date, dto.transactionId);
+  }
+
+  @Delete(':id/occurrences/:date/reconciliation')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async undoReconciliation(
+    @Req() req: Request & { user: RequestUser },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('date') date: string,
+  ) {
+    await this.reconciliation.undoReconciliation(req.user.id, id, date);
+  }
+
+  @Post(':id/occurrences/:date/dismiss')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async dismiss(
+    @Req() req: Request & { user: RequestUser },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('date') date: string,
+    @Body() dto: TransactionRefDto,
+  ) {
+    await this.reconciliation.dismiss(req.user.id, id, date, dto.transactionId);
   }
 }

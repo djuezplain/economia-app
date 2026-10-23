@@ -255,4 +255,123 @@ describe('Conciliación de recibos recurrentes (e2e) — spec 049 H3', () => {
       expect(await resolutionsOf(bea.template.id)).toHaveLength(1);
     });
   });
+
+  describe('conciliación manual (T4.2)', () => {
+    async function addMovement(userId: string, categoryId: string, date: string, amount: string, concept = 'Movimiento') {
+      const [t] = await db.insert(transactions).values({ userId, type: 'EXPENSE', date, categoryId, concept, amount }).returning();
+      return t;
+    }
+
+    function post(token: string, path: string, body: object = {}) {
+      return request(app.getHttpServer()).post(`/recurring-transactions${path}`).set('Authorization', token).send(body);
+    }
+
+    it('concilia a mano una ocurrencia con un movimiento elegido', async () => {
+      const { user, category, token, template } = await setup();
+      const movement = await addMovement(user.id, category.id, '2026-10-03', '812.00');
+
+      await post(token, `/${template.id}/occurrences/2026-10-01/reconcile`, { transactionId: movement.id }).expect(204);
+      expect(await resolutionsOf(template.id)).toEqual([
+        expect.objectContaining({ occurrenceDate: '2026-10-01', status: 'RECONCILED', transactionId: movement.id, reconciledAutomatically: false }),
+      ]);
+      expect(await movementsOf(user.id)).toHaveLength(1);
+    });
+
+    it('409 si la ocurrencia ya está resuelta o el movimiento ya resuelve otra', async () => {
+      const { user, category, token, template } = await setup();
+      const a = await addMovement(user.id, category.id, '2026-10-01', '800.00');
+      const b = await addMovement(user.id, category.id, '2026-11-01', '800.00');
+
+      await post(token, `/${template.id}/occurrences/2026-10-01/reconcile`, { transactionId: a.id }).expect(204);
+      await post(token, `/${template.id}/occurrences/2026-10-01/reconcile`, { transactionId: b.id }).expect(409);
+      await post(token, `/${template.id}/occurrences/2026-11-01/reconcile`, { transactionId: a.id }).expect(409);
+      await post(token, `/${template.id}/occurrences/2026-09-01/confirm`).expect(200);
+      await post(token, `/${template.id}/occurrences/2026-09-01/reconcile`, { transactionId: b.id }).expect(409);
+    });
+
+    it('400 si la fecha no es una ocurrencia de la plantilla', async () => {
+      const { user, category, token, template } = await setup();
+      const movement = await addMovement(user.id, category.id, '2026-10-01', '800.00');
+      await post(token, `/${template.id}/occurrences/2026-10-02/reconcile`, { transactionId: movement.id }).expect(400);
+      await request(app.getHttpServer())
+        .delete(`/recurring-transactions/${template.id}/occurrences/no-es-fecha/reconciliation`)
+        .set('Authorization', token)
+        .expect(400);
+    });
+
+    it('deshacer devuelve la ocurrencia a pendiente sin borrar el movimiento; no deshace una confirmada', async () => {
+      const { user, category, token, template } = await setup();
+      const movement = await addMovement(user.id, category.id, '2026-10-01', '800.00');
+      await post(token, `/${template.id}/occurrences/2026-10-01/reconcile`, { transactionId: movement.id }).expect(204);
+
+      const undo = (date: string) =>
+        request(app.getHttpServer()).delete(`/recurring-transactions/${template.id}/occurrences/${date}/reconciliation`).set('Authorization', token);
+      await undo('2026-10-01').expect(204);
+      expect(await resolutionsOf(template.id)).toEqual([]);
+      expect(await movementsOf(user.id)).toHaveLength(1);
+      await undo('2026-10-01').expect(409);
+
+      await post(token, `/${template.id}/occurrences/2026-09-01/confirm`).expect(200);
+      await undo('2026-09-01').expect(409);
+    });
+
+    it('omitir una ocurrencia conciliada → 409', async () => {
+      const { user, category, token, template } = await setup();
+      const movement = await addMovement(user.id, category.id, '2026-10-01', '800.00');
+      await post(token, `/${template.id}/occurrences/2026-10-01/reconcile`, { transactionId: movement.id }).expect(204);
+      await post(token, `/${template.id}/occurrences/2026-10-01/skip`).expect(409);
+    });
+
+    it('deshacer una conciliación automática y reimportar el mismo fichero no la vuelve a hacer', async () => {
+      const { token, template } = await setup();
+      const buffer = await workbook([{ fecha: '2026-10-02', concepto: 'RECIBO ALQUILER OCT', valor: 800 }]);
+      await importExcel(token, buffer).expect(201);
+      await request(app.getHttpServer())
+        .delete(`/recurring-transactions/${template.id}/occurrences/2026-10-01/reconciliation`)
+        .set('Authorization', token)
+        .expect(204);
+
+      const again = await importExcel(token, buffer).expect(201);
+      expect(again.body.reconciledCount).toBe(0);
+      expect(await resolutionsOf(template.id)).toEqual([]);
+    });
+
+    it('candidates: del mismo tipo en ±15 días, sin enlazar, con los que encajan primero', async () => {
+      const { user, category, token, template } = await setup();
+      const [ocio] = await db.insert(categories).values({ userId: user.id, type: 'EXPENSE', name: 'Ocio' }).returning();
+      const encaja = await addMovement(user.id, category.id, '2026-10-04', '800.00', 'encaja');
+      const cercaNoEncaja = await addMovement(user.id, ocio.id, '2026-10-01', '25.00', 'cerca, otra categoría');
+      const lejosNoEncaja = await addMovement(user.id, category.id, '2026-10-14', '12.00', 'lejos');
+      await addMovement(user.id, category.id, '2026-10-20', '800.00', 'fuera de ±15');
+      const enlazado = await addMovement(user.id, category.id, '2026-09-01', '800.00', 'ya enlazado');
+      await post(token, `/${template.id}/occurrences/2026-09-01/reconcile`, { transactionId: enlazado.id }).expect(204);
+      await db.insert(transactions).values({ userId: user.id, type: 'INCOME', date: '2026-10-01', categoryId: category.id, concept: 'ingreso', amount: '800.00' });
+
+      const res = await request(app.getHttpServer())
+        .get(`/recurring-transactions/${template.id}/occurrences/2026-10-01/candidates`)
+        .set('Authorization', token)
+        .expect(200);
+      expect((res.body as Array<{ id: string }>).map((t) => t.id)).toEqual([encaja.id, cercaNoEncaja.id, lejosNoEncaja.id]);
+    });
+
+    it('aislamiento: 404 con plantilla o movimiento de otro usuario en cada endpoint', async () => {
+      const ana = await setup('ana@example.com');
+      const bea = await setup('bea@example.com');
+      const deAna = await addMovement(ana.user.id, ana.category.id, '2026-10-01', '800.00');
+      const deBea = await addMovement(bea.user.id, bea.category.id, '2026-10-01', '800.00');
+
+      // Bea con la plantilla de Ana.
+      await post(bea.token, `/${ana.template.id}/occurrences/2026-10-01/reconcile`, { transactionId: deBea.id }).expect(404);
+      await post(bea.token, `/${ana.template.id}/occurrences/2026-10-01/dismiss`, { transactionId: deBea.id }).expect(404);
+      await request(app.getHttpServer()).get(`/recurring-transactions/${ana.template.id}/occurrences/2026-10-01/candidates`).set('Authorization', bea.token).expect(404);
+      await request(app.getHttpServer()).delete(`/recurring-transactions/${ana.template.id}/occurrences/2026-10-01/reconciliation`).set('Authorization', bea.token).expect(404);
+      // Bea con su plantilla y el movimiento de Ana.
+      await post(bea.token, `/${bea.template.id}/occurrences/2026-10-01/reconcile`, { transactionId: deAna.id }).expect(404);
+      await post(bea.token, `/${bea.template.id}/occurrences/2026-10-01/dismiss`, { transactionId: deAna.id }).expect(404);
+      // Y los candidatos de Bea no incluyen movimientos de Ana.
+      const res = await request(app.getHttpServer()).get(`/recurring-transactions/${bea.template.id}/occurrences/2026-10-01/candidates`).set('Authorization', bea.token).expect(200);
+      expect((res.body as Array<{ id: string }>).map((t) => t.id)).toEqual([deBea.id]);
+      expect(await resolutionsOf(ana.template.id)).toEqual([]);
+    });
+  });
 });

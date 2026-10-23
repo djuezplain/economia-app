@@ -196,7 +196,8 @@ export class RecurringReconciliationService {
 
   /** H3 criterio 7: devuelve la ocurrencia a pendiente sin tocar el movimiento. */
   async undoReconciliation(userId: string, recurringId: string, date: string): Promise<void> {
-    await this.recurring.findOwnOrThrow(userId, recurringId);
+    const template = await this.recurring.findOwnOrThrow(userId, recurringId);
+    this.recurring.assertIsOccurrence(template, date);
     const deleted = await this.db
       .delete(recurringOccurrenceResolutions)
       .where(
@@ -228,7 +229,8 @@ export class RecurringReconciliationService {
    * que se conserva y se borra el que creó la app.
    */
   async resolveDuplicate(userId: string, recurringId: string, date: string, keepTransactionId: string): Promise<void> {
-    await this.recurring.findOwnOrThrow(userId, recurringId);
+    const template = await this.recurring.findOwnOrThrow(userId, recurringId);
+    this.recurring.assertIsOccurrence(template, date);
 
     await this.db.transaction(async (tx) => {
       const resolution = await tx.query.recurringOccurrenceResolutions.findFirst({
