@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { confirmOccurrence, skipOccurrence } from '../api/recurring-transactions';
+import { confirmOccurrence, listReconciliationCandidates, reconcileOccurrence, skipOccurrence } from '../api/recurring-transactions';
+import type { Transaction } from '../api/transactions';
 import type { Occurrence } from '../api/recurring-transactions';
 import type { Category } from '../api/categories';
 import { ApiError } from '../api/client';
@@ -15,6 +16,9 @@ import { formatCurrency, formatDate } from '../pages/home-shared';
  * confirmar es un paso en dos tiempos — el primer clic pone el foco en el
  * importe y pide revisarlo; solo el segundo confirma, enviando siempre el
  * importe (el backend lo exige en plantillas variables).
+ *
+ * Spec 049 H3 criterio 6: "Vincular a un movimiento existente" resuelve la
+ * ocurrencia enlazándola a un movimiento que ya existe, sin crear otro.
  */
 export function OccurrenceRow({
   occurrence,
@@ -31,6 +35,7 @@ export function OccurrenceRow({
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isReviewing, setIsReviewing] = useState(false);
+  const [linkCandidates, setLinkCandidates] = useState<Transaction[] | null>(null);
   const amountInput = useRef<HTMLInputElement>(null);
   const isIncome = occurrence.type === 'INCOME';
   const isEstimated = occurrence.estimated;
@@ -63,6 +68,18 @@ export function OccurrenceRow({
       onResolved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : fallback);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function openLinking() {
+    setError(null);
+    setIsBusy(true);
+    try {
+      setLinkCandidates(await listReconciliationCandidates(occurrence.recurringId, occurrence.date));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No se han podido cargar los movimientos cercanos.');
     } finally {
       setIsBusy(false);
     }
@@ -127,7 +144,43 @@ export function OccurrenceRow({
         >
           Omitir
         </button>
+        {linkCandidates === null && (
+          <button type="button" className="btn" disabled={isBusy} onClick={() => void openLinking()}>
+            Vincular a un movimiento existente
+          </button>
+        )}
       </div>
+      {linkCandidates !== null && (
+        <div className="occurrence-link" aria-label={`Movimientos para vincular con ${occurrence.concept}`} role="group">
+          {linkCandidates.length === 0 ? (
+            <p className="card-meta">No hay movimientos cercanos sin enlazar.</p>
+          ) : (
+            <ul className="reconcile-candidates">
+              {linkCandidates.map((c) => (
+                <li key={c.id}>
+                  <span>
+                    {[formatDate(c.date), c.concept, c.merchant].filter(Boolean).join(' · ')} — <strong>{formatCurrency(c.amount)}</strong>
+                  </span>{' '}
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={isBusy}
+                    aria-label={`Vincular con ${c.concept} del ${formatDate(c.date)}`}
+                    onClick={() =>
+                      run(() => reconcileOccurrence(occurrence.recurringId, occurrence.date, c.id), 'No se ha podido vincular el movimiento.')
+                    }
+                  >
+                    Vincular
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" className="btn" disabled={isBusy} onClick={() => setLinkCandidates(null)}>
+            Cancelar
+          </button>
+        </div>
+      )}
       {isReviewing && (
         <p className="card-meta" role="status">
           El importe es una estimación: revisa el importe real del recibo antes de confirmar.

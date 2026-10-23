@@ -87,3 +87,71 @@ export const confirmOccurrence = (id: string, date: string, amount?: string) =>
 
 export const skipOccurrence = (id: string, date: string) =>
   api.post<void>(`/recurring-transactions/${id}/occurrences/${date}/skip`);
+
+// --- Spec 049 H3: conciliación con movimientos existentes ------------------
+
+/** Ocurrencia sin resolver tal como la devuelve el resumen de conciliación. */
+export interface OpenOccurrence {
+  recurringId: string;
+  date: string;
+  status: 'PENDING' | 'OVERDUE';
+  type: MovementType;
+  categoryId: string;
+  /** Importe de la plantilla, o su estimación si es variable. */
+  expectedAmount: string;
+  variableAmount: boolean;
+  concept: string;
+  merchant: string | null;
+}
+
+export interface ReconciliationSuggestion {
+  occurrence: OpenOccurrence;
+  candidates: Transaction[];
+}
+
+export interface PossibleDuplicate {
+  recurringId: string;
+  date: string;
+  concept: string;
+  /** Movimiento que creó la app al confirmar la ocurrencia. */
+  createdTransaction: Transaction;
+  /** Movimientos que parecen el mismo cargo (normalmente importados). */
+  candidates: Transaction[];
+}
+
+export interface RecentReconciliation {
+  recurringId: string;
+  date: string;
+  concept: string;
+  reconciledAutomatically: boolean;
+  reconciledAt: string;
+  /** `null` si el movimiento se borró después. */
+  transaction: Transaction | null;
+}
+
+export interface ReconciliationOverview {
+  suggestions: ReconciliationSuggestion[];
+  possibleDuplicates: PossibleDuplicate[];
+  recentlyReconciled: RecentReconciliation[];
+}
+
+const occurrencePath = (id: string, date: string) => `/recurring-transactions/${id}/occurrences/${date}`;
+
+export const getReconciliationOverview = () => api.get<ReconciliationOverview>('/recurring-transactions/reconciliation');
+
+/** Movimientos cercanos sin enlazar, con los que encajan primero ("Vincular a un movimiento existente"). */
+export const listReconciliationCandidates = (id: string, date: string) =>
+  api.get<Transaction[]>(`${occurrencePath(id, date)}/candidates`);
+
+export const reconcileOccurrence = (id: string, date: string, transactionId: string) =>
+  api.post<void>(`${occurrencePath(id, date)}/reconcile`, { transactionId });
+
+export const undoReconciliation = (id: string, date: string) => api.delete<void>(`${occurrencePath(id, date)}/reconciliation`);
+
+/** "Este movimiento no corresponde a esta ocurrencia" (sugerencia o posible duplicado). */
+export const dismissCandidate = (id: string, date: string, transactionId: string) =>
+  api.post<void>(`${occurrencePath(id, date)}/dismiss`, { transactionId });
+
+/** Conserva el movimiento importado y borra el que creó la app al confirmar. */
+export const resolveDuplicate = (id: string, date: string, keepTransactionId: string) =>
+  api.post<void>(`${occurrencePath(id, date)}/resolve-duplicate`, { keepTransactionId });

@@ -3,11 +3,19 @@ import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useCategoriesForType } from '../hooks/useCategoriesForType';
-import { createRecurring, deleteRecurring, listOccurrences, listRecurring, updateRecurring } from '../api/recurring-transactions';
-import type { Occurrence, RecurringFrequency, RecurringTransaction } from '../api/recurring-transactions';
+import {
+  createRecurring,
+  deleteRecurring,
+  getReconciliationOverview,
+  listOccurrences,
+  listRecurring,
+  updateRecurring,
+} from '../api/recurring-transactions';
+import type { Occurrence, ReconciliationOverview, RecurringFrequency, RecurringTransaction } from '../api/recurring-transactions';
 import type { MovementType, PaymentMethod } from '../api/transactions';
 import { ApiError } from '../api/client';
 import { OccurrenceRow } from '../components/OccurrenceRow';
+import { ReconciliationPanel } from '../components/ReconciliationPanel';
 import { categoryIcon, categoryName, PAYMENT_METHOD_LABELS, todayIso } from './movements-shared';
 import { formatCurrency } from './home-shared';
 import { describeRecurrence, FREQUENCY_LABELS } from './recurring-shared';
@@ -50,6 +58,7 @@ export function RecurringPage() {
 
   const [templates, setTemplates] = useState<RecurringTransaction[] | null>(null);
   const [pending, setPending] = useState<Occurrence[]>([]);
+  const [reconciliation, setReconciliation] = useState<ReconciliationOverview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -72,6 +81,12 @@ export function RecurringPage() {
       setLoadError(null);
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar los movimientos recurrentes.');
+    }
+    // Spec 049 H3: aparte, para que un fallo aquí no impida ver plantillas y pendientes.
+    try {
+      setReconciliation(await getReconciliationOverview());
+    } catch {
+      setReconciliation(null);
     }
   }, []);
 
@@ -181,6 +196,8 @@ export function RecurringPage() {
 
       {loadError && <p role="alert">{loadError}</p>}
       {actionError && <p role="alert">{actionError}</p>}
+
+      {reconciliation && <ReconciliationPanel overview={reconciliation} onChanged={() => void reload()} />}
 
       <section aria-label="Pendientes de confirmar">
         <h2>Pendientes de confirmar</h2>

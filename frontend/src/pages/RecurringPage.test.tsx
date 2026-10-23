@@ -55,6 +55,7 @@ describe('RecurringPage', () => {
     vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 't' });
     vi.spyOn(recurringApi, 'listRecurring').mockResolvedValue([template()]);
     vi.spyOn(recurringApi, 'listOccurrences').mockResolvedValue([occurrence()]);
+    vi.spyOn(recurringApi, 'getReconciliationOverview').mockResolvedValue({ suggestions: [], possibleDuplicates: [], recentlyReconciled: [] });
   });
   afterEach(() => vi.useRealTimers());
 
@@ -159,5 +160,55 @@ describe('RecurringPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Eliminar' }));
     expect(confirmSpy).toHaveBeenCalledTimes(2);
     expect(del).toHaveBeenCalledWith('rec-1');
+  });
+
+  describe('conciliación (spec 049 H3)', () => {
+    it('sin nada por conciliar no muestra las secciones', async () => {
+      renderPage();
+      await screen.findByText('Cada mes, el día 5');
+      expect(screen.queryByRole('region', { name: 'Por conciliar' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: 'Conciliados recientemente' })).not.toBeInTheDocument();
+    });
+
+    it('muestra la sección por conciliar y recarga todo tras conciliar', async () => {
+      vi.spyOn(recurringApi, 'getReconciliationOverview')
+        .mockResolvedValueOnce({
+          suggestions: [
+            {
+              occurrence: {
+                recurringId: 'rec-1', date: '2026-08-05', status: 'OVERDUE', type: 'EXPENSE', categoryId: 'cat-expense-1',
+                expectedAmount: '600.00', variableAmount: false, concept: 'Alquiler', merchant: null,
+              },
+              candidates: [
+                {
+                  id: 'tx-1', userId: 'user-1', type: 'EXPENSE', date: '2026-08-06', categoryId: 'cat-expense-1', subcategoryId: null,
+                  concept: 'RECIBO ALQUILER', merchant: 'Banco', amount: '600.00', paymentMethod: 'DIRECT_DEBIT',
+                  createdAt: '2026-08-06T00:00:00.000Z', updatedAt: '2026-08-06T00:00:00.000Z',
+                },
+              ],
+            },
+          ],
+          possibleDuplicates: [],
+          recentlyReconciled: [],
+        })
+        .mockResolvedValue({ suggestions: [], possibleDuplicates: [], recentlyReconciled: [] });
+      const reconcile = vi.spyOn(recurringApi, 'reconcileOccurrence').mockResolvedValue(undefined);
+      renderPage();
+
+      const section = await screen.findByRole('region', { name: 'Por conciliar' });
+      await userEvent.click(within(section).getByRole('button', { name: /Conciliar Alquiler/ }));
+      expect(reconcile).toHaveBeenCalledWith('rec-1', '2026-08-05', 'tx-1');
+      expect(await screen.findByText('Cada mes, el día 5')).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: 'Por conciliar' })).not.toBeInTheDocument();
+      expect(recurringApi.listRecurring).toHaveBeenCalledTimes(2);
+    });
+
+    it('si falla la carga de la conciliación, el resto de la página se ve igual', async () => {
+      vi.spyOn(recurringApi, 'getReconciliationOverview').mockRejectedValue(new ApiError(500, 'Error'));
+      renderPage();
+      expect(await screen.findByText('Cada mes, el día 5')).toBeInTheDocument();
+      expect(screen.getByText('vencido')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
   });
 });

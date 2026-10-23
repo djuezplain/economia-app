@@ -1766,3 +1766,30 @@ code {
   opacity: 0.75;
   font-style: italic;
 }
+
+/* — conciliación de recibos (spec 049 H3) — */
+.reconcile-list,
+.reconcile-candidates {
+  list-style: none;
+  margin: var(--space-2) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.reconcile-candidates > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.occurrence-link {
+  margin-top: var(--space-2);
+}
+.details-heading {
+  display: inline;
+  font-size: inherit;
+}
+details > summary {
+  cursor: pointer;
+}

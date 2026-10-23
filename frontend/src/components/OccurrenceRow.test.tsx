@@ -72,3 +72,38 @@ describe('OccurrenceRow — importe estimado', () => {
     expect(confirm).toHaveBeenCalledWith('rec-luz', '2026-08-10', '71.85');
   });
 });
+
+// Spec 049 H3 criterio 6.
+describe('OccurrenceRow — vincular a un movimiento existente', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const candidate = {
+    id: 'tx-1', userId: 'user-1', type: 'EXPENSE' as const, date: '2026-08-11', categoryId: 'cat-1', subcategoryId: null,
+    concept: 'IBERDROLA', merchant: 'Iberdrola', amount: '66.10', paymentMethod: 'DIRECT_DEBIT' as const,
+    createdAt: '2026-08-11T00:00:00.000Z', updatedAt: '2026-08-11T00:00:00.000Z',
+  };
+
+  it('lista los movimientos cercanos y vincula el elegido', async () => {
+    const list = vi.spyOn(recurringApi, 'listReconciliationCandidates').mockResolvedValue([candidate]);
+    const reconcile = vi.spyOn(recurringApi, 'reconcileOccurrence').mockResolvedValue(undefined);
+    const onResolved = renderRow(occurrence());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Vincular a un movimiento existente' }));
+    expect(list).toHaveBeenCalledWith('rec-luz', '2026-08-10');
+    expect(await screen.findByText(/IBERDROLA/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Vincular con IBERDROLA/ }));
+    expect(reconcile).toHaveBeenCalledWith('rec-luz', '2026-08-10', 'tx-1');
+    expect(onResolved).toHaveBeenCalled();
+  });
+
+  it('sin movimientos cercanos lo dice, y Cancelar vuelve atrás', async () => {
+    vi.spyOn(recurringApi, 'listReconciliationCandidates').mockResolvedValue([]);
+    renderRow(occurrence());
+    await userEvent.click(screen.getByRole('button', { name: 'Vincular a un movimiento existente' }));
+    expect(await screen.findByText('No hay movimientos cercanos sin enlazar.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByText('No hay movimientos cercanos sin enlazar.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vincular a un movimiento existente' })).toBeInTheDocument();
+  });
+});
