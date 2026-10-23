@@ -9,6 +9,7 @@ import {
   cashBalances,
   cashHoldings,
   recurringOccurrenceResolutions,
+  recurringReconciliationDismissals,
   recurringTransactions,
   categories,
   cryptoPurchases,
@@ -225,6 +226,7 @@ export class UsersService {
       userPensionPlanValuations,
       userCashBalances,
       userRecurringResolutions,
+      userReconciliationDismissals,
     ] = await Promise.all([
       bankAccountIds.length
         ? this.db.query.bankAccountBalances.findMany({ where: inArray(bankAccountBalances.bankAccountId, bankAccountIds) })
@@ -248,6 +250,11 @@ export class UsersService {
       cashHoldingIds.length ? this.db.query.cashBalances.findMany({ where: inArray(cashBalances.cashHoldingId, cashHoldingIds) }) : [],
       recurringIds.length
         ? this.db.query.recurringOccurrenceResolutions.findMany({ where: inArray(recurringOccurrenceResolutions.recurringId, recurringIds) })
+        : [],
+      recurringIds.length
+        ? this.db.query.recurringReconciliationDismissals.findMany({
+            where: inArray(recurringReconciliationDismissals.recurringId, recurringIds),
+          })
         : [],
     ]);
 
@@ -283,6 +290,7 @@ export class UsersService {
         cashBalances: userCashBalances,
         recurringTransactions: userRecurringTransactions,
         recurringOccurrenceResolutions: userRecurringResolutions,
+        recurringReconciliationDismissals: userReconciliationDismissals,
       },
     };
   }
