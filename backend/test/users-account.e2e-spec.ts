@@ -15,16 +15,23 @@ import {
   categories,
   emailTokens,
   oauthAccounts,
+  products,
+  receiptDocuments,
+  receiptLines,
+  receipts,
   recurringOccurrenceResolutions,
   recurringReconciliationDismissals,
   recurringRemindersSent,
   recurringTransactions,
   sessions,
+  shoppingListItems,
+  shoppingLists,
   stockDividends,
   stockPurchases,
   stockSales,
   stockValuations,
   stocks,
+  supermarkets,
   transactions,
   users,
 } from '../src/db/schema/index.js';
@@ -86,7 +93,7 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       await request(app.getHttpServer()).get('/users/me/export').expect(401);
     });
 
-    it('sin datos, devuelve el perfil con las 26 tablas de economicData vacías (H8 criterio 1 / spec 032 H1)', async () => {
+    it('sin datos, devuelve el perfil con todas las tablas de economicData vacías (H8 criterio 1 / spec 032 H1)', async () => {
       const user = await createActiveUser('exportar-vacio@example.com');
       const accessToken = await login(user.email);
 
@@ -281,6 +288,55 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       expect(await db.select().from(recurringReconciliationDismissals).where(eq(recurringReconciliationDismissals.recurringId, tpl.id))).toHaveLength(0);
       expect(await db.select().from(recurringRemindersSent).where(eq(recurringRemindersSent.recurringId, tpl.id))).toHaveLength(0);
       expect(await db.select().from(transactions).where(eq(transactions.userId, user.id))).toHaveLength(0);
+    });
+
+    it('borra también tickets, documentos (incluidos los pendientes), enlaces y listas de la spec 048 (H1 criterio 7)', async () => {
+      const user = await createActiveUser('eliminar-tickets@example.com');
+      const other = await createActiveUser('otro-usuario-tickets@example.com');
+      const accessToken = await login(user.email);
+      const [cat] = await db.insert(categories).values({ userId: user.id, type: 'EXPENSE', name: 'Compra' }).returning();
+      const [movement] = await db
+        .insert(transactions)
+        .values({ userId: user.id, type: 'EXPENSE', date: '2026-10-01', categoryId: cat.id, concept: 'MERCADONA', amount: '12.50' })
+        .returning();
+      const [shop] = await db.insert(supermarkets).values({ userId: user.id, name: 'Mercadona' }).returning();
+      const [product] = await db.insert(products).values({ userId: user.id, name: 'Leche' }).returning();
+      const [linked, lineless] = await db
+        .insert(receipts)
+        .values([
+          { userId: user.id, supermarketId: shop.id, date: '2026-10-01', transactionId: movement.id },
+          { userId: user.id, supermarketId: shop.id, date: '2026-10-02', printedTotal: '30.00' },
+        ])
+        .returning();
+      await db.insert(receiptLines).values([
+        { receiptId: linked.id, productId: product.id, description: 'LECHE', quantity: '1', unit: 'ud', pricePerUnit: '1.000', amount: '1.00' },
+        { receiptId: linked.id, productId: null, description: 'BOLSA', quantity: '1', unit: 'ud', pricePerUnit: '0.150', amount: '0.15' },
+      ]);
+      const doc = { mimeType: 'image/jpeg', sizeBytes: 3, sha256: 'a'.repeat(64), originalFilename: 'ticket.jpg', content: Buffer.from([1, 2, 3]) };
+      await db.insert(receiptDocuments).values([
+        { ...doc, userId: user.id, receiptId: linked.id },
+        { ...doc, userId: user.id, receiptId: null }, // pendiente (vista previa sin confirmar)
+        { ...doc, userId: other.id, receiptId: null }, // de otra cuenta: no se toca
+      ]);
+      const [list] = await db.insert(shoppingLists).values({ userId: user.id, name: 'Semana' }).returning();
+      await db.insert(shoppingListItems).values({ shoppingListId: list.id, productId: product.id });
+
+      await request(app.getHttpServer())
+        .delete('/users/me')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ password: PASSWORD })
+        .expect(204);
+
+      expect(await db.select().from(receipts).where(eq(receipts.userId, user.id))).toHaveLength(0);
+      expect(await db.select().from(receiptLines).where(eq(receiptLines.receiptId, linked.id))).toHaveLength(0);
+      expect(await db.select().from(receiptDocuments).where(eq(receiptDocuments.userId, user.id))).toHaveLength(0);
+      expect(await db.select().from(supermarkets).where(eq(supermarkets.userId, user.id))).toHaveLength(0);
+      expect(await db.select().from(products).where(eq(products.userId, user.id))).toHaveLength(0);
+      expect(await db.select().from(shoppingLists).where(eq(shoppingLists.userId, user.id))).toHaveLength(0);
+      expect(await db.select().from(shoppingListItems).where(eq(shoppingListItems.shoppingListId, list.id))).toHaveLength(0);
+      expect(await db.select().from(transactions).where(eq(transactions.userId, user.id))).toHaveLength(0);
+      expect(await db.select().from(receipts).where(eq(receipts.id, lineless.id))).toHaveLength(0);
+      expect(await db.select().from(receiptDocuments).where(eq(receiptDocuments.userId, other.id))).toHaveLength(1);
     });
 
     it('en una cuenta sin contraseña (solo Google), exige y valida el email de confirmación en su lugar', async () => {
