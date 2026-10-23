@@ -1,6 +1,6 @@
 # Tasks — Spec 049 (recibos recurrentes: avisos, importes variables y conciliación)
 
-**Fase:** 3 de 4 (pendiente de aprobación)
+**Fase:** 3 de 4 (aprobado)
 
 Orden de plan.md §7: modelo → funciones puras → H2 (variable) → H3 (conciliación) → H1 (avisos) → exportación y cierre. Cada tarea es como mucho un commit (constitution §4) y no se da por hecha si rompe un test existente.
 
