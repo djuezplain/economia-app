@@ -586,8 +586,9 @@ function DataImportSummaryTable({ summary }: { summary: DataImportSummary }) {
       </table>
       {hasOmitted && (
         <p className="card-meta">
-          Los documentos omitidos no vienen en el fichero (por ejemplo, una copia .json) o su contenido no coincide con
-          el que se exportó; sus tickets se importan igualmente, sin documento.
+          Se omiten las filas que apuntan a datos que no son de tu cuenta ni vienen en el fichero (por ejemplo, una compra
+          de un fondo que no existe). Los documentos omitidos no vienen en el fichero (por ejemplo, una copia .json) o su
+          contenido no coincide con el que se exportó; sus tickets se importan igualmente, sin documento.
         </p>
       )}
     </>

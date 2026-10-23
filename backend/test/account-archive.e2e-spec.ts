@@ -92,6 +92,8 @@ describe('Exportación en .zip (e2e) — spec 048', () => {
     const { token } = await setup();
     const entries = await readZip((await download(token)).body as Buffer);
     expect([...entries.keys()]).toEqual(['datos.json']);
+    // Spec 050 H2: datos.json trae también la clave de ventas de fondos.
+    expect(JSON.parse(entries.get('datos.json')!.toString('utf-8')).economicData.fundSales).toEqual([]);
   });
 
   it('aislamiento: solo se exportan los documentos propios', async () => {

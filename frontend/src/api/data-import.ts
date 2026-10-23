@@ -6,7 +6,11 @@ export interface TableImportSummary {
   total: number;
   toImport: number;
   alreadyExisting: number;
-  /** Spec 048: documentos de tickets que no se pueden importar (falta su fichero o no coincide su SHA-256). */
+  /**
+   * Filas que no se importan: documentos de tickets sin su fichero o con otro
+   * SHA-256 (spec 048), o filas que apuntan a datos que no son de la cuenta
+   * (spec 050).
+   */
   omitted?: number;
 }
 
@@ -27,6 +31,7 @@ export const DATA_TABLE_LABELS: Record<string, string> = {
   stockDividends: 'Dividendos de acciones',
   funds: 'Fondos de inversión',
   fundPurchases: 'Compras de fondos',
+  fundSales: 'Ventas de fondos',
   fundValuations: 'Valoraciones de fondos',
   fundDividends: 'Dividendos de fondos',
   cryptos: 'Cripto',

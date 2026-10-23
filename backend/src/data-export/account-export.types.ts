@@ -10,6 +10,7 @@ import type {
   expenseBudgets,
   fundDividends,
   fundPurchases,
+  fundSales,
   fundValuations,
   funds,
   pensionPlanContributions,
@@ -56,6 +57,7 @@ export type StockValuationRow = typeof stockValuations.$inferSelect;
 export type StockDividendRow = typeof stockDividends.$inferSelect;
 export type FundRow = typeof funds.$inferSelect;
 export type FundPurchaseRow = typeof fundPurchases.$inferSelect;
+export type FundSaleRow = typeof fundSales.$inferSelect;
 export type FundValuationRow = typeof fundValuations.$inferSelect;
 export type FundDividendRow = typeof fundDividends.$inferSelect;
 export type CryptoRow = typeof cryptos.$inferSelect;
@@ -109,6 +111,8 @@ export interface EconomicData {
   stockDividends: StockDividendRow[];
   funds: FundRow[];
   fundPurchases: FundPurchaseRow[];
+  /** Spec 050: añadida después; una copia antigua puede no traerla. */
+  fundSales: FundSaleRow[];
   fundValuations: FundValuationRow[];
   fundDividends: FundDividendRow[];
   cryptos: CryptoRow[];
@@ -168,6 +172,7 @@ export const ECONOMIC_DATA_TABLE_ORDER: (keyof EconomicData)[] = [
   'stockDividends',
   'funds',
   'fundPurchases',
+  'fundSales',
   'fundValuations',
   'fundDividends',
   'cryptos',
@@ -194,6 +199,7 @@ export const ECONOMIC_DATA_TABLE_ORDER: (keyof EconomicData)[] = [
 
 /** Spec 047: claves añadidas después de la versión 1 original del formato; un fichero antiguo puede no traerlas. */
 export const OPTIONAL_ECONOMIC_DATA_KEYS: (keyof EconomicData)[] = [
+  'fundSales',
   'recurringTransactions',
   'recurringOccurrenceResolutions',
   'recurringReconciliationDismissals',

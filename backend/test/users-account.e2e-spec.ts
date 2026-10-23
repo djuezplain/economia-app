@@ -14,6 +14,8 @@ import {
   bankAccounts,
   categories,
   emailTokens,
+  fundSales,
+  funds,
   oauthAccounts,
   products,
   receiptDocuments,
@@ -177,6 +179,21 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       expect(res.body.economicData.stockValuations).toMatchObject([{ stockId: stock.id, pricePerShare: '7.00' }]);
       expect(res.body.economicData.stockDividends).toMatchObject([{ stockId: stock.id, netAmount: '10.00' }]);
     });
+    it('incluye las ventas de fondos, solo las propias (spec 050 H2)', async () => {
+      const owner = await createActiveUser('exportar-ventas-fondos@example.com');
+      const other = await createActiveUser('exportar-ventas-fondos-otro@example.com');
+      const [fund] = await db.insert(funds).values({ userId: owner.id, custodyBank: 'Banco', fund: 'Indexado' }).returning();
+      await db.insert(fundSales).values({ fundId: fund.id, shareCount: '3', salePrice: '12.5', date: '2026-05-01' });
+      const [otherFund] = await db.insert(funds).values({ userId: other.id, custodyBank: 'Banco', fund: 'Ajeno' }).returning();
+      await db.insert(fundSales).values({ fundId: otherFund.id, shareCount: '1', salePrice: '1', date: '2026-05-01' });
+
+      const res = await request(app.getHttpServer())
+        .get('/users/me/export')
+        .set('Authorization', `Bearer ${await login(owner.email)}`)
+        .expect(200);
+
+      expect(res.body.economicData.fundSales).toMatchObject([{ fundId: fund.id, shareCount: '3.00000000', date: '2026-05-01' }]);
+    });
   });
 
   describe('DELETE /users/me', () => {
@@ -337,6 +354,17 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       expect(await db.select().from(transactions).where(eq(transactions.userId, user.id))).toHaveLength(0);
       expect(await db.select().from(receipts).where(eq(receipts.id, lineless.id))).toHaveLength(0);
       expect(await db.select().from(receiptDocuments).where(eq(receiptDocuments.userId, other.id))).toHaveLength(1);
+    });
+
+    it('borra también las ventas de fondos (spec 050 H2)', async () => {
+      const user = await createActiveUser('eliminar-ventas-fondos@example.com');
+      const accessToken = await login(user.email);
+      const [fund] = await db.insert(funds).values({ userId: user.id, custodyBank: 'Banco', fund: 'Indexado' }).returning();
+      await db.insert(fundSales).values({ fundId: fund.id, shareCount: '1', salePrice: '10', date: '2026-05-01' });
+
+      await request(app.getHttpServer()).delete('/users/me').set('Authorization', `Bearer ${accessToken}`).send({ password: PASSWORD }).expect(204);
+
+      expect(await db.select().from(fundSales).where(eq(fundSales.fundId, fund.id))).toHaveLength(0);
     });
 
     it('en una cuenta sin contraseña (solo Google), exige y valida el email de confirmación en su lugar', async () => {

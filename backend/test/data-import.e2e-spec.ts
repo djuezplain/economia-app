@@ -10,7 +10,21 @@ import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
 import {
+  bankAccountBalances,
+  bankAccounts,
+  cashBalances,
+  cashHoldings,
   categories,
+  cryptoPurchases,
+  cryptos,
+  expenseBudgets,
+  fundPurchases,
+  fundSales,
+  funds,
+  pensionPlanContributions,
+  pensionPlans,
+  vehicleValuations,
+  vehicles,
   recurringOccurrenceResolutions,
   recurringReconciliationDismissals,
   recurringTransactions,
@@ -166,8 +180,8 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
     });
 
     const res = await attach('/data-import/preview', token, file).expect(201);
-    expect(res.body.categories).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
-    expect(res.body.transactions).toEqual({ total: 0, toImport: 0, alreadyExisting: 0 });
+    expect(res.body.categories).toEqual({ total: 1, toImport: 1, alreadyExisting: 0, omitted: 0 });
+    expect(res.body.transactions).toEqual({ total: 0, toImport: 0, alreadyExisting: 0, omitted: 0 });
 
     const rows = await db.select().from(categories).where(eq(categories.userId, user.id));
     expect(rows).toHaveLength(0);
@@ -186,7 +200,7 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
 
     const res = await attach('/data-import/confirm', token, file).expect(201);
     expect(res.body.stocks).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
-    expect(res.body.stockPurchases).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
+    expect(res.body.stockPurchases).toEqual({ total: 1, toImport: 1, alreadyExisting: 0, omitted: 0 });
 
     const [insertedStock] = await db.select().from(stocks).where(eq(stocks.id, stockId));
     // H2 criterio 6: el `userId` del fichero se ignora siempre — la fila queda bajo el usuario autenticado.
@@ -209,7 +223,7 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
     await attach('/data-import/confirm', token, file).expect(201);
     const second = await attach('/data-import/confirm', token, file).expect(201);
 
-    expect(second.body.categories).toEqual({ total: 1, toImport: 0, alreadyExisting: 1 });
+    expect(second.body.categories).toEqual({ total: 1, toImport: 0, alreadyExisting: 1, omitted: 0 });
     const rows = await db.select().from(categories).where(eq(categories.id, categoryId));
     expect(rows).toHaveLength(1);
   });
@@ -278,7 +292,7 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
 
       const res = await attach('/data-import/confirm', token, file).expect(201);
       expect(res.body.categories.toImport).toBe(1);
-      expect(res.body.recurringTransactions).toEqual({ total: 0, toImport: 0, alreadyExisting: 0 });
+      expect(res.body.recurringTransactions).toEqual({ total: 0, toImport: 0, alreadyExisting: 0, omitted: 0 });
     });
 
     it('importa plantillas y sus resoluciones bajo el usuario autenticado, y reimportar no duplica', async () => {
@@ -579,6 +593,330 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
       }
       const res = await attach('/data-import/confirm', token, file).expect(201);
       expect(res.body.receipts).toEqual({ total: 0, toImport: 0, alreadyExisting: 0 });
+    });
+  });
+
+  describe('propiedad de las referencias (spec 050 T2.1)', () => {
+    const now = () => new Date().toISOString();
+    const categoryRow = (id: string, parentId: string | null = null) => ({
+      id, userId: randomUUID(), type: 'EXPENSE', name: `Cat ${id.slice(0, 4)}`, parentId, isDefault: false, icon: null, createdAt: now(),
+    });
+    const transactionRow = (categoryId: string, subcategoryId: string | null = null) => ({
+      id: randomUUID(), userId: randomUUID(), type: 'EXPENSE', date: '2026-10-01', categoryId, subcategoryId, concept: 'Compra', amount: '10.00', createdAt: now(), updatedAt: now(),
+    });
+
+    /**
+     * Una familia: la tabla padre (raíz, con `userId`), cómo crear un padre
+     * en la base de datos para otra cuenta, y una fila hija del fichero que
+     * apunta a un padre dado.
+     */
+    const families = [
+      {
+        name: 'cuentas bancarias', childKey: 'bankAccountBalances', childTable: bankAccountBalances, column: 'bankAccountId',
+        createParent: (userId: string) => db.insert(bankAccounts).values({ userId, bank: 'Banco', accountNumber: 'ES00' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), bankAccountId: parentId, euros: '100.00', date: '2026-10-01', createdAt: now() }),
+      },
+      {
+        name: 'acciones', childKey: 'stockPurchases', childTable: stockPurchases, column: 'stockId',
+        createParent: (userId: string) => db.insert(stocks).values({ userId, custodyBank: 'Broker', stock: 'ACME' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), stockId: parentId, shareCount: '1', purchasePrice: '5', date: '2026-10-01', createdAt: now(), updatedAt: now() }),
+      },
+      {
+        name: 'fondos', childKey: 'fundSales', childTable: fundSales, column: 'fundId',
+        createParent: (userId: string) => db.insert(funds).values({ userId, custodyBank: 'Banco', fund: 'Indexado' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), fundId: parentId, shareCount: '1', salePrice: '5', date: '2026-10-01', createdAt: now(), updatedAt: now() }),
+      },
+      {
+        name: 'cripto', childKey: 'cryptoPurchases', childTable: cryptoPurchases, column: 'cryptoId',
+        createParent: (userId: string) => db.insert(cryptos).values({ userId, exchange: 'Exchange', crypto: 'BTC' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), cryptoId: parentId, quantity: '1', purchasePrice: '5', date: '2026-10-01', createdAt: now(), updatedAt: now() }),
+      },
+      {
+        name: 'vehículos', childKey: 'vehicleValuations', childTable: vehicleValuations, column: 'vehicleId',
+        createParent: (userId: string) =>
+          db.insert(vehicles).values({ userId, brandModel: 'Coche', plate: '0000AAA', purchasePrice: '10000', purchaseDate: '2020-01-01' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), vehicleId: parentId, value: '9000', date: '2026-10-01', createdAt: now(), updatedAt: now() }),
+      },
+      {
+        name: 'planes de pensiones', childKey: 'pensionPlanContributions', childTable: pensionPlanContributions, column: 'pensionPlanId',
+        createParent: (userId: string) => db.insert(pensionPlans).values({ userId, managingEntity: 'Gestora', plan: 'Plan' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), pensionPlanId: parentId, amount: '100', date: '2026-10-01', createdAt: now(), updatedAt: now() }),
+      },
+      {
+        name: 'efectivo', childKey: 'cashBalances', childTable: cashBalances, column: 'cashHoldingId',
+        createParent: (userId: string) => db.insert(cashHoldings).values({ userId, location: 'Casa' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), cashHoldingId: parentId, amount: '50', date: '2026-10-01', createdAt: now() }),
+      },
+      {
+        name: 'categorías (movimientos)', childKey: 'transactions', childTable: transactions, column: 'categoryId',
+        createParent: (userId: string) => db.insert(categories).values({ userId, type: 'EXPENSE', name: 'Ajena' }).returning(),
+        child: (parentId: string) => transactionRow(parentId),
+      },
+      {
+        name: 'categorías (presupuestos)', childKey: 'expenseBudgets', childTable: expenseBudgets, column: 'categoryId',
+        createParent: (userId: string) => db.insert(categories).values({ userId, type: 'EXPENSE', name: 'Ajena' }).returning(),
+        child: (parentId: string) => ({
+          id: randomUUID(), userId: randomUUID(), categoryId: parentId, targetType: 'AMOUNT', targetValue: '100', alertThresholdPercent: '80', createdAt: now(), updatedAt: now(),
+        }),
+      },
+    ] as const;
+
+    for (const family of families) {
+      it(`${family.name}: una fila que apunta a un padre de otra cuenta o desconocido se omite y no toca la otra cuenta`, async () => {
+        const ana = await createUser('ana-refs@example.com');
+        const bea = await createUser('bea-refs@example.com');
+        const [beaParent] = await family.createParent(bea.id);
+        const foreign = family.child(beaParent.id);
+        const unknown = family.child(randomUUID());
+        const file = buildFile({ [family.childKey]: [foreign, unknown] });
+        const token = await login(ana.email);
+
+        const preview = await attach('/data-import/preview', token, file).expect(201);
+        const res = await attach('/data-import/confirm', token, file).expect(201);
+        expect(res.body[family.childKey]).toEqual({ total: 2, toImport: 0, alreadyExisting: 0, omitted: 2 });
+        expect(preview.body[family.childKey]).toEqual(res.body[family.childKey]);
+
+        const table = family.childTable as unknown as typeof stockPurchases;
+        const column = (family.childTable as unknown as Record<string, typeof stockPurchases.stockId>)[family.column];
+        expect(await db.select().from(table).where(eq(column, beaParent.id))).toEqual([]);
+      });
+
+      it(`${family.name}: con el padre en el fichero o ya en la cuenta, se importa`, async () => {
+        const ana = await createUser('ana-refs-ok@example.com');
+        const [ownParent] = await family.createParent(ana.id);
+        const file = buildFile({ [family.childKey]: [family.child(ownParent.id)] });
+        const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+        expect(res.body[family.childKey]).toEqual({ total: 1, toImport: 1, alreadyExisting: 0, omitted: 0 });
+      });
+    }
+
+    it('subcategoría ajena o desconocida: el movimiento se importa sin subcategoría', async () => {
+      const ana = await createUser('ana-subcat@example.com');
+      const bea = await createUser('bea-subcat@example.com');
+      const [beaSub] = await db.insert(categories).values({ userId: bea.id, type: 'EXPENSE', name: 'Ajena' }).returning();
+      const ownCategory = categoryRow(randomUUID());
+      const withForeign = transactionRow(ownCategory.id, beaSub.id);
+      const withUnknown = transactionRow(ownCategory.id, randomUUID());
+      const file = buildFile({ categories: [ownCategory], transactions: [withForeign, withUnknown] });
+
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.transactions).toEqual({ total: 2, toImport: 2, alreadyExisting: 0, omitted: 0 });
+      const rows = await db.select().from(transactions).where(eq(transactions.userId, ana.id));
+      expect(rows.map((r) => r.subcategoryId)).toEqual([null, null]);
+      expect(rows.every((r) => r.categoryId === ownCategory.id)).toBe(true);
+    });
+
+    it('una categoría hija con padre ajeno se omite, y con ella el movimiento que cuelga de ella', async () => {
+      const ana = await createUser('ana-cat-hija@example.com');
+      const bea = await createUser('bea-cat-hija@example.com');
+      const [beaParent] = await db.insert(categories).values({ userId: bea.id, type: 'EXPENSE', name: 'Ajena' }).returning();
+      const child = categoryRow(randomUUID(), beaParent.id);
+      const ownRoot = categoryRow(randomUUID());
+      const ownChild = categoryRow(randomUUID(), ownRoot.id);
+      const file = buildFile({
+        categories: [child, ownRoot, ownChild],
+        transactions: [transactionRow(child.id), transactionRow(ownChild.id)],
+      });
+      const token = await login(ana.email);
+
+      const preview = await attach('/data-import/preview', token, file).expect(201);
+      const res = await attach('/data-import/confirm', token, file).expect(201);
+      expect(res.body.categories).toEqual({ total: 3, toImport: 2, alreadyExisting: 0, omitted: 1 });
+      expect(res.body.transactions).toEqual({ total: 2, toImport: 1, alreadyExisting: 0, omitted: 1 });
+      expect(preview.body).toEqual(res.body);
+      expect(await db.select().from(categories).where(eq(categories.parentId, beaParent.id))).toEqual([]);
+    });
+
+    it('un padre del fichero cuyo id ya es de otra cuenta no se importa, y sus hijas se omiten', async () => {
+      const ana = await createUser('ana-padre-ajeno@example.com');
+      const bea = await createUser('bea-padre-ajeno@example.com');
+      const [beaStock] = await db.insert(stocks).values({ userId: bea.id, custodyBank: 'Broker', stock: 'Ajena' }).returning();
+      const file = buildFile({
+        stocks: [{ id: beaStock.id, userId: ana.id, custodyBank: 'Broker', stock: 'Mía', createdAt: now(), updatedAt: now() }],
+        stockPurchases: [families[1].child(beaStock.id)],
+      });
+
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.stocks).toEqual({ total: 1, toImport: 0, alreadyExisting: 1 });
+      expect(res.body.stockPurchases).toEqual({ total: 1, toImport: 0, alreadyExisting: 0, omitted: 1 });
+      expect(await db.select().from(stockPurchases).where(eq(stockPurchases.stockId, beaStock.id))).toEqual([]);
+      const [stillBeas] = await db.select().from(stocks).where(eq(stocks.id, beaStock.id));
+      expect(stillBeas).toMatchObject({ userId: bea.id, stock: 'Ajena' });
+    });
+
+    it('una plantilla recurrente con categoría ajena se omite; con subcategoría ajena se importa sin ella', async () => {
+      const ana = await createUser('ana-plantilla@example.com');
+      const bea = await createUser('bea-plantilla@example.com');
+      const [beaCat] = await db.insert(categories).values({ userId: bea.id, type: 'EXPENSE', name: 'Ajena' }).returning();
+      const own = categoryRow(randomUUID());
+      const template = (categoryId: string, subcategoryId: string | null) => ({
+        id: randomUUID(), userId: randomUUID(), type: 'EXPENSE', categoryId, subcategoryId, concept: 'Luz', amount: '50.00', frequency: 'MONTHLY',
+        startDate: '2026-01-01', createdAt: now(), updatedAt: now(),
+      });
+      const file = buildFile({ categories: [own], recurringTransactions: [template(beaCat.id, null), template(own.id, beaCat.id)] });
+
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.recurringTransactions).toEqual({ total: 2, toImport: 1, alreadyExisting: 0, omitted: 1 });
+      const rows = await db.select().from(recurringTransactions).where(eq(recurringTransactions.userId, ana.id));
+      expect(rows).toMatchObject([{ categoryId: own.id, subcategoryId: null }]);
+    });
+
+    it('una referencia que no es un UUID se trata como desconocida, sin 500', async () => {
+      const ana = await createUser('ana-no-uuid@example.com');
+      const file = buildFile({ stockPurchases: [families[1].child('no-es-un-uuid')] });
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.stockPurchases).toMatchObject({ toImport: 0, omitted: 1 });
+    });
+  });
+
+  describe('fusiones de las specs 047, 048 y 049 con el mismo registro (spec 050 T2.2)', () => {
+    const now = () => new Date().toISOString();
+
+    it('lo que cuelga de una plantilla o un movimiento omitidos por su categoría ajena se omite o pierde el enlace, sin 500', async () => {
+      const ana = await createUser('ana-t22@example.com');
+      const bea = await createUser('bea-t22@example.com');
+      const [beaCat] = await db.insert(categories).values({ userId: bea.id, type: 'EXPENSE', name: 'Ajena' }).returning();
+      const templateId = randomUUID();
+      const txId = randomUUID();
+      const shopId = randomUUID();
+      const receiptId = randomUUID();
+      const file = buildFile({
+        // Plantilla y movimiento del fichero, pero con una categoría de Bea: se omiten (T2.1).
+        recurringTransactions: [{
+          id: templateId, userId: ana.id, type: 'EXPENSE', categoryId: beaCat.id, subcategoryId: null, concept: 'Luz', amount: '50.00', frequency: 'MONTHLY',
+          startDate: '2026-01-01', createdAt: now(), updatedAt: now(),
+        }],
+        transactions: [{
+          id: txId, userId: ana.id, type: 'EXPENSE', date: '2026-03-05', categoryId: beaCat.id, subcategoryId: null, concept: 'IBERDROLA', amount: '50.00',
+          createdAt: now(), updatedAt: now(),
+        }],
+        recurringOccurrenceResolutions: [{ recurringId: templateId, occurrenceDate: '2026-03-05', status: 'CONFIRMED', transactionId: txId, createdAt: now() }],
+        recurringReconciliationDismissals: [{ recurringId: templateId, occurrenceDate: '2026-04-05', transactionId: txId, createdAt: now() }],
+        supermarkets: [{ id: shopId, userId: ana.id, name: 'Iberdrola', createdAt: now() }],
+        receipts: [{ id: receiptId, userId: ana.id, supermarketId: shopId, date: '2026-03-05', printedTotal: '50.00', transactionId: txId, createdAt: now() }],
+      });
+      const token = await login(ana.email);
+
+      const preview = await attach('/data-import/preview', token, file).expect(201);
+      const res = await attach('/data-import/confirm', token, file).expect(201);
+      expect(preview.body).toEqual(res.body);
+      expect(res.body.recurringTransactions).toMatchObject({ toImport: 0, omitted: 1 });
+      expect(res.body.transactions).toMatchObject({ toImport: 0, omitted: 1 });
+      expect(res.body.recurringOccurrenceResolutions).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      expect(res.body.recurringReconciliationDismissals).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      // El ticket se importa, pero sin el enlace al movimiento omitido.
+      expect(res.body.receipts).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
+      const [receipt] = await db.select().from(receipts).where(eq(receipts.id, receiptId));
+      expect(receipt).toMatchObject({ userId: ana.id, transactionId: null });
+    });
+
+    it('las líneas y los elementos de lista que apuntan a un ticket o producto omitidos se omiten', async () => {
+      const ana = await createUser('ana-t22-lineas@example.com');
+      const bea = await createUser('bea-t22-lineas@example.com');
+      const [beaShop] = await db.insert(supermarkets).values({ userId: bea.id, name: 'Ajeno' }).returning();
+      const [beaProduct] = await db.insert(products).values({ userId: bea.id, name: 'Ajeno' }).returning();
+      const receiptId = randomUUID();
+      const listId = randomUUID();
+      const file = buildFile({
+        // El comercio y el producto vienen en el fichero, pero con id de Bea: no se importan.
+        supermarkets: [{ id: beaShop.id, userId: ana.id, name: 'Mío', createdAt: now() }],
+        products: [{ id: beaProduct.id, userId: ana.id, name: 'Mío', createdAt: now() }],
+        receipts: [{ id: receiptId, userId: ana.id, supermarketId: beaShop.id, date: '2026-03-05', printedTotal: '1.00', transactionId: null, createdAt: now() }],
+        receiptLines: [{
+          id: randomUUID(), receiptId, productId: null, description: 'X', quantity: '1', unit: 'ud', pricePerUnit: '1.000', amount: '1.00', createdAt: now(),
+        }],
+        shoppingLists: [{ id: listId, userId: ana.id, name: 'Semana', createdAt: now() }],
+        shoppingListItems: [{ id: randomUUID(), shoppingListId: listId, productId: beaProduct.id, createdAt: now() }],
+      });
+
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.receipts).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      expect(res.body.receiptLines).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      expect(res.body.shoppingLists).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
+      expect(res.body.shoppingListItems).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      expect(await db.select().from(receipts).where(eq(receipts.userId, ana.id))).toEqual([]);
+    });
+  });
+
+  describe('datos no válidos (spec 050 T3.1)', () => {
+    const now = () => new Date().toISOString();
+    const category = (id: string) => ({ id, userId: randomUUID(), type: 'EXPENSE', name: 'Compra', parentId: null, isDefault: false, icon: null, createdAt: now() });
+    const movement = (categoryId: string, overrides: Record<string, unknown> = {}) => ({
+      id: randomUUID(), userId: randomUUID(), type: 'EXPENSE', date: '2026-10-01', categoryId, subcategoryId: null, concept: 'Compra', amount: '10.00',
+      createdAt: now(), updatedAt: now(), ...overrides,
+    });
+
+    for (const [name, overrides] of [
+      ['un importe no numérico', { amount: 'diez euros' }],
+      ['un tipo que no existe', { type: 'REGALO' }],
+      ['una fecha imposible', { date: '2026-13-45' }],
+      ['una fecha de creación imposible', { createdAt: 'ayer' }],
+    ] as const) {
+      it(`${name} → 400 con un mensaje claro y no se escribe nada, tampoco las filas válidas`, async () => {
+        const ana = await createUser('ana-datos@example.com');
+        const catId = randomUUID();
+        const file = buildFile({ categories: [category(catId)], transactions: [movement(catId), movement(catId, overrides)] });
+
+        const res = await attach('/data-import/confirm', await login(ana.email), file).expect(400);
+        expect(res.body.message).toBe('El fichero contiene datos que no se pueden importar.');
+        expect(await db.select().from(categories).where(eq(categories.userId, ana.id))).toEqual([]);
+        expect(await db.select().from(transactions).where(eq(transactions.userId, ana.id))).toEqual([]);
+      });
+    }
+  });
+
+  describe('ida y vuelta completa y ventas de fondos (spec 050 T4.1)', () => {
+    it('una copia exportada por la app se restaura entera en una cuenta vacía, sin ningún omitido, con las ventas de fondos', async () => {
+      const ana = await createUser('ana-ida-vuelta@example.com');
+      const [root] = await db.insert(categories).values({ userId: ana.id, type: 'EXPENSE', name: 'Casa' }).returning();
+      const [child] = await db.insert(categories).values({ userId: ana.id, type: 'EXPENSE', name: 'Luz', parentId: root.id }).returning();
+      await db.insert(transactions).values({ userId: ana.id, type: 'EXPENSE', date: '2026-10-01', categoryId: root.id, subcategoryId: child.id, concept: 'Luz', amount: '50.00' });
+      await db.insert(expenseBudgets).values({ userId: ana.id, categoryId: root.id, targetType: 'AMOUNT', targetValue: '300', alertThresholdPercent: '80' });
+      await db.insert(recurringTransactions).values({
+        userId: ana.id, type: 'EXPENSE', categoryId: root.id, subcategoryId: child.id, concept: 'Luz', amount: '50.00', frequency: 'MONTHLY', startDate: '2026-01-01',
+      });
+      const [account] = await db.insert(bankAccounts).values({ userId: ana.id, bank: 'Banco', accountNumber: 'ES00' }).returning();
+      await db.insert(bankAccountBalances).values({ bankAccountId: account.id, euros: '1000', date: '2026-10-01' });
+      const [stock] = await db.insert(stocks).values({ userId: ana.id, custodyBank: 'Broker', stock: 'ACME' }).returning();
+      await db.insert(stockPurchases).values({ stockId: stock.id, shareCount: '10', purchasePrice: '5', date: '2026-01-01' });
+      const [fund] = await db.insert(funds).values({ userId: ana.id, custodyBank: 'Banco', fund: 'Indexado' }).returning();
+      await db.insert(fundPurchases).values({ fundId: fund.id, shareCount: '10', purchasePrice: '10', date: '2026-01-01' });
+      await db.insert(fundSales).values({ fundId: fund.id, shareCount: '4', salePrice: '12', date: '2026-06-01' });
+      const [crypto] = await db.insert(cryptos).values({ userId: ana.id, exchange: 'Exchange', crypto: 'BTC' }).returning();
+      await db.insert(cryptoPurchases).values({ cryptoId: crypto.id, quantity: '0.1', purchasePrice: '30000', date: '2026-01-01' });
+      const [vehicle] = await db.insert(vehicles).values({ userId: ana.id, brandModel: 'Coche', plate: '0000AAA', purchasePrice: '10000', purchaseDate: '2020-01-01' }).returning();
+      await db.insert(vehicleValuations).values({ vehicleId: vehicle.id, value: '8000', date: '2026-01-01' });
+      const [plan] = await db.insert(pensionPlans).values({ userId: ana.id, managingEntity: 'Gestora', plan: 'Plan' }).returning();
+      await db.insert(pensionPlanContributions).values({ pensionPlanId: plan.id, amount: '100', date: '2026-01-01' });
+      const [cash] = await db.insert(cashHoldings).values({ userId: ana.id, location: 'Casa' }).returning();
+      await db.insert(cashBalances).values({ cashHoldingId: cash.id, amount: '50', date: '2026-01-01' });
+
+      const exported = await request(app.getHttpServer()).get('/users/me/export').set('Authorization', `Bearer ${await login(ana.email)}`).expect(200);
+      await db.delete(recurringTransactions).where(eq(recurringTransactions.userId, ana.id));
+      await db.delete(users).where(eq(users.id, ana.id));
+
+      const bea = await createUser('bea-ida-vuelta@example.com');
+      const res = await attach('/data-import/confirm', await login(bea.email), exported.body).expect(201);
+      for (const [key, summary] of Object.entries(res.body as Record<string, { total: number; toImport: number; omitted?: number }>)) {
+        expect({ key, toImport: summary.toImport, omitted: summary.omitted ?? 0 }).toEqual({ key, toImport: summary.total, omitted: 0 });
+      }
+      expect(res.body.fundSales).toEqual({ total: 1, toImport: 1, alreadyExisting: 0, omitted: 0 });
+      expect(res.body.categories.toImport).toBe(2);
+      const [sale] = await db.select().from(fundSales).where(eq(fundSales.fundId, fund.id));
+      expect(sale).toMatchObject({ shareCount: '4.00000000', date: '2026-06-01' });
+      const [restoredFund] = await db.select().from(funds).where(eq(funds.id, fund.id));
+      expect(restoredFund.userId).toBe(bea.id);
+    });
+
+    it('una copia antigua sin ventas de fondos se sigue importando', async () => {
+      const ana = await createUser('ana-sin-ventas@example.com');
+      const fundId = randomUUID();
+      const file = buildFile({ funds: [{ id: fundId, userId: randomUUID(), custodyBank: 'Banco', fund: 'Indexado', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] });
+      delete (file.economicData as unknown as Record<string, unknown>).fundSales;
+
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.funds.toImport).toBe(1);
+      expect(res.body.fundSales).toEqual({ total: 0, toImport: 0, alreadyExisting: 0, omitted: 0 });
     });
   });
 });
