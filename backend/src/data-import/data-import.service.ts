@@ -46,6 +46,7 @@ import {
   vehicleValuations,
   vehicles,
 } from '../db/schema/index.js';
+import { isDataError } from '../common/db-errors.util.js';
 import { ECONOMIC_DATA_TABLE_ORDER, EXPORT_FORMAT_VERSION, OPTIONAL_ECONOMIC_DATA_KEYS } from '../data-export/account-export.types.js';
 import type { AccountExportFile, EconomicData } from '../data-export/account-export.types.js';
 import type { DataImportSummary, TableImportSummary } from './data-import.types.js';
@@ -262,13 +263,20 @@ function isValidRow(row: unknown): row is Row {
  * criterio "sin reglas especiales por tabla" del resto de `mergeTable`) y
  * se convierte el campo correspondiente antes de insertar.
  */
+/** Spec 050 T3.1. */
+const INVALID_DATA_MESSAGE = 'El fichero contiene datos que no se pueden importar.';
+
 function coerceTimestamps(table: PgTable, row: Row): Row {
   const timestampColumns = Object.entries(getTableColumns(table)).filter(([, column]) => column.columnType === 'PgTimestamp');
   if (timestampColumns.length === 0) return row;
   const coerced = { ...row };
   for (const [key] of timestampColumns) {
     if (typeof coerced[key] === 'string') {
-      coerced[key] = new Date(coerced[key]);
+      const date = new Date(coerced[key]);
+      // Spec 050 T3.1: una fecha imposible no llega a Postgres (Drizzle falla
+      // antes, al convertirla); se rechaza con el mismo 400 que los demás datos no válidos.
+      if (Number.isNaN(date.getTime())) throw new BadRequestException(INVALID_DATA_MESSAGE);
+      coerced[key] = date;
     }
   }
   return coerced;
@@ -303,14 +311,14 @@ export class DataImportService {
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
       if (err instanceof ZipFormatError) throw new BadRequestException(err.message);
-      // `err.cause` (si lo hay, p. ej. `DrizzleQueryError`) es el error real
-      // de Postgres ("null value in column... violates not-null
-      // constraint") — más útil para el usuario que el mensaje de Drizzle,
-      // que incluye la consulta SQL completa con sus parámetros (no se
-      // quiere reenviar eso al cliente).
-      const cause = err instanceof Error && err.cause instanceof Error ? err.cause : err;
-      const message = cause instanceof Error ? cause.message : String(cause);
-      throw new BadRequestException(`No se ha podido importar el fichero: ${message}`);
+      // Spec 050 T3.1 (plan.md §0 decisión 5): un error de Postgres por los
+      // datos (clase 22 o 23) es culpa del fichero → 400 con un mensaje
+      // claro, sin reenviar el de Postgres (lleva nombres de tablas,
+      // restricciones y valores). La transacción ya se ha deshecho entera.
+      // Cualquier otro error (base de datos caída…) no es del fichero y
+      // sigue siendo un 500.
+      if (isDataError(err)) throw new BadRequestException(INVALID_DATA_MESSAGE);
+      throw err;
     }
   }
 

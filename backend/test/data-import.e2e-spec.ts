@@ -836,4 +836,31 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
       expect(await db.select().from(receipts).where(eq(receipts.userId, ana.id))).toEqual([]);
     });
   });
+
+  describe('datos no válidos (spec 050 T3.1)', () => {
+    const now = () => new Date().toISOString();
+    const category = (id: string) => ({ id, userId: randomUUID(), type: 'EXPENSE', name: 'Compra', parentId: null, isDefault: false, icon: null, createdAt: now() });
+    const movement = (categoryId: string, overrides: Record<string, unknown> = {}) => ({
+      id: randomUUID(), userId: randomUUID(), type: 'EXPENSE', date: '2026-10-01', categoryId, subcategoryId: null, concept: 'Compra', amount: '10.00',
+      createdAt: now(), updatedAt: now(), ...overrides,
+    });
+
+    for (const [name, overrides] of [
+      ['un importe no numérico', { amount: 'diez euros' }],
+      ['un tipo que no existe', { type: 'REGALO' }],
+      ['una fecha imposible', { date: '2026-13-45' }],
+      ['una fecha de creación imposible', { createdAt: 'ayer' }],
+    ] as const) {
+      it(`${name} → 400 con un mensaje claro y no se escribe nada, tampoco las filas válidas`, async () => {
+        const ana = await createUser('ana-datos@example.com');
+        const catId = randomUUID();
+        const file = buildFile({ categories: [category(catId)], transactions: [movement(catId), movement(catId, overrides)] });
+
+        const res = await attach('/data-import/confirm', await login(ana.email), file).expect(400);
+        expect(res.body.message).toBe('El fichero contiene datos que no se pueden importar.');
+        expect(await db.select().from(categories).where(eq(categories.userId, ana.id))).toEqual([]);
+        expect(await db.select().from(transactions).where(eq(transactions.userId, ana.id))).toEqual([]);
+      });
+    }
+  });
 });

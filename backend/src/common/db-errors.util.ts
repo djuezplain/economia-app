@@ -33,6 +33,15 @@ export function isUniqueViolation(err: unknown): boolean {
 }
 
 /**
+ * Spec 050 T3.1: el error lo causan los datos (clase `22`, dato no válido,
+ * o `23`, restricción), no la base de datos en sí (conexión, permisos…).
+ */
+export function isDataError(err: unknown): boolean {
+  const code = getPgErrorCode(err);
+  return code !== undefined && (code.startsWith('22') || code.startsWith('23'));
+}
+
+/**
  * Drizzle envuelve el error real del driver `pg` en un `DrizzleQueryError`
  * propio (con el error original de `pg` en `.cause`) en vez de dejarlo subir
  * tal cual — así que el código de error de Postgres (`err.code`) puede venir
