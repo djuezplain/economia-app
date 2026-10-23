@@ -40,12 +40,15 @@
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "google-auth-library": "^11.0.2",
+    "heic-convert": "^2.1.0",
     "joi": "^18.2.5",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "yauzl": "^3.4.0",
+    "yazl": "^3.3.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
@@ -60,6 +63,8 @@
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.0.0",
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
     "@vitest/coverage-v8": "^4.1.2",
     "drizzle-kit": "^0.31.10",
     "oxlint": "^1.58.0",
