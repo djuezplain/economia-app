@@ -1,6 +1,6 @@
 # Plan — Spec 048 (tickets y facturas: documento original, cualquier comercio y enlace con el movimiento)
 
-**Fase:** 2 de 4 (pendiente de aprobación)
+**Fase:** 2 de 4 (aprobado)
 **Parte de:** spec 048 aprobada. Construye sobre el modelo de las specs 034/035/040 (`backend/src/db/schema/groceries.schema.ts`, `backend/src/receipt-import/`, `backend/src/groceries/`) y sobre la exportación de la spec 032.
 
 ## 0. Decisiones de diseño
