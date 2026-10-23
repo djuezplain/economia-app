@@ -767,4 +767,73 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
       expect(res.body.stockPurchases).toMatchObject({ toImport: 0, omitted: 1 });
     });
   });
+
+  describe('fusiones de las specs 047, 048 y 049 con el mismo registro (spec 050 T2.2)', () => {
+    const now = () => new Date().toISOString();
+
+    it('lo que cuelga de una plantilla o un movimiento omitidos por su categoría ajena se omite o pierde el enlace, sin 500', async () => {
+      const ana = await createUser('ana-t22@example.com');
+      const bea = await createUser('bea-t22@example.com');
+      const [beaCat] = await db.insert(categories).values({ userId: bea.id, type: 'EXPENSE', name: 'Ajena' }).returning();
+      const templateId = randomUUID();
+      const txId = randomUUID();
+      const shopId = randomUUID();
+      const receiptId = randomUUID();
+      const file = buildFile({
+        // Plantilla y movimiento del fichero, pero con una categoría de Bea: se omiten (T2.1).
+        recurringTransactions: [{
+          id: templateId, userId: ana.id, type: 'EXPENSE', categoryId: beaCat.id, subcategoryId: null, concept: 'Luz', amount: '50.00', frequency: 'MONTHLY',
+          startDate: '2026-01-01', createdAt: now(), updatedAt: now(),
+        }],
+        transactions: [{
+          id: txId, userId: ana.id, type: 'EXPENSE', date: '2026-03-05', categoryId: beaCat.id, subcategoryId: null, concept: 'IBERDROLA', amount: '50.00',
+          createdAt: now(), updatedAt: now(),
+        }],
+        recurringOccurrenceResolutions: [{ recurringId: templateId, occurrenceDate: '2026-03-05', status: 'CONFIRMED', transactionId: txId, createdAt: now() }],
+        recurringReconciliationDismissals: [{ recurringId: templateId, occurrenceDate: '2026-04-05', transactionId: txId, createdAt: now() }],
+        supermarkets: [{ id: shopId, userId: ana.id, name: 'Iberdrola', createdAt: now() }],
+        receipts: [{ id: receiptId, userId: ana.id, supermarketId: shopId, date: '2026-03-05', printedTotal: '50.00', transactionId: txId, createdAt: now() }],
+      });
+      const token = await login(ana.email);
+
+      const preview = await attach('/data-import/preview', token, file).expect(201);
+      const res = await attach('/data-import/confirm', token, file).expect(201);
+      expect(preview.body).toEqual(res.body);
+      expect(res.body.recurringTransactions).toMatchObject({ toImport: 0, omitted: 1 });
+      expect(res.body.transactions).toMatchObject({ toImport: 0, omitted: 1 });
+      expect(res.body.recurringOccurrenceResolutions).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      expect(res.body.recurringReconciliationDismissals).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      // El ticket se importa, pero sin el enlace al movimiento omitido.
+      expect(res.body.receipts).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
+      const [receipt] = await db.select().from(receipts).where(eq(receipts.id, receiptId));
+      expect(receipt).toMatchObject({ userId: ana.id, transactionId: null });
+    });
+
+    it('las líneas y los elementos de lista que apuntan a un ticket o producto omitidos se omiten', async () => {
+      const ana = await createUser('ana-t22-lineas@example.com');
+      const bea = await createUser('bea-t22-lineas@example.com');
+      const [beaShop] = await db.insert(supermarkets).values({ userId: bea.id, name: 'Ajeno' }).returning();
+      const [beaProduct] = await db.insert(products).values({ userId: bea.id, name: 'Ajeno' }).returning();
+      const receiptId = randomUUID();
+      const listId = randomUUID();
+      const file = buildFile({
+        // El comercio y el producto vienen en el fichero, pero con id de Bea: no se importan.
+        supermarkets: [{ id: beaShop.id, userId: ana.id, name: 'Mío', createdAt: now() }],
+        products: [{ id: beaProduct.id, userId: ana.id, name: 'Mío', createdAt: now() }],
+        receipts: [{ id: receiptId, userId: ana.id, supermarketId: beaShop.id, date: '2026-03-05', printedTotal: '1.00', transactionId: null, createdAt: now() }],
+        receiptLines: [{
+          id: randomUUID(), receiptId, productId: null, description: 'X', quantity: '1', unit: 'ud', pricePerUnit: '1.000', amount: '1.00', createdAt: now(),
+        }],
+        shoppingLists: [{ id: listId, userId: ana.id, name: 'Semana', createdAt: now() }],
+        shoppingListItems: [{ id: randomUUID(), shoppingListId: listId, productId: beaProduct.id, createdAt: now() }],
+      });
+
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.receipts).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      expect(res.body.receiptLines).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      expect(res.body.shoppingLists).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
+      expect(res.body.shoppingListItems).toEqual({ total: 1, toImport: 0, alreadyExisting: 0 });
+      expect(await db.select().from(receipts).where(eq(receipts.userId, ana.id))).toEqual([]);
+    });
+  });
 });
