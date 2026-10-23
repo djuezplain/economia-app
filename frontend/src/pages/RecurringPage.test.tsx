@@ -26,7 +26,7 @@ function template(overrides: Partial<RecurringTransaction> = {}): RecurringTrans
   return {
     id: 'rec-1', userId: 'user-1', type: 'EXPENSE', categoryId: 'cat-expense-1', subcategoryId: null,
     concept: 'Alquiler', merchant: null, amount: '600.00', paymentMethod: null, frequency: 'MONTHLY',
-    startDate: '2026-01-05', endDate: null, active: true, createdAt: '2026-01-01T00:00:00.000Z',
+    startDate: '2026-01-05', endDate: null, active: true, variableAmount: false, createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z', ...overrides,
   };
 }
@@ -35,7 +35,7 @@ function occurrence(overrides: Partial<Occurrence> = {}): Occurrence {
   return {
     recurringId: 'rec-1', date: '2026-08-05', status: 'OVERDUE', transactionId: null, type: 'EXPENSE',
     categoryId: 'cat-expense-1', subcategoryId: null, concept: 'Alquiler', merchant: null, amount: '600.00',
-    paymentMethod: null, ...overrides,
+    paymentMethod: null, estimated: false, ...overrides,
   };
 }
 
@@ -98,6 +98,37 @@ describe('RecurringPage', () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'EXPENSE', concept: 'Seguro coche', categoryId: 'cat-expense-1', amount: '320.00', frequency: 'YEARLY' }),
     );
+  });
+
+  it('crea una plantilla de importe variable (spec 049 H2) con texto de ayuda', async () => {
+    const create = vi.spyOn(recurringApi, 'createRecurring').mockResolvedValue(template({ id: 'rec-2', variableAmount: true }));
+    renderPage();
+    await screen.findByText('Cada mes, el día 5');
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Nuevo recurrente' }));
+    const form = screen.getByRole('form', { name: 'Nuevo recurrente' });
+    expect(within(form).queryByText(/media de los 3 últimos/)).not.toBeInTheDocument();
+    await userEvent.type(within(form).getByLabelText('Concepto'), 'Luz');
+    await userEvent.selectOptions(within(form).getByLabelText('Categoría'), 'cat-expense-1');
+    await userEvent.type(within(form).getByLabelText('Importe'), '55.00');
+    await userEvent.click(within(form).getByLabelText('Importe variable'));
+    expect(within(form).getByText(/media de los 3 últimos/)).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole('button', { name: 'Crear' }));
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ concept: 'Luz', amount: '55.00', variableAmount: true }));
+  });
+
+  it('al editar una plantilla variable la casilla sale marcada y se guarda sin cambios; el listado la etiqueta', async () => {
+    vi.spyOn(recurringApi, 'listRecurring').mockResolvedValue([template({ concept: 'Luz', variableAmount: true })]);
+    const update = vi.spyOn(recurringApi, 'updateRecurring').mockResolvedValue(template({ variableAmount: true }));
+    renderPage();
+    expect(await screen.findByText('importe variable')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    const form = screen.getByRole('form', { name: 'Editar recurrente' });
+    expect(within(form).getByLabelText('Importe variable')).toBeChecked();
+    await userEvent.click(within(form).getByRole('button', { name: 'Guardar cambios' }));
+    expect(update).toHaveBeenCalledWith('rec-1', expect.objectContaining({ variableAmount: true }));
   });
 
   it('muestra el error del servidor al guardar', async () => {

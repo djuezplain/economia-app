@@ -1760,3 +1760,9 @@ code {
   border: none;
   background: none;
 }
+
+/* — importe estimado de recibos variables (spec 049 H2) — */
+.amount-estimated {
+  opacity: 0.75;
+  font-style: italic;
+}

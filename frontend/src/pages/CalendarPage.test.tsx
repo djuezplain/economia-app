@@ -141,7 +141,7 @@ describe('CalendarPage', () => {
       return {
         recurringId: 'rec-1', date: '2026-08-05', status: 'PENDING', transactionId: null, type: 'EXPENSE',
         categoryId: 'cat-expense-1', subcategoryId: null, concept: 'Alquiler', merchant: null, amount: '600.00',
-        paymentMethod: null, ...overrides,
+        paymentMethod: null, estimated: false, ...overrides,
       };
     }
 

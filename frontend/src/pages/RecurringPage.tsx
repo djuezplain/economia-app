@@ -29,6 +29,7 @@ function emptyForm() {
     frequency: 'MONTHLY' as RecurringFrequency,
     startDate: todayIso(),
     endDate: '',
+    variableAmount: false,
   };
 }
 
@@ -101,6 +102,7 @@ export function RecurringPage() {
       frequency: t.frequency,
       startDate: t.startDate,
       endDate: t.endDate ?? '',
+      variableAmount: t.variableAmount,
     });
     setFormError(null);
     setShowForm(true);
@@ -121,6 +123,7 @@ export function RecurringPage() {
         paymentMethod: isExpense && form.paymentMethod ? form.paymentMethod : undefined,
         frequency: form.frequency,
         startDate: form.startDate,
+        variableAmount: form.variableAmount,
       };
       if (editingId) {
         await updateRecurring(editingId, { ...common, endDate: form.endDate || null });
@@ -274,6 +277,23 @@ export function RecurringPage() {
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
               />
             </div>
+            <div className="field">
+              <label htmlFor="rec-variable">
+                <input
+                  id="rec-variable"
+                  type="checkbox"
+                  checked={form.variableAmount}
+                  onChange={(e) => setForm({ ...form, variableAmount: e.target.checked })}
+                />{' '}
+                Importe variable
+              </label>
+              {form.variableAmount && (
+                <p className="card-meta">
+                  Para recibos que cambian cada vez (luz, agua…). El importe indicado se usa hasta que haya recibos reales; después, la
+                  previsión es la media de los 3 últimos.
+                </p>
+              )}
+            </div>
             {type === 'EXPENSE' && (
               <div className="field">
                 <label htmlFor="rec-payment">Tipo de pago (opcional)</label>
@@ -328,6 +348,7 @@ export function RecurringPage() {
                     {categoryIcon(allCategories, t.categoryId)}
                   </span>{' '}
                   <strong>{t.concept}</strong> <span className="tag tag-neutral">{categoryName(allCategories, t.categoryId)}</span>
+                  {t.variableAmount && <span className="tag tag-neutral">importe variable</span>}
                   {!t.active && <span className="tag tag-accent">en pausa</span>}
                   <p className="card-meta">
                     {describeRecurrence(t.frequency, t.startDate)}

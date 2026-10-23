@@ -5,7 +5,7 @@ import type { MovementType, PaymentMethod, Transaction } from './transactions';
 // (backend). Sin caché offline en la v1: todo exige conexión.
 
 export type RecurringFrequency = 'MONTHLY' | 'YEARLY';
-export type OccurrenceStatus = 'PENDING' | 'OVERDUE' | 'CONFIRMED' | 'SKIPPED';
+export type OccurrenceStatus = 'PENDING' | 'OVERDUE' | 'CONFIRMED' | 'SKIPPED' | 'RECONCILED';
 
 export interface RecurringTransaction {
   id: string;
@@ -21,6 +21,8 @@ export interface RecurringTransaction {
   startDate: string;
   endDate: string | null;
   active: boolean;
+  /** Spec 049 H2: `amount` es el importe inicial y las ocurrencias usan una estimación. */
+  variableAmount: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -35,7 +37,10 @@ export interface Occurrence {
   subcategoryId: string | null;
   concept: string;
   merchant: string | null;
+  /** En una ocurrencia sin resolver de una plantilla variable, la estimación (spec 049 H2). */
   amount: string;
+  /** Spec 049 H2 criterio 3: `amount` es una estimación. */
+  estimated: boolean;
   paymentMethod: PaymentMethod | null;
 }
 
@@ -50,6 +55,7 @@ export interface CreateRecurringInput {
   frequency: RecurringFrequency;
   startDate: string;
   endDate?: string;
+  variableAmount?: boolean;
 }
 
 export type UpdateRecurringInput = Partial<Omit<CreateRecurringInput, 'type' | 'endDate'>> & {
@@ -72,7 +78,10 @@ export const deleteRecurring = (id: string) => api.delete<void>(`/recurring-tran
 export const listOccurrences = (from: string, to: string) =>
   api.get<Occurrence[]>(`/recurring-transactions/occurrences?from=${from}&to=${to}`);
 
-/** Crea el movimiento real; `amount` ajusta el importe solo de esta ocurrencia. */
+/**
+ * Crea el movimiento real; `amount` ajusta el importe solo de esta
+ * ocurrencia. En una plantilla variable es obligatorio (spec 049 H2).
+ */
 export const confirmOccurrence = (id: string, date: string, amount?: string) =>
   api.post<Transaction>(`/recurring-transactions/${id}/occurrences/${date}/confirm`, amount ? { amount } : {});
 
