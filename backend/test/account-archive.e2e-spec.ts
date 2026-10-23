@@ -8,10 +8,13 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
-import { receipts, supermarkets, users } from '../src/db/schema/index.js';
+import { receiptDocuments, receipts, supermarkets, users } from '../src/db/schema/index.js';
 import { ReceiptDocumentsService } from '../src/groceries/receipt-documents.service.js';
 import { RateLimitGuard } from '../src/common/rate-limit.guard.js';
-import { binaryParser, readZip } from './support/zip.js';
+import { binaryParser, buildZip, readZip } from './support/zip.js';
+import { readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { eq } from 'drizzle-orm';
 
 const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('foto de prueba')]);
 const PDF = Buffer.from('%PDF-1.7\n<< /Type /Page >>\n%%EOF');
@@ -105,5 +108,109 @@ describe('Exportación en .zip (e2e) — spec 048', () => {
 
   it('sin autenticar, 401', async () => {
     await request(app.getHttpServer()).get('/users/me/export/archive').expect(401);
+  });
+
+  describe('importar el .zip (T6.3)', () => {
+    function importZip(token: string, content: Buffer, step: 'preview' | 'confirm' = 'confirm', filename = 'copia.zip') {
+      return request(app.getHttpServer()).post(`/data-import/${step}`).set('Authorization', token).attach('file', content, filename);
+    }
+
+    const tempFiles = () => readdirSync(tmpdir()).filter((f) => f.startsWith('economia-import-'));
+
+    it('ida y vuelta: exportar, borrar la cuenta y restaurar en otra cuenta, con los documentos intactos', async () => {
+      const ana = await setup('ana@example.com');
+      await ana.addReceipt(JPEG, 'ticket.jpg');
+      await ana.addReceipt(PDF, 'factura.pdf');
+      const archive = (await download(ana.token)).body as Buffer;
+      await db.delete(users).where(eq(users.id, ana.user.id));
+
+      const bea = await setup('bea@example.com');
+      const preview = await importZip(bea.token, archive, 'preview').expect(201);
+      expect(preview.body.receiptDocuments).toEqual({ total: 2, toImport: 2, alreadyExisting: 0, omitted: 0 });
+      expect(await db.select({ id: receiptDocuments.id }).from(receiptDocuments).where(eq(receiptDocuments.userId, bea.user.id))).toEqual([]);
+
+      const res = await importZip(bea.token, archive).expect(201);
+      expect(res.body).toMatchObject({ receipts: { toImport: 2 }, receiptDocuments: { toImport: 2, omitted: 0 } });
+      const restored = await db.select().from(receiptDocuments).where(eq(receiptDocuments.userId, bea.user.id));
+      expect(restored.map((d) => d.mimeType).sort()).toEqual(['application/pdf', 'image/jpeg']);
+      expect(Buffer.compare(restored.find((d) => d.mimeType === 'image/jpeg')!.content, JPEG)).toBe(0);
+
+      const again = await importZip(bea.token, archive).expect(201);
+      expect(again.body.receiptDocuments).toMatchObject({ toImport: 0, alreadyExisting: 2 });
+      expect(tempFiles()).toEqual([]);
+    });
+
+    it('un documento cuyo contenido no coincide con su SHA-256 se omite y se cuenta; el resto sí se importa', async () => {
+      const ana = await setup('ana@example.com');
+      await ana.addReceipt(JPEG, 'ticket.jpg');
+      await ana.addReceipt(PDF, 'factura.pdf');
+      const entries = await readZip((await download(ana.token)).body as Buffer);
+      await db.delete(users).where(eq(users.id, ana.user.id));
+      const data = JSON.parse(entries.get('datos.json')!.toString());
+      const jpegMeta = data.economicData.receiptDocuments.find((d: { mimeType: string }) => d.mimeType === 'image/jpeg');
+      const tampered = Buffer.from(JPEG);
+      tampered[5] ^= 0xff;
+      entries.set(jpegMeta.file, tampered);
+
+      const bea = await setup('bea@example.com');
+      const res = await importZip(bea.token, await buildZip(Object.fromEntries(entries))).expect(201);
+      expect(res.body.receiptDocuments).toEqual({ total: 2, toImport: 1, alreadyExisting: 0, omitted: 1 });
+      expect(res.body.receipts.toImport).toBe(2);
+    });
+
+    it('un documento que no viene en el .zip, o un .json con documentos, se omite', async () => {
+      const ana = await setup('ana@example.com');
+      await ana.addReceipt(JPEG);
+      const entries = await readZip((await download(ana.token)).body as Buffer);
+      await db.delete(users).where(eq(users.id, ana.user.id));
+
+      const bea = await setup('bea@example.com');
+      const onlyData = await buildZip({ 'datos.json': entries.get('datos.json')! });
+      expect((await importZip(bea.token, onlyData, 'preview').expect(201)).body.receiptDocuments).toMatchObject({ toImport: 0, omitted: 1 });
+      const asJson = await importZip(bea.token, entries.get('datos.json')!, 'preview', 'copia.json').expect(201);
+      expect(asJson.body.receiptDocuments).toMatchObject({ toImport: 0, omitted: 1 });
+      expect(asJson.body.receipts.toImport).toBe(1);
+    });
+
+    it('rechaza (400) un .zip dañado, uno sin datos.json, otro tipo de fichero y un .json de más de 10 MB; siempre borra el temporal', async () => {
+      const { token } = await setup();
+      expect((await importZip(token, Buffer.from('no es un zip')).expect(400)).body.message).toBe('El fichero no es un .zip válido.');
+      expect((await importZip(token, await buildZip({ 'otra.json': '{}' })).expect(400)).body.message).toBe('El .zip no contiene "datos.json".');
+      await importZip(token, Buffer.from('{}'), 'confirm', 'copia.txt').expect(400);
+      const big = Buffer.alloc(10 * 1024 * 1024 + 1, 0x20);
+      expect((await importZip(token, big, 'confirm', 'copia.json').expect(400)).body.message).toBe('Un fichero .json no puede ocupar más de 10 MB.');
+      expect(tempFiles()).toEqual([]);
+    });
+
+    it('un documento con una ruta manipulada (otra entrada del .zip) invalida el fichero entero', async () => {
+      const ana = await setup('ana@example.com');
+      await ana.addReceipt(JPEG);
+      const entries = await readZip((await download(ana.token)).body as Buffer);
+      const data = JSON.parse(entries.get('datos.json')!.toString());
+      data.economicData.receiptDocuments[0].file = '../../etc/passwd';
+      entries.set('datos.json', Buffer.from(JSON.stringify(data)));
+      await importZip(ana.token, await buildZip(Object.fromEntries(entries))).expect(400);
+    });
+
+    it('una entrada que miente sobre su tamaño aborta la importación sin escribir nada', async () => {
+      const ana = await setup('ana@example.com');
+      await ana.addReceipt(JPEG);
+      const archive = (await download(ana.token)).body as Buffer;
+      await db.delete(users).where(eq(users.id, ana.user.id));
+      const data = JSON.parse((await readZip(archive)).get('datos.json')!.toString());
+      const meta = data.economicData.receiptDocuments[0];
+      // Se declara un tamaño menor que el real en las cabeceras de esa entrada.
+      const bytes = Buffer.from(archive);
+      const name = Buffer.from(meta.file);
+      const central = bytes.lastIndexOf(name) - 46;
+      // Solo el tamaño descomprimido: el contenido real es más largo.
+      bytes.writeUInt32LE(3, central + 24);
+      const local = bytes.indexOf(name) - 30;
+      bytes.writeUInt32LE(3, local + 22);
+
+      const bea = await setup('bea@example.com');
+      await importZip(bea.token, bytes).expect(400);
+      expect(await db.select().from(receipts).where(eq(receipts.userId, bea.user.id))).toEqual([]);
+    });
   });
 });

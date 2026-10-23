@@ -1,4 +1,8 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { readFile, stat } from 'node:fs/promises';
+import { ZipFormatError, ZipReader } from './zip-reader.js';
+import { archivePathFor } from '../receipt-import/document-type.js';
 import { and, eq, getTableColumns, inArray } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { isUUID } from 'class-validator';
@@ -25,6 +29,7 @@ import {
   recurringReconciliationDismissals,
   recurringTransactions,
   products,
+  receiptDocuments,
   receiptLines,
   receipts,
   savingsGoals,
@@ -129,10 +134,46 @@ function isValidDismissalRow(row: unknown): row is Row {
   );
 }
 
+/**
+ * Spec 048: metadatos de un documento. `file` tiene que ser exactamente la
+ * ruta que le corresponde por su id y tipo, así que un fichero manipulado no
+ * puede hacer que se lea otra entrada del `.zip`.
+ */
+function isValidDocumentRow(row: unknown): row is Row {
+  return (
+    isValidRow(row) &&
+    typeof row.receiptId === 'string' &&
+    isUUID(row.receiptId) &&
+    typeof row.mimeType === 'string' &&
+    STORED_DOCUMENT_TYPES.includes(row.mimeType) &&
+    Number.isInteger(row.sizeBytes) &&
+    (row.sizeBytes as number) > 0 &&
+    typeof row.sha256 === 'string' &&
+    /^[0-9a-f]{64}$/.test(row.sha256) &&
+    typeof row.originalFilename === 'string' &&
+    row.file === archivePathFor(row.id as string, row.mimeType)
+  );
+}
+
+const STORED_DOCUMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
 const ROW_VALIDATORS: Partial<Record<keyof EconomicData, (row: unknown) => row is Row>> = {
   recurringOccurrenceResolutions: isValidResolutionRow,
   recurringReconciliationDismissals: isValidDismissalRow,
+  receiptDocuments: isValidDocumentRow,
 };
+
+/** Spec 048 T6.3: límites de la importación. */
+export const MAX_JSON_IMPORT_BYTES = 10 * 1024 * 1024;
+export const MAX_ZIP_IMPORT_BYTES = 500 * 1024 * 1024;
+const MAX_DATA_ENTRY_BYTES = 200 * 1024 * 1024;
+const MAX_DOCUMENT_ENTRY_BYTES = 50 * 1024 * 1024;
+
+/** El fichero subido, ya guardado en disco temporal por `multer`. */
+export interface UploadedImportFile {
+  path: string;
+  originalname: string;
+}
 
 function isValidRow(row: unknown): row is Row {
   return isPlainObject(row) && typeof row.id === 'string' && isUUID(row.id);
@@ -169,9 +210,8 @@ export class DataImportService {
   constructor(@Inject(DB) private readonly db: Database) {}
 
   /** H2 criterio 4: no escribe nada — solo cuenta qué se importaría. */
-  async preview(userId: string, buffer: Buffer): Promise<DataImportSummary> {
-    const file = this.parseFile(buffer);
-    return this.computeSummary(this.db, file, userId, false);
+  async preview(userId: string, upload: UploadedImportFile): Promise<DataImportSummary> {
+    return this.withSource(upload, (file, zip) => this.computeSummary(this.db, file, userId, false, zip));
   }
 
   /**
@@ -183,12 +223,12 @@ export class DataImportService {
    * como 500, sin perder la garantía de "nada importado" (la transacción ya
    * se revierte igual, esto solo cambia el código de estado devuelto).
    */
-  async confirm(userId: string, buffer: Buffer): Promise<DataImportSummary> {
-    const file = this.parseFile(buffer);
+  async confirm(userId: string, upload: UploadedImportFile): Promise<DataImportSummary> {
     try {
-      return await this.db.transaction((tx) => this.computeSummary(tx, file, userId, true));
+      return await this.withSource(upload, (file, zip) => this.db.transaction((tx) => this.computeSummary(tx, file, userId, true, zip)));
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
+      if (err instanceof ZipFormatError) throw new BadRequestException(err.message);
       // `err.cause` (si lo hay, p. ej. `DrizzleQueryError`) es el error real
       // de Postgres ("null value in column... violates not-null
       // constraint") — más útil para el usuario que el mensaje de Drizzle,
@@ -248,11 +288,47 @@ export class DataImportService {
     return parsed as unknown as AccountExportFile;
   }
 
+  /**
+   * Spec 048 T6.3: abre el fichero subido — `.json` (copias anteriores) o
+   * `.zip` (`datos.json` + documentos) — y se lo pasa a `run`. El lector del
+   * `.zip` se cierra siempre; el temporal lo borra el controlador.
+   */
+  private async withSource<T>(upload: UploadedImportFile, run: (file: AccountExportFile, zip: ZipReader | null) => Promise<T>): Promise<T> {
+    const name = upload.originalname.toLowerCase();
+    if (name.endsWith('.json')) {
+      if ((await stat(upload.path)).size > MAX_JSON_IMPORT_BYTES) {
+        throw new BadRequestException('Un fichero .json no puede ocupar más de 10 MB.');
+      }
+      return run(this.parseFile(await readFile(upload.path)), null);
+    }
+    if (!name.endsWith('.zip')) throw new BadRequestException('Solo se admiten ficheros .zip o .json.');
+
+    let zip: ZipReader;
+    try {
+      zip = await ZipReader.open(upload.path);
+    } catch (err) {
+      throw new BadRequestException(err instanceof Error ? err.message : 'El fichero no es un .zip válido.');
+    }
+    try {
+      if (!zip.has('datos.json')) throw new BadRequestException('El .zip no contiene "datos.json".');
+      const data = await zip.read('datos.json', MAX_DATA_ENTRY_BYTES).catch((err: unknown) => {
+        throw new BadRequestException(err instanceof Error ? err.message : 'No se ha podido leer "datos.json".');
+      });
+      return await run(this.parseFile(data), zip);
+    } catch (err) {
+      if (err instanceof ZipFormatError) throw new BadRequestException(err.message);
+      throw err;
+    } finally {
+      zip.close();
+    }
+  }
+
   private async computeSummary(
     executor: Executor,
     file: AccountExportFile,
     userId: string,
     write: boolean,
+    zip: ZipReader | null = null,
   ): Promise<DataImportSummary> {
     const summary = {} as DataImportSummary;
     for (const key of ECONOMIC_DATA_TABLE_ORDER) {
@@ -274,9 +350,7 @@ export class DataImportService {
         continue;
       }
       if (key === 'receiptDocuments') {
-        // Spec 048: sin el `.zip` no hay contenido que restaurar (lo amplía T6.3).
-        const rows = file.economicData.receiptDocuments as unknown as Row[];
-        summary[key] = { total: rows.length, toImport: 0, alreadyExisting: 0 };
+        summary[key] = await this.mergeReceiptDocuments(executor, file, userId, write, zip);
         continue;
       }
       if (key === 'shoppingListItems') {
@@ -563,5 +637,66 @@ export class DataImportService {
       .map((r) => coerceTimestamps(shoppingListItems, r));
     if (write && toInsert.length > 0) await executor.insert(shoppingListItems).values(toInsert as never[]).onConflictDoNothing();
     return { total: rows.length, toImport: toInsert.length, alreadyExisting: existingIds.size };
+  }
+
+  /**
+   * Spec 048 H1 criterio 6 / plan.md §3.4. Un documento se importa solo si
+   * su ticket es propio o se importa en este mismo fichero, ese ticket no
+   * tiene ya documento, su entrada viene en el `.zip` y su contenido mide y
+   * resume (SHA-256) lo que dicen sus metadatos. Si no, se omite y se cuenta.
+   * Se lee e inserta de uno en uno, para no tener todos en memoria.
+   */
+  private async mergeReceiptDocuments(
+    executor: Executor,
+    file: AccountExportFile,
+    userId: string,
+    write: boolean,
+    zip: ZipReader | null,
+  ): Promise<TableImportSummary> {
+    const rows = file.economicData.receiptDocuments as unknown as Row[];
+    if (rows.length === 0) return { total: 0, toImport: 0, alreadyExisting: 0, omitted: 0 };
+
+    const existing = await executor
+      .select({ id: receiptDocuments.id })
+      .from(receiptDocuments)
+      .where(inArray(receiptDocuments.id, rows.map((r) => r.id as string)));
+    const existingIds = new Set(existing.map((r) => r.id));
+    const importableReceipts = await this.importableReceiptIds(executor, file, userId);
+    const receiptOk = await this.usableIds(executor, receipts, rows.map((r) => r.receiptId as string), importableReceipts, userId);
+    const withDocument = await executor
+      .select({ receiptId: receiptDocuments.receiptId })
+      .from(receiptDocuments)
+      .where(inArray(receiptDocuments.receiptId, rows.map((r) => r.receiptId as string)));
+    const receiptsWithDocument = new Set(withDocument.map((r) => r.receiptId));
+
+    let toImport = 0;
+    for (const row of rows) {
+      const receiptId = row.receiptId as string;
+      if (existingIds.has(row.id as string)) continue;
+      if (!receiptOk(receiptId) || receiptsWithDocument.has(receiptId)) continue;
+      const path = row.file as string;
+      if (!zip || zip.size(path) !== row.sizeBytes) continue;
+
+      const content = await zip.read(path, MAX_DOCUMENT_ENTRY_BYTES);
+      if (createHash('sha256').update(content).digest('hex') !== row.sha256) continue;
+
+      receiptsWithDocument.add(receiptId);
+      toImport += 1;
+      if (write) {
+        await executor.insert(receiptDocuments).values({
+          id: row.id as string,
+          userId,
+          receiptId,
+          mimeType: row.mimeType as string,
+          sizeBytes: content.length,
+          sha256: row.sha256 as string,
+          originalFilename: row.originalFilename as string,
+          pageCount: typeof row.pageCount === 'number' ? row.pageCount : null,
+          content,
+          ...(typeof row.createdAt === 'string' && { createdAt: new Date(row.createdAt) }),
+        });
+      }
+    }
+    return { total: rows.length, toImport, alreadyExisting: existingIds.size, omitted: rows.length - toImport - existingIds.size };
   }
 }

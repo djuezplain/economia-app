@@ -18,7 +18,6 @@ import {
   receiptLines,
   receipts,
   shoppingListItems,
-  shoppingLists,
   supermarkets,
   stockPurchases,
   stocks,
