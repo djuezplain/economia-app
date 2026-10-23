@@ -1,6 +1,6 @@
 # Spec 049 — Recibos recurrentes: avisos, importes variables y conciliación
 
-**Estado:** Pendiente de aprobación
+**Estado:** Aprobada
 **Fase:** 1 de 4 (Spec → Plan → Tasks → Implementación)
 **Basado en:** petición directa de Diego ("gestión de recibos"). Lo básico de los recibos recurrentes ya existe (spec 047: plantillas, ocurrencias previstas, confirmar u omitir); esta spec cubre los huecos que la 047 dejó fuera. Nació como el bloque B de la spec 048 y se separó a petición de Diego para implementarla **primero**, porque H3 corrige un problema que puede estar duplicando gastos ya hoy (§0). La parte de tickets sigue en la spec 048.
 
