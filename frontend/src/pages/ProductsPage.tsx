@@ -72,7 +72,7 @@ export function ProductsPage() {
     const hasSupermarket = Boolean(priceSupermarketId || priceSupermarketName);
     const filledPriceFields = [hasSupermarket, Boolean(priceDate), Boolean(pricePerUnit)].filter(Boolean).length;
     if (filledPriceFields > 0 && filledPriceFields < 3) {
-      setCreateError('Para añadir un precio inicial, completa el supermercado, la fecha y el precio — o déjalos los tres vacíos.');
+      setCreateError('Para añadir un precio inicial, completa el comercio, la fecha y el precio — o déjalos los tres vacíos.');
       return;
     }
 
@@ -197,7 +197,7 @@ export function ProductsPage() {
   return (
     <main>
       <h1>Productos</h1>
-      <p>Entra en un producto para ver su precio en cada supermercado donde lo has comprado, o corregir su nombre. Marca dos o más para fusionarlos en uno solo.</p>
+      <p>Entra en un producto para ver su precio en cada comercio donde lo has comprado, o corregir su nombre. Marca dos o más para fusionarlos en uno solo.</p>
 
       <details className="dashboard-section">
         <summary>
@@ -218,14 +218,14 @@ export function ProductsPage() {
 
           <p>Precio inicial (opcional)</p>
           <div className="field">
-            <label htmlFor="price-supermarket">Supermercado</label>
+            <label htmlFor="price-supermarket">Comercio</label>
             <select
               id="price-supermarket"
               className="input"
               value={priceSupermarketId}
               onChange={(e) => setPriceSupermarketId(e.target.value)}
             >
-              <option value={NEW_OPTION_VALUE}>+ Nuevo supermercado</option>
+              <option value={NEW_OPTION_VALUE}>+ Nuevo comercio</option>
               {supermarkets.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -236,7 +236,7 @@ export function ProductsPage() {
               <input
                 type="text"
                 className="input"
-                aria-label="Nombre del nuevo supermercado"
+                aria-label="Nombre del nuevo comercio"
                 value={priceSupermarketName}
                 onChange={(e) => setPriceSupermarketName(e.target.value)}
               />

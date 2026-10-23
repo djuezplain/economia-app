@@ -73,7 +73,7 @@ export function ReceiptsPage() {
   if (!isAuthenticated) {
     return (
       <main>
-        <h1>Tickets de supermercado</h1>
+        <h1>Tickets y facturas</h1>
         <p role="alert">Tienes que iniciar sesión para ver esto.</p>
         <p>
           <Link to="/login">Iniciar sesión</Link>
@@ -85,7 +85,7 @@ export function ReceiptsPage() {
   if (!isOnline) {
     return (
       <main>
-        <h1>Tickets de supermercado</h1>
+        <h1>Tickets y facturas</h1>
         <p role="status">Esta página requiere conexión a internet.</p>
       </main>
     );
@@ -93,7 +93,7 @@ export function ReceiptsPage() {
 
   return (
     <main>
-      <h1>Tickets de supermercado</h1>
+      <h1>Tickets y facturas</h1>
       <p>
         <Link to="/tickets/importar">Importar un ticket nuevo</Link>
       </p>
@@ -102,7 +102,7 @@ export function ReceiptsPage() {
         <h2>Filtros</h2>
         <div id="receipts-filters">
           <div className="field">
-            <label htmlFor="filter-supermarket">Supermercado</label>
+            <label htmlFor="filter-supermarket">Comercio</label>
             <select id="filter-supermarket" className="input" value={supermarketId} onChange={(e) => setSupermarketId(e.target.value)}>
               <option value="">Todos</option>
               {supermarkets.map((s) => (
@@ -180,10 +180,19 @@ export function ReceiptsPage() {
                 <Link to={`/tickets/${receipt.id}`} className="card-title">
                   {receipt.date}
                 </Link>
-                <span className="card-amount">{receipt.printedTotal ? `${receipt.printedTotal} €` : '—'}</span>
+                {/* Spec 048 plan.md §0 decisión 6: el importe del ticket (suma de líneas o, sin líneas, el total). */}
+                <span className="card-amount">{receipt.total !== null ? `${receipt.total} €` : '—'}</span>
               </div>
               <p className="card-meta">
-                {receipt.supermarketName} · Suma de líneas: {receipt.linesTotal} €
+                {receipt.supermarketName}
+                {receipt.document && (
+                  <>
+                    {' · '}
+                    <span aria-label={receipt.document.mimeType === 'application/pdf' ? 'con PDF' : 'con foto'} title="Tiene el documento original">
+                      📎
+                    </span>
+                  </>
+                )}
               </p>
             </li>
           ))}

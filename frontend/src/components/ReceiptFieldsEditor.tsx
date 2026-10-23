@@ -1,6 +1,6 @@
 import type { ReceiptUnit } from '../api/receipt-import';
 import type { Product, Supermarket } from '../api/groceries';
-import { NEW_OPTION_VALUE, sumAmounts } from './receipt-line.types';
+import { NEW_OPTION_VALUE, NO_PRODUCT_VALUE, sumAmounts } from './receipt-line.types';
 import type { EditableLine } from './receipt-line.types';
 
 interface ReceiptFieldsEditorProps {
@@ -18,6 +18,8 @@ interface ReceiptFieldsEditorProps {
   onUpdateLine: (key: string, patch: Partial<EditableLine>) => void;
   onRemoveLine: (key: string) => void;
   onAddLine: () => void;
+  /** Spec 048 H2 criterio 2: quita todas las líneas (ticket o factura sin desglose). */
+  onClearLines: () => void;
 }
 
 /**
@@ -42,17 +44,19 @@ export function ReceiptFieldsEditor({
   onUpdateLine,
   onRemoveLine,
   onAddLine,
+  onClearLines,
 }: ReceiptFieldsEditorProps) {
   const linesTotal = sumAmounts(lines);
   const printedTotalNumber = printedTotal ? Number(printedTotal) : null;
-  const totalsMismatch = printedTotalNumber !== null && Math.abs(linesTotal - printedTotalNumber) > 0.01;
+  const hasLines = lines.length > 0;
+  const totalsMismatch = hasLines && printedTotalNumber !== null && Math.abs(linesTotal - printedTotalNumber) > 0.01;
 
   return (
     <>
       <div className="field">
-        <label htmlFor="receipt-supermarket">Supermercado</label>
+        <label htmlFor="receipt-supermarket">Comercio</label>
         <select id="receipt-supermarket" className="input" value={supermarketId} onChange={(e) => onSupermarketIdChange(e.target.value)}>
-          <option value={NEW_OPTION_VALUE}>+ Nuevo supermercado</option>
+          <option value={NEW_OPTION_VALUE}>+ Nuevo comercio</option>
           {supermarkets.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -63,7 +67,7 @@ export function ReceiptFieldsEditor({
           <input
             type="text"
             className="input"
-            aria-label="Nombre del nuevo supermercado"
+            aria-label="Nombre del nuevo comercio"
             value={supermarketName}
             onChange={(e) => onSupermarketNameChange(e.target.value)}
           />
@@ -76,10 +80,24 @@ export function ReceiptFieldsEditor({
       </div>
 
       <div className="field">
-        <label htmlFor="receipt-printed-total">Total impreso en el ticket</label>
-        <input id="receipt-printed-total" type="text" className="input" value={printedTotal} onChange={(e) => onPrintedTotalChange(e.target.value)} />
+        <label htmlFor="receipt-printed-total">{hasLines ? 'Total impreso en el ticket' : 'Total (obligatorio sin desglose)'}</label>
+        <input
+          id="receipt-printed-total"
+          type="text"
+          inputMode="decimal"
+          className="input"
+          value={printedTotal}
+          onChange={(e) => onPrintedTotalChange(e.target.value)}
+        />
       </div>
 
+      {!hasLines && (
+        <p className="card-meta" role="status">
+          Sin desglose: se guardará solo con la fecha, el comercio y el total.
+        </p>
+      )}
+
+      {hasLines && (
       <table className="table">
         <caption>Líneas del ticket</caption>
         <thead>
@@ -137,6 +155,7 @@ export function ReceiptFieldsEditor({
               <td>
                 <select className="input" aria-label="Producto" value={line.productId} onChange={(e) => onUpdateLine(line.key, { productId: e.target.value })}>
                   <option value={NEW_OPTION_VALUE}>+ Nuevo: {line.productName}</option>
+                  <option value={NO_PRODUCT_VALUE}>— Sin producto —</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -162,14 +181,24 @@ export function ReceiptFieldsEditor({
           ))}
         </tbody>
       </table>
-
-      <button type="button" className="btn btn-secondary" onClick={onAddLine}>
-        Añadir línea
-      </button>
+      )}
 
       <p>
-        Suma de las líneas: {linesTotal.toFixed(2)} €{printedTotal && <> · Total impreso: {printedTotal} €</>}
+        <button type="button" className="btn btn-secondary" onClick={onAddLine}>
+          Añadir línea
+        </button>{' '}
+        {hasLines && (
+          <button type="button" className="btn btn-ghost" onClick={onClearLines}>
+            Guardar sin desglose
+          </button>
+        )}
       </p>
+
+      {hasLines && (
+        <p>
+          Suma de las líneas: {linesTotal.toFixed(2)} €{printedTotal && <> · Total impreso: {printedTotal} €</>}
+        </p>
+      )}
       {totalsMismatch && <p role="alert">La suma de las líneas no coincide con el total impreso — revisa antes de confirmar.</p>}
     </>
   );

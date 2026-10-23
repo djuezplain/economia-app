@@ -235,7 +235,7 @@ export function ProductDetailPage() {
                   Precio mínimo / medio / máximo: {stats.minPrice.toFixed(2)} € / {stats.avgPrice.toFixed(2)} € / {stats.maxPrice.toFixed(2)} €
                 </li>
                 <li>
-                  Supermercado más barato de media: {stats.cheapestSupermarket.name} ({stats.cheapestSupermarket.avgPrice.toFixed(2)} €)
+                  Comercio más barato de media: {stats.cheapestSupermarket.name} ({stats.cheapestSupermarket.avgPrice.toFixed(2)} €)
                 </li>
                 <li>
                   Gasto total: {stats.totalSpent.toFixed(2)} € en {stats.purchaseCount} compra{stats.purchaseCount === 1 ? '' : 's'}
@@ -272,7 +272,7 @@ export function ProductDetailPage() {
             </>
           )}
 
-          <h2>{showHistory ? 'Historial de precios' : 'Precio por supermercado'}</h2>
+          <h2>{showHistory ? 'Historial de precios' : 'Precio por comercio'}</h2>
           {prices && prices.length > 0 && (
             <button type="button" className="btn btn-secondary" onClick={() => setShowHistory((current) => !current)}>
               {showHistory ? 'Ver solo el precio más reciente' : 'Historial'}
@@ -281,10 +281,10 @@ export function ProductDetailPage() {
           {prices && prices.length === 0 && <p>Todavía no tienes ningún ticket con este producto.</p>}
           {visiblePrices && visiblePrices.length > 0 && (
             <table className="table">
-              <caption>{showHistory ? 'Historial de precios' : 'Precio más reciente por supermercado'}</caption>
+              <caption>{showHistory ? 'Historial de precios' : 'Precio más reciente por comercio'}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Supermercado</th>
+                  <th scope="col">Comercio</th>
                   <th scope="col">Fecha</th>
                   <th scope="col">Precio/unidad</th>
                   <th scope="col">Unidad</th>

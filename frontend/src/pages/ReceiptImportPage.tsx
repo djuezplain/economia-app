@@ -4,12 +4,12 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { confirmReceiptImport, previewReceiptImport } from '../api/receipt-import';
-import type { ConfirmImportPayload, ConfirmReceiptLine, ReceiptPreview } from '../api/receipt-import';
+import type { ConfirmImportPayload, ReceiptPreview } from '../api/receipt-import';
 import { listSupermarkets, searchProducts } from '../api/groceries';
 import type { Product, Supermarket } from '../api/groceries';
 import { ApiError } from '../api/client';
 import { ReceiptFieldsEditor } from '../components/ReceiptFieldsEditor';
-import { NEW_OPTION_VALUE, newLineKey } from '../components/receipt-line.types';
+import { canSaveReceipt, NEW_OPTION_VALUE, newLineKey, toConfirmLines } from '../components/receipt-line.types';
 import { describeDocument } from '../components/ReceiptDocumentSection';
 import { ACCEPTED_DOCUMENTS, prepareUpload } from './receipt-upload';
 import type { EditableLine } from '../components/receipt-line.types';
@@ -145,16 +145,7 @@ export function ReceiptImportPage() {
         supermarket: supermarketId ? { id: supermarketId } : { name: supermarketName },
         date,
         printedTotal: printedTotal || undefined,
-        lines: lines.map(
-          (line): ConfirmReceiptLine => ({
-            description: line.description,
-            quantity: line.quantity,
-            unit: line.unit,
-            pricePerUnit: line.pricePerUnit,
-            amount: line.amount,
-            product: line.productId ? { id: line.productId } : { name: line.productName },
-          }),
-        ),
+        lines: toConfirmLines(lines),
       };
       const result = await confirmReceiptImport(payload);
       setConfirmedReceiptId(result.receiptId);
@@ -198,9 +189,11 @@ export function ReceiptImportPage() {
     <main>
       <h1>Importar ticket</h1>
       <p>
-        Sube la foto de un ticket de supermercado para reconocer sus productos y precios automáticamente. Antes de
-        guardar nada podrás revisar y corregir cada línea — el reconocimiento automático puede fallar, especialmente
-        en los nombres de producto y en el total impreso.
+        Sube la foto o el PDF de un ticket o una factura, de cualquier comercio, para reconocer automáticamente la
+        fecha, el comercio, el total y, si los hay, sus productos y precios. Antes de guardar nada podrás revisar y
+        corregir cada dato — el reconocimiento automático puede fallar, especialmente en los nombres de producto y en
+        el total impreso. Si no te interesa el desglose (una factura de la luz, por ejemplo), puedes guardarlo solo con
+        el total. La foto o el PDF se guarda junto con el ticket.
       </p>
 
       <section>
@@ -250,11 +243,12 @@ export function ReceiptImportPage() {
             onUpdateLine={updateLine}
             onRemoveLine={removeLine}
             onAddLine={addLine}
+            onClearLines={() => setLines([])}
           />
 
           {confirmError && <p role="alert">{confirmError}</p>}
 
-          <button type="button" className="btn btn-primary" disabled={isConfirming || lines.length === 0} onClick={() => void handleConfirm()}>
+          <button type="button" className="btn btn-primary" disabled={isConfirming || !canSaveReceipt(lines, printedTotal)} onClick={() => void handleConfirm()}>
             {isConfirming ? 'Guardando…' : 'Confirmar'}
           </button>
         </section>

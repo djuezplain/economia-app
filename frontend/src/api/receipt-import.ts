@@ -41,7 +41,8 @@ export interface ConfirmReceiptLine {
   unit: ReceiptUnit;
   pricePerUnit: string;
   amount: string;
-  product: EntityRef;
+  /** Spec 048 H2 criterio 4: `null` = sin producto (no entra en la comparativa). */
+  product: EntityRef | null;
 }
 
 export interface ConfirmReceiptPayload {

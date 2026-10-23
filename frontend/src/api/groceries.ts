@@ -40,6 +40,8 @@ export interface ReceiptSummary {
   printedTotal: string | null;
   /** Spec 040, plan.md §3: suma real de las líneas — el importe usado para filtrar, no `printedTotal` (puede ser `null`). */
   linesTotal: string;
+  /** Spec 048: el importe del ticket (suma de líneas o, sin líneas, el total impreso). */
+  total: string | null;
   /** Spec 048 H1: el documento original (foto o PDF), o `null` si el ticket no tiene. */
   document: ReceiptDocumentInfo | null;
 }
@@ -79,8 +81,9 @@ export interface ReceiptLineDetail {
   unit: string;
   pricePerUnit: string;
   amount: string;
-  productId: string;
-  productName: string;
+  /** Spec 048 H2 criterio 4: `null` = línea sin producto. */
+  productId: string | null;
+  productName: string | null;
 }
 
 export interface ReceiptDetail extends ReceiptSummary {

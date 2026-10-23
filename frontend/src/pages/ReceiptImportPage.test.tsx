@@ -210,7 +210,7 @@ describe('ReceiptImportPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
     await screen.findByRole('heading', { name: '2. Revisar y corregir' });
 
-    await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 'Carrefour');
+    await userEvent.selectOptions(screen.getByLabelText('Comercio'), 'Carrefour');
     const chocolateRow = getDescriptionInput('CHOCOLATE CLASSIC').closest('tr')!;
     await userEvent.selectOptions(within(chocolateRow).getByLabelText('Producto'), 'Chocolate Classic');
 
@@ -272,6 +272,52 @@ describe('ReceiptImportPage', () => {
 
       expect(await screen.findByRole('alert')).toHaveTextContent('El documento ocupa más de 10 MB');
       expect(previewSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cualquier comercio (spec 048 H2)', () => {
+    async function reachPreview() {
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
+      await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
+      await screen.findByRole('heading', { name: '2. Revisar y corregir' });
+    }
+
+    it('"Guardar sin desglose" quita las líneas y exige el total; se guarda sin líneas', async () => {
+      vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue({ ...PREVIEW_DOS_LINEAS, printedTotal: null });
+      const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
+      await reachPreview();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar sin desglose' }));
+      expect(screen.queryAllByLabelText('Descripción')).toHaveLength(0);
+      expect(screen.getByText('Sin desglose: se guardará solo con la fecha, el comercio y el total.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+
+      await userEvent.type(screen.getByLabelText('Total (obligatorio sin desglose)'), '64.20');
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+      expect(confirmSpy).toHaveBeenCalledWith(expect.objectContaining({ lines: [], printedTotal: '64.20' }));
+    });
+
+    it('una línea con "— Sin producto —" se envía con product: null', async () => {
+      vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue(PREVIEW_DOS_LINEAS);
+      const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
+      await reachPreview();
+
+      const [firstProduct] = screen.getAllByLabelText('Producto');
+      await userEvent.selectOptions(firstProduct, '— Sin producto —');
+      expect(screen.getAllByLabelText('Nombre del nuevo producto')).toHaveLength(1);
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+      const sent = confirmSpy.mock.calls[0][0].lines;
+      expect(sent[0]).toMatchObject({ description: 'CHOCOLATE CLASSIC', product: null });
+      expect(sent[1]).toMatchObject({ description: 'NACHOS', product: { name: 'NACHOS' } });
+    });
+
+    it('habla de comercio, no de supermercado', async () => {
+      vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue(PREVIEW_DOS_LINEAS);
+      await reachPreview();
+      expect(screen.getByLabelText('Comercio')).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: '+ Nuevo comercio' })).toBeInTheDocument();
     });
   });
 });

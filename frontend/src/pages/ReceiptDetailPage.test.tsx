@@ -27,6 +27,7 @@ const RECEIPT: ReceiptDetail = {
   supermarketName: 'Mercadona',
   printedTotal: '1.30',
   linesTotal: '1.30',
+  total: '1.30',
   document: null,
   lines: [
     { id: 'l1', description: 'CHOCOLATE CLASSIC', quantity: '1', unit: 'unidad', pricePerUnit: '1.300', amount: '1.30', productId: 'p1', productName: 'Chocolate Classic' },
@@ -155,5 +156,32 @@ describe('ReceiptDetailPage', () => {
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(deleteSpy).not.toHaveBeenCalled();
+  });
+
+  describe('cualquier comercio (spec 048 H2)', () => {
+    const FACTURA: ReceiptDetail = { ...RECEIPT, supermarketName: 'Iberdrola', printedTotal: '64.20', linesTotal: '0.00', total: '64.20', lines: [] };
+
+    it('una factura sin desglose muestra su total y no pinta la tabla de líneas', async () => {
+      vi.spyOn(groceriesApi, 'getReceipt').mockResolvedValue(FACTURA);
+      renderPage();
+      expect(await screen.findByText(/Total: 64.20 €/)).toBeInTheDocument();
+      expect(screen.getByText('Sin desglose por líneas.')).toBeInTheDocument();
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    });
+
+    it('una línea sin producto se muestra como tal y se edita con "— Sin producto —" elegido', async () => {
+      const update = vi.spyOn(groceriesApi, 'updateReceipt').mockResolvedValue(RECEIPT);
+      vi.spyOn(groceriesApi, 'getReceipt').mockResolvedValue({
+        ...RECEIPT,
+        lines: [{ ...RECEIPT.lines[0], productId: null, productName: null }],
+      });
+      renderPage();
+      expect(await screen.findByText('Sin producto')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
+      expect(screen.getByLabelText('Producto')).toHaveValue('__sin-producto__');
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+      expect(update).toHaveBeenCalledWith('r1', expect.objectContaining({ lines: [expect.objectContaining({ product: null })] }));
+    });
   });
 });
