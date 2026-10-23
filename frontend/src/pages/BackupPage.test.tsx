@@ -62,7 +62,7 @@ describe('BackupPage', () => {
 
   it('sin sesión activa, pide iniciar sesión y no llama a ninguna API', async () => {
     vi.spyOn(authApi, 'refresh').mockRejectedValue(new ApiError(401, 'No hay sesión.'));
-    const exportSpy = vi.spyOn(usersApi, 'exportAccountData');
+    const exportSpy = vi.spyOn(usersApi, 'exportAccountArchive');
     const previewSpy = vi.spyOn(dataImportApi, 'previewDataImport');
 
     renderPage();
@@ -79,10 +79,13 @@ describe('BackupPage', () => {
       URL.revokeObjectURL = vi.fn();
     });
 
-    it('exporta los datos de la cuenta al pulsar el botón', async () => {
-      const exportSpy = vi
-        .spyOn(usersApi, 'exportAccountData')
-        .mockResolvedValue({ formatVersion: 1, exportedAt: '2026-01-01T00:00:00.000Z', profile: PROFILE, economicData: {} });
+    it('descarga la copia .zip de la cuenta al pulsar el botón (spec 048)', async () => {
+      const blob = new Blob(['PK'], { type: 'application/zip' });
+      const exportSpy = vi.spyOn(usersApi, 'exportAccountArchive').mockResolvedValue(blob);
+      const clicked: string[] = [];
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        clicked.push(this.download);
+      });
 
       renderPage();
       await screen.findByRole('heading', { name: 'Copia de seguridad' });
@@ -90,11 +93,14 @@ describe('BackupPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Exportar mis datos' }));
 
       await waitFor(() => expect(exportSpy).toHaveBeenCalled());
+      expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
+      expect(clicked).toEqual([expect.stringMatching(/^economia-app-datos-\d{4}-\d{2}-\d{2}\.zip$/)]);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      clickSpy.mockRestore();
     });
 
     it('si falla la exportación, muestra el error', async () => {
-      vi.spyOn(usersApi, 'exportAccountData').mockRejectedValue(new ApiError(500, 'Error de servidor.'));
+      vi.spyOn(usersApi, 'exportAccountArchive').mockRejectedValue(new ApiError(500, 'Error de servidor.'));
 
       renderPage();
       await userEvent.click(await screen.findByRole('button', { name: 'Exportar mis datos' }));
@@ -112,7 +118,7 @@ describe('BackupPage', () => {
       const confirmSpy = vi.spyOn(dataImportApi, 'confirmDataImport');
 
       renderPage();
-      await userEvent.upload(await screen.findByLabelText('Fichero .json'), buildJsonFile());
+      await userEvent.upload(await screen.findByLabelText('Fichero .zip o .json'), buildJsonFile());
 
       expect(await screen.findByRole('heading', { name: 'Vista previa' })).toBeInTheDocument();
       const table = screen.getByRole('table');
@@ -122,6 +128,41 @@ describe('BackupPage', () => {
 
       expect(previewSpy).toHaveBeenCalledWith(expect.any(File));
       expect(confirmSpy).not.toHaveBeenCalled();
+    });
+
+    it('acepta .zip y .json, y muestra las tablas nuevas en español con los documentos omitidos (spec 048)', async () => {
+      vi.spyOn(dataImportApi, 'previewDataImport').mockResolvedValue({
+        ...emptySummary(),
+        receipts: { total: 2, toImport: 2, alreadyExisting: 0 },
+        receiptDocuments: { total: 2, toImport: 1, alreadyExisting: 0, omitted: 1 },
+        shoppingLists: { total: 1, toImport: 1, alreadyExisting: 0 },
+      });
+
+      renderPage();
+      const input = await screen.findByLabelText('Fichero .zip o .json');
+      expect(input).toHaveAttribute('accept', '.zip,.json');
+      await userEvent.upload(input, new File(['PK'], 'copia.zip', { type: 'application/zip' }));
+
+      const table = await screen.findByRole('table');
+      expect(within(table).getByRole('columnheader', { name: 'Omitidos' })).toBeInTheDocument();
+      const documents = within(table).getByRole('row', { name: /Documentos de tickets/ });
+      expect(within(documents).getAllByRole('cell').map((c) => c.textContent)).toEqual(['Documentos de tickets', '1', '0', '1']);
+      expect(within(table).getByRole('row', { name: /Tickets y facturas/ })).toBeInTheDocument();
+      expect(within(table).getByRole('row', { name: /Listas de la compra/ })).toBeInTheDocument();
+      expect(screen.getByText(/sus tickets se importan igualmente, sin documento/)).toBeInTheDocument();
+    });
+
+    it('sin documentos omitidos no muestra la columna "Omitidos"', async () => {
+      vi.spyOn(dataImportApi, 'previewDataImport').mockResolvedValue({
+        ...emptySummary(),
+        receiptDocuments: { total: 1, toImport: 1, alreadyExisting: 0, omitted: 0 },
+      });
+
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Fichero .zip o .json'), new File(['PK'], 'copia.zip'));
+
+      const table = await screen.findByRole('table');
+      expect(within(table).queryByRole('columnheader', { name: 'Omitidos' })).not.toBeInTheDocument();
     });
 
     it('confirmar reenvía el mismo fichero y muestra el resultado final', async () => {
@@ -136,7 +177,7 @@ describe('BackupPage', () => {
       const file = buildJsonFile();
 
       renderPage();
-      await userEvent.upload(await screen.findByLabelText('Fichero .json'), file);
+      await userEvent.upload(await screen.findByLabelText('Fichero .zip o .json'), file);
       await screen.findByRole('heading', { name: 'Vista previa' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Confirmar importación' }));
@@ -151,7 +192,7 @@ describe('BackupPage', () => {
       );
 
       renderPage();
-      await userEvent.upload(await screen.findByLabelText('Fichero .json'), buildJsonFile());
+      await userEvent.upload(await screen.findByLabelText('Fichero .zip o .json'), buildJsonFile());
 
       expect(await screen.findByRole('alert')).toHaveTextContent('no es compatible');
       expect(screen.queryByRole('button', { name: 'Confirmar importación' })).not.toBeInTheDocument();
@@ -165,7 +206,7 @@ describe('BackupPage', () => {
       vi.spyOn(dataImportApi, 'confirmDataImport').mockRejectedValue(new ApiError(500, 'Error de servidor.'));
 
       renderPage();
-      await userEvent.upload(await screen.findByLabelText('Fichero .json'), buildJsonFile());
+      await userEvent.upload(await screen.findByLabelText('Fichero .zip o .json'), buildJsonFile());
       await screen.findByRole('heading', { name: 'Vista previa' });
 
       await userEvent.click(screen.getByRole('button', { name: 'Confirmar importación' }));

@@ -46,6 +46,15 @@ export function changePassword(input: ChangePasswordInput): Promise<MessageRespo
 
 // H8 (spec 001), criterio 1. Forma exacta del JSON del backend no importa
 // mucho aquí más allá de "es un objeto serializable": se descarga tal cual.
+/**
+ * Spec 048: la copia completa como `.zip` (`datos.json` y los documentos de
+ * los tickets). `exportAccountData` sigue existiendo como exportación de
+ * solo datos.
+ */
+export function exportAccountArchive(): Promise<Blob> {
+  return api.getBlob('/users/me/export/archive');
+}
+
 export function exportAccountData(): Promise<Record<string, unknown>> {
   return api.get<Record<string, unknown>>('/users/me/export');
 }
