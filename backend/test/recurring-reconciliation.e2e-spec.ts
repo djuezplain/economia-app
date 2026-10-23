@@ -1,0 +1,258 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import type { App } from 'supertest/types';
+import * as argon2 from 'argon2';
+import cookieParser from 'cookie-parser';
+import { Workbook } from 'exceljs';
+import { eq } from 'drizzle-orm';
+import { vi } from 'vitest';
+import { AppModule } from '../src/app.module.js';
+import { DB } from '../src/db/db.module.js';
+import type { Database } from '../src/db/db.module.js';
+import {
+  categories,
+  recurringOccurrenceResolutions,
+  recurringTransactions,
+  transactions,
+  users,
+} from '../src/db/schema/index.js';
+import { RateLimitGuard } from '../src/common/rate-limit.guard.js';
+import { RecurringReconciliationService } from '../src/recurring-transactions/recurring-reconciliation.service.js';
+
+/**
+ * Spec 049 H3 (conciliación de recibos recurrentes con movimientos
+ * importados). Igual que `import.e2e-spec.ts`: los Excel se construyen aquí
+ * con `exceljs`, nunca con el fichero real de Diego.
+ */
+
+const EXPENSE_COLS = { fecha: 8, tipo: 9, subtipo: 10, concepto: 11, tienda: 12, valor: 13 };
+
+interface ExpenseRow {
+  fecha: string;
+  concepto: string;
+  valor: number;
+  categoria?: string;
+  tienda?: string;
+}
+
+async function workbook(rows: ExpenseRow[]): Promise<Buffer> {
+  const wb = new Workbook();
+  wb.addWorksheet('Ingresos').getRow(1).values = ['A', 'B', 'C', 'D', 'E', 'F', 'Fecha', 'Tipo', 'Concepto', 'Valor', 'Mes'];
+  const sheet = wb.addWorksheet('Gastos');
+  sheet.getRow(1).values = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'Fecha', 'Tipo', 'Subtipo', 'Concepto', 'Tienda/Empresa', 'Valor', 'Mes'];
+  rows.forEach((row, i) => {
+    const r = sheet.getRow(i + 2);
+    r.getCell(EXPENSE_COLS.fecha).value = new Date(row.fecha);
+    r.getCell(EXPENSE_COLS.tipo).value = 'Recibo';
+    r.getCell(EXPENSE_COLS.subtipo).value = row.categoria ?? 'Vivienda';
+    r.getCell(EXPENSE_COLS.concepto).value = row.concepto;
+    r.getCell(EXPENSE_COLS.tienda).value = row.tienda ?? 'Banco';
+    r.getCell(EXPENSE_COLS.valor).value = row.valor;
+  });
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+describe('Conciliación de recibos recurrentes (e2e) — spec 049 H3', () => {
+  let app: INestApplication<App>;
+  let db: Database;
+  let rateLimitGuard: RateLimitGuard;
+  let reconciliation: RecurringReconciliationService;
+
+  const PASSWORD = 'Contraseña-Segura-123';
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    await app.init();
+    db = moduleFixture.get<Database>(DB);
+    rateLimitGuard = moduleFixture.get<RateLimitGuard>(RateLimitGuard);
+    reconciliation = moduleFixture.get(RecurringReconciliationService);
+  });
+
+  afterAll(async () => {
+    await db.delete(recurringTransactions);
+    await app.close();
+  });
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await db.delete(recurringTransactions);
+    await db.delete(transactions);
+    await db.delete(categories);
+    await db.delete(users);
+    rateLimitGuard.resetForTests();
+  });
+
+  async function createUser(email: string) {
+    const passwordHash = await argon2.hash(PASSWORD, { type: argon2.argon2id });
+    const [user] = await db.insert(users).values({ email, passwordHash, name: 'Usuario', status: 'ACTIVE' }).returning();
+    return user;
+  }
+
+  async function login(email: string) {
+    const res = await request(app.getHttpServer()).post('/auth/login').send({ email, password: PASSWORD }).expect(200);
+    return `Bearer ${res.body.accessToken as string}`;
+  }
+
+  /** Usuario con categoría "Vivienda" y una plantilla de alquiler de 800 € el día 1 de cada mes desde enero de 2026. */
+  async function setup(email = 'ana@example.com') {
+    const user = await createUser(email);
+    const [category] = await db.insert(categories).values({ userId: user.id, type: 'EXPENSE', name: 'Vivienda' }).returning();
+    const token = await login(email);
+    const res = await request(app.getHttpServer())
+      .post('/recurring-transactions')
+      .set('Authorization', token)
+      .send({ type: 'EXPENSE', categoryId: category.id, concept: 'Alquiler', amount: '800.00', frequency: 'MONTHLY', startDate: '2026-01-01' })
+      .expect(201);
+    return { user, category, token, template: res.body as { id: string } };
+  }
+
+  function importExcel(token: string, buffer: Buffer) {
+    return request(app.getHttpServer())
+      .post('/import/excel/confirm')
+      .set('Authorization', token)
+      .attach('file', buffer, 'movimientos.xlsx');
+  }
+
+  function resolutionsOf(templateId: string) {
+    return db.query.recurringOccurrenceResolutions.findMany({
+      where: eq(recurringOccurrenceResolutions.recurringId, templateId),
+    });
+  }
+
+  function movementsOf(userId: string) {
+    return db.query.transactions.findMany({ where: eq(transactions.userId, userId) });
+  }
+
+  describe('al importar (T4.1)', () => {
+    it('un único cargo que encaja concilia la ocurrencia sin crear ningún movimiento más', async () => {
+      const { user, token, template } = await setup();
+      const res = await importExcel(token, await workbook([{ fecha: '2026-10-02', concepto: 'RECIBO ALQUILER OCT', valor: 800 }])).expect(201);
+
+      expect(res.body.reconciledCount).toBe(1);
+      const movements = await movementsOf(user.id);
+      expect(movements).toHaveLength(1);
+      expect(await resolutionsOf(template.id)).toEqual([
+        expect.objectContaining({
+          occurrenceDate: '2026-10-01',
+          status: 'RECONCILED',
+          transactionId: movements[0].id,
+          reconciledAutomatically: true,
+        }),
+      ]);
+    });
+
+    it('la ocurrencia conciliada sale como RECONCILED y ya no como pendiente', async () => {
+      const { token } = await setup();
+      await importExcel(token, await workbook([{ fecha: '2026-10-02', concepto: 'RECIBO ALQUILER OCT', valor: 800 }])).expect(201);
+      const res = await request(app.getHttpServer())
+        .get('/recurring-transactions/occurrences?from=2026-10-01&to=2026-10-01')
+        .set('Authorization', token)
+        .expect(200);
+      expect(res.body[0]).toMatchObject({ status: 'RECONCILED' });
+    });
+
+    it('dos cargos posibles para la misma ocurrencia → no concilia ninguno', async () => {
+      const { token, template } = await setup();
+      const res = await importExcel(
+        token,
+        await workbook([
+          { fecha: '2026-10-02', concepto: 'RECIBO ALQUILER OCT', valor: 800 },
+          { fecha: '2026-09-29', concepto: 'TRANSFERENCIA PISO', valor: 800 },
+        ]),
+      ).expect(201);
+      expect(res.body.reconciledCount).toBe(0);
+      expect(await resolutionsOf(template.id)).toEqual([]);
+    });
+
+    it('si ya había un movimiento registrado a mano que encaja, no concilia solo', async () => {
+      const { user, category, token, template } = await setup();
+      await db.insert(transactions).values({ userId: user.id, type: 'EXPENSE', date: '2026-10-01', categoryId: category.id, concept: 'Alquiler a mano', amount: '800.00' });
+      const res = await importExcel(token, await workbook([{ fecha: '2026-10-02', concepto: 'RECIBO ALQUILER OCT', valor: 800 }])).expect(201);
+      expect(res.body.reconciledCount).toBe(0);
+      expect(await resolutionsOf(template.id)).toEqual([]);
+    });
+
+    it('sin candidatos (otro importe, otra categoría o fuera de la ventana) no concilia', async () => {
+      const { token, template } = await setup();
+      const res = await importExcel(
+        token,
+        await workbook([
+          { fecha: '2026-10-02', concepto: 'OTRO IMPORTE', valor: 799.99 },
+          { fecha: '2026-10-02', concepto: 'OTRA CATEGORÍA', valor: 800, categoria: 'Ocio' },
+          { fecha: '2026-10-07', concepto: 'FUERA DE VENTANA', valor: 800 },
+        ]),
+      ).expect(201);
+      expect(res.body.reconciledCount).toBe(0);
+      expect(await resolutionsOf(template.id)).toEqual([]);
+    });
+
+    it('sin plantillas, la importación funciona como antes y devuelve reconciledCount 0', async () => {
+      const user = await createUser('sin@example.com');
+      await db.insert(categories).values({ userId: user.id, type: 'EXPENSE', name: 'Vivienda' });
+      const token = await login(user.email);
+      const res = await importExcel(token, await workbook([{ fecha: '2026-10-02', concepto: 'Cualquier cosa', valor: 10 }])).expect(201);
+      expect(res.body).toMatchObject({ reconciledCount: 0, expense: { importedCount: 1 } });
+    });
+
+    it('reimportar el mismo fichero no vuelve a conciliar ni duplica nada', async () => {
+      const { user, token, template } = await setup();
+      const buffer = await workbook([{ fecha: '2026-10-02', concepto: 'RECIBO ALQUILER OCT', valor: 800 }]);
+      await importExcel(token, buffer).expect(201);
+      const again = await importExcel(token, buffer).expect(201);
+
+      expect(again.body).toMatchObject({ reconciledCount: 0, expense: { importedCount: 0, skippedDuplicateCount: 1 } });
+      expect(await movementsOf(user.id)).toHaveLength(1);
+      expect(await resolutionsOf(template.id)).toHaveLength(1);
+    });
+
+    it('una plantilla pausada no se concilia', async () => {
+      const { token, template } = await setup();
+      await request(app.getHttpServer()).patch(`/recurring-transactions/${template.id}`).set('Authorization', token).send({ active: false }).expect(200);
+      const res = await importExcel(token, await workbook([{ fecha: '2026-10-02', concepto: 'RECIBO ALQUILER OCT', valor: 800 }])).expect(201);
+      expect(res.body.reconciledCount).toBe(0);
+    });
+
+    it('un recibo variable concilia dentro del margen sobre la estimación', async () => {
+      const { user, category, token } = await setup();
+      const luz = await request(app.getHttpServer())
+        .post('/recurring-transactions')
+        .set('Authorization', token)
+        .send({ type: 'EXPENSE', categoryId: category.id, concept: 'Luz', amount: '50.00', frequency: 'MONTHLY', startDate: '2026-01-15', variableAmount: true })
+        .expect(201);
+      // Desactiva el alquiler para que no interfiera con la categoría compartida.
+      await db.update(recurringTransactions).set({ active: false }).where(eq(recurringTransactions.concept, 'Alquiler'));
+
+      const res = await importExcel(token, await workbook([{ fecha: '2026-10-14', concepto: 'IBERDROLA', valor: 68.4 }])).expect(201);
+      expect(res.body.reconciledCount).toBe(1);
+      const [resolution] = await resolutionsOf(luz.body.id as string);
+      const [movement] = await movementsOf(user.id);
+      expect(resolution).toMatchObject({ occurrenceDate: '2026-10-15', status: 'RECONCILED', transactionId: movement.id });
+    });
+
+    it('si algo falla tras insertar, se deshacen juntos los movimientos y las conciliaciones', async () => {
+      const { user, token, template } = await setup();
+      const original = reconciliation.reconcileImported.bind(reconciliation);
+      vi.spyOn(reconciliation, 'reconcileImported').mockImplementation(async (...args) => {
+        await original(...args);
+        throw new Error('fallo simulado');
+      });
+
+      await importExcel(token, await workbook([{ fecha: '2026-10-02', concepto: 'RECIBO ALQUILER OCT', valor: 800 }])).expect(500);
+      expect(await movementsOf(user.id)).toHaveLength(0);
+      expect(await resolutionsOf(template.id)).toEqual([]);
+    });
+
+    it('aislamiento: los movimientos importados de un usuario no concilian plantillas de otro', async () => {
+      const ana = await setup('ana@example.com');
+      const bea = await setup('bea@example.com');
+      const res = await importExcel(bea.token, await workbook([{ fecha: '2026-10-02', concepto: 'RECIBO ALQUILER OCT', valor: 800 }])).expect(201);
+      expect(res.body.reconciledCount).toBe(1);
+      expect(await resolutionsOf(ana.template.id)).toEqual([]);
+      expect(await resolutionsOf(bea.template.id)).toHaveLength(1);
+    });
+  });
+});

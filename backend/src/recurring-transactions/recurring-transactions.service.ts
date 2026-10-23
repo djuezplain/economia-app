@@ -263,6 +263,10 @@ export class RecurringTransactionsService {
     if (existing?.status === 'CONFIRMED') {
       throw new ConflictException('Esta ocurrencia ya estaba confirmada.');
     }
+    // Spec 049: tampoco se omite una ya conciliada con un movimiento real.
+    if (existing?.status === 'RECONCILED') {
+      throw new ConflictException('Esta ocurrencia ya estaba conciliada con un movimiento.');
+    }
   }
 
   private findResolution(recurringId: string, date: string) {
@@ -274,7 +278,8 @@ export class RecurringTransactionsService {
     });
   }
 
-  private assertIsOccurrence(template: RecurringTransaction, date: string): void {
+  /** Público para `RecurringReconciliationService` (spec 049). */
+  assertIsOccurrence(template: RecurringTransaction, date: string): void {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || occurrencesBetween(template, date, date).length !== 1) {
       throw new BadRequestException('Esa fecha no es una ocurrencia de este movimiento recurrente.');
     }
@@ -286,7 +291,8 @@ export class RecurringTransactionsService {
     }
   }
 
-  private async findOwnOrThrow(userId: string, id: string): Promise<RecurringTransaction> {
+  /** Público para `RecurringReconciliationService` (spec 049). 404 si no existe o es de otro usuario. */
+  async findOwnOrThrow(userId: string, id: string): Promise<RecurringTransaction> {
     const template = await this.db.query.recurringTransactions.findFirst({
       where: and(eq(recurringTransactions.id, id), eq(recurringTransactions.userId, userId)),
     });

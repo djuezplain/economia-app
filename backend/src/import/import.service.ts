@@ -5,6 +5,7 @@ import type { Database } from '../db/db.module.js';
 import { categories, transactions } from '../db/schema/index.js';
 import type { Category } from '../categories/categories.service.js';
 import type { Transaction } from '../transactions/transactions.service.js';
+import { RecurringReconciliationService } from '../recurring-transactions/recurring-reconciliation.service.js';
 import {
   InvalidWorkbookError,
   normalizeCategoryName,
@@ -35,6 +36,8 @@ export interface ImportConfirmResult {
   income: { importedCount: number; invalid: InvalidRow[]; skippedDuplicateCount: number; updatedAmountCount: number };
   expense: { importedCount: number; invalid: InvalidRow[]; skippedDuplicateCount: number; updatedAmountCount: number };
   categoriesCreated: string[];
+  /** Spec 049 H3: ocurrencias de recibos recurrentes conciliadas con movimientos de esta importación. */
+  reconciledCount: number;
 }
 
 type MovementType = Category['type'];
@@ -79,7 +82,10 @@ interface ClassifiedRows {
  */
 @Injectable()
 export class ImportService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly reconciliation: RecurringReconciliationService,
+  ) {}
 
   async preview(userId: string, buffer: Buffer): Promise<ImportPreviewResult> {
     const workbook = await this.parseOrThrow(buffer);
@@ -180,8 +186,20 @@ export class ImportService {
           paymentMethod: row.paymentMethod,
         }));
 
-      if (incomeValues.length > 0) await tx.insert(transactions).values(incomeValues);
-      if (expenseValues.length > 0) await tx.insert(transactions).values(expenseValues);
+      const insertedColumns = {
+        id: transactions.id,
+        type: transactions.type,
+        categoryId: transactions.categoryId,
+        date: transactions.date,
+        amount: transactions.amount,
+      };
+      const inserted = [
+        ...(incomeValues.length > 0 ? await tx.insert(transactions).values(incomeValues).returning(insertedColumns) : []),
+        ...(expenseValues.length > 0 ? await tx.insert(transactions).values(expenseValues).returning(insertedColumns) : []),
+      ];
+      // Spec 049 plan.md §3.3: dentro de la misma transacción, para que una
+      // importación y sus conciliaciones se confirmen o se deshagan juntas.
+      const reconciledCount = await this.reconciliation.reconcileImported(tx, userId, inserted);
 
       return {
         income: {
@@ -197,6 +215,7 @@ export class ImportService {
           updatedAmountCount: classified.amountUpdateExpense.length,
         },
         categoriesCreated: Array.from(classified.missingCategories.values()),
+        reconciledCount,
       };
     });
   }
