@@ -14,6 +14,8 @@ import {
   bankAccounts,
   categories,
   emailTokens,
+  fundSales,
+  funds,
   oauthAccounts,
   products,
   receiptDocuments,
@@ -176,6 +178,21 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       expect(res.body.economicData.stockSales).toMatchObject([{ stockId: stock.id, shareCount: '2.00000000' }]);
       expect(res.body.economicData.stockValuations).toMatchObject([{ stockId: stock.id, pricePerShare: '7.00' }]);
       expect(res.body.economicData.stockDividends).toMatchObject([{ stockId: stock.id, netAmount: '10.00' }]);
+    });
+    it('incluye las ventas de fondos, solo las propias (spec 050 H2)', async () => {
+      const owner = await createActiveUser('exportar-ventas-fondos@example.com');
+      const other = await createActiveUser('exportar-ventas-fondos-otro@example.com');
+      const [fund] = await db.insert(funds).values({ userId: owner.id, custodyBank: 'Banco', fund: 'Indexado' }).returning();
+      await db.insert(fundSales).values({ fundId: fund.id, shareCount: '3', salePrice: '12.5', date: '2026-05-01' });
+      const [otherFund] = await db.insert(funds).values({ userId: other.id, custodyBank: 'Banco', fund: 'Ajeno' }).returning();
+      await db.insert(fundSales).values({ fundId: otherFund.id, shareCount: '1', salePrice: '1', date: '2026-05-01' });
+
+      const res = await request(app.getHttpServer())
+        .get('/users/me/export')
+        .set('Authorization', `Bearer ${await login(owner.email)}`)
+        .expect(200);
+
+      expect(res.body.economicData.fundSales).toMatchObject([{ fundId: fund.id, shareCount: '3.00000000', date: '2026-05-01' }]);
     });
   });
 
