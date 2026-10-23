@@ -94,6 +94,51 @@ describe('detectPrintedTotal', () => {
   });
 });
 
+// Spec 048 H2 criterio 1 / plan.md §2: fechas y totales de facturas y de
+// tickets que no son de supermercado. Los casos de arriba no cambian.
+describe('detectDate — otros formatos (spec 048)', () => {
+  it('acepta guiones y puntos como separador', () => {
+    expect(detectDate('Fecha: 15-10-2026')).toBe('2026-10-15');
+    expect(detectDate('Fecha factura 03.09.2026')).toBe('2026-09-03');
+  });
+
+  it('acepta años de 2 cifras (siglo XXI)', () => {
+    expect(detectDate('TICKET 7/1/26 12:03')).toBe('2026-01-07');
+  });
+
+  it('acepta la fecha escrita con el nombre del mes', () => {
+    expect(detectDate('Fecha de emisión: 15 de octubre de 2026')).toBe('2026-10-15');
+    expect(detectDate('Emitida el 1 Sept. 2026')).toBe('2026-09-01');
+    expect(detectDate('PERIODO 2 dic 2026')).toBe('2026-12-02');
+  });
+
+  it('se queda con la primera fecha válida del texto', () => {
+    expect(detectDate('Factura 12 de marzo de 2026\nVencimiento 30/03/2026')).toBe('2026-03-12');
+    expect(detectDate('Fecha 30/03/2026\nEmitida 12 de marzo de 2026')).toBe('2026-03-30');
+  });
+
+  it('descarta números que parecen fechas pero no lo son', () => {
+    expect(detectDate('Tel. 96-345-12\nREF 45.13.2026')).toBeNull();
+    expect(detectDate('CIF 12/34/5678')).toBeNull();
+  });
+});
+
+describe('detectPrintedTotal — facturas (spec 048)', () => {
+  it('ignora "Subtotal", "Base imponible" y las líneas de IVA antes del total', () => {
+    const invoice = ['Subtotal 50,00', 'Base imponible 50,00', 'IVA 21% 10,50', 'Total IVA 10,50', 'TOTAL FACTURA 60,50'].join('\n');
+    expect(detectPrintedTotal(invoice)).toBe('60.50');
+  });
+
+  it('no descarta un total "IVA incluido"', () => {
+    expect(detectPrintedTotal('TOTAL (IVA INCLUIDO) 23,40')).toBe('23.40');
+  });
+
+  it('acepta "Total a pagar" e "Importe total"', () => {
+    expect(detectPrintedTotal('Total a pagar: 64,20 €')).toBe('64.20');
+    expect(detectPrintedTotal('Importe total 18.95')).toBe('18.95');
+  });
+});
+
 describe('guessSupermarketName', () => {
   it('sugiere la primera línea no vacía del ticket', () => {
     expect(guessSupermarketName(SAMPLE_RECEIPT_TEXT)).toBe('MERCADONA, S.A.');
