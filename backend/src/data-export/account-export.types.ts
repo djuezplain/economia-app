@@ -23,6 +23,7 @@ import type {
   receiptLines,
   shoppingLists,
   shoppingListItems,
+  receiptDocuments,
   recurringTransactions,
   savingsGoals,
   stockDividends,
@@ -76,6 +77,12 @@ export type ReceiptRow = typeof receipts.$inferSelect;
 export type ReceiptLineRow = typeof receiptLines.$inferSelect;
 export type ShoppingListRow = typeof shoppingLists.$inferSelect;
 export type ShoppingListItemRow = typeof shoppingListItems.$inferSelect;
+/**
+ * Spec 048 H1 criterio 6 (plan.md §3.4): metadatos de un documento, nunca el
+ * contenido. El binario va en el `.zip`, en la ruta `file`; en una
+ * exportación solo `.json` no hay forma de restaurarlo y se omite al importar.
+ */
+export type ReceiptDocumentMeta = Omit<typeof receiptDocuments.$inferSelect, 'content'> & { file: string };
 
 /**
  * Spec 032, plan.md §1. Todo el dato económico del usuario, en 24 arrays
@@ -128,6 +135,7 @@ export interface EconomicData {
   products: ProductRow[];
   receipts: ReceiptRow[];
   receiptLines: ReceiptLineRow[];
+  receiptDocuments: ReceiptDocumentMeta[];
   shoppingLists: ShoppingListRow[];
   shoppingListItems: ShoppingListItemRow[];
 }
@@ -179,6 +187,7 @@ export const ECONOMIC_DATA_TABLE_ORDER: (keyof EconomicData)[] = [
   'products',
   'receipts',
   'receiptLines',
+  'receiptDocuments',
   'shoppingLists',
   'shoppingListItems',
 ];
@@ -192,6 +201,7 @@ export const OPTIONAL_ECONOMIC_DATA_KEYS: (keyof EconomicData)[] = [
   'products',
   'receipts',
   'receiptLines',
+  'receiptDocuments',
   'shoppingLists',
   'shoppingListItems',
 ];

@@ -31,3 +31,8 @@ export function detectDocumentType(buffer: Buffer): DocumentMimeType | null {
 export function extensionFor(mimeType: DocumentMimeType): string {
   return { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'application/pdf': 'pdf' }[mimeType];
 }
+
+/** Spec 048 plan.md §3.4: ruta de un documento dentro del `.zip` de exportación. */
+export function archivePathFor(documentId: string, mimeType: string): string {
+  return `documentos/${documentId}.${extensionFor(mimeType as DocumentMimeType)}`;
+}

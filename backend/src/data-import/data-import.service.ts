@@ -52,7 +52,13 @@ interface TableEntry {
 
 /** Plan.md §3.2 — mismo orden que `ECONOMIC_DATA_TABLE_ORDER`; aquí solo se asocia cada clave con su tabla real. */
 /** Tablas con su propia fusión (comprobación de propiedad de las filas a las que apuntan), fuera de `TABLES`. */
-type CustomMergeKey = 'recurringOccurrenceResolutions' | 'recurringReconciliationDismissals' | 'receipts' | 'receiptLines' | 'shoppingListItems';
+type CustomMergeKey =
+  | 'recurringOccurrenceResolutions'
+  | 'recurringReconciliationDismissals'
+  | 'receipts'
+  | 'receiptLines'
+  | 'receiptDocuments'
+  | 'shoppingListItems';
 
 const TABLES: Record<Exclude<keyof EconomicData, CustomMergeKey>, TableEntry> = {
   categories: { table: categories, hasUserId: true },
@@ -265,6 +271,12 @@ export class DataImportService {
       }
       if (key === 'receiptLines') {
         summary[key] = await this.mergeReceiptLines(executor, file, userId, write);
+        continue;
+      }
+      if (key === 'receiptDocuments') {
+        // Spec 048: sin el `.zip` no hay contenido que restaurar (lo amplía T6.3).
+        const rows = file.economicData.receiptDocuments as unknown as Row[];
+        summary[key] = { total: rows.length, toImport: 0, alreadyExisting: 0 };
         continue;
       }
       if (key === 'shoppingListItems') {

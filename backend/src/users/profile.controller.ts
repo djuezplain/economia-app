@@ -1,8 +1,10 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import { pipeline } from 'node:stream/promises';
 import { AuthGuard } from '../auth/guards/auth.guard.js';
 import type { RequestUser } from '../auth/guards/require-active-user.guard.js';
 import { UsersService } from './users.service.js';
+import { AccountArchiveService, archiveFilename } from './account-archive.service.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { DeleteAccountDto } from './dto/delete-account.dto.js';
@@ -19,7 +21,10 @@ import { DeleteAccountDto } from './dto/delete-account.dto.js';
 @Controller('users/me')
 @UseGuards(AuthGuard)
 export class ProfileController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly archive: AccountArchiveService,
+  ) {}
 
   @Get()
   getProfile(@Req() req: Request & { user: RequestUser }) {
@@ -40,6 +45,22 @@ export class ProfileController {
   @Get('export')
   exportData(@Req() req: Request & { user: RequestUser }) {
     return this.users.exportData(req.user.id);
+  }
+
+  /**
+   * Spec 048 (plan.md §3.4): la copia de seguridad completa, en `.zip`, con
+   * los documentos de los tickets. `GET /users/me/export` se mantiene como
+   * exportación de solo datos.
+   */
+  @Get('export/archive')
+  async exportArchive(@Req() req: Request & { user: RequestUser }, @Res() res: Response): Promise<void> {
+    const { stream } = await this.archive.createArchive(req.user.id);
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${archiveFilename()}"`,
+      'Cache-Control': 'private, no-store',
+    });
+    await pipeline(stream, res);
   }
 
   @Delete()
