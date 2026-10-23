@@ -225,6 +225,13 @@
       "when": 1792233159940,
       "tag": "0031_add_recurring_transactions",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792750600181,
+      "tag": "0032_recurring_reminders_reconciliation",
+      "breakpoints": true
     }
   ]
 }
