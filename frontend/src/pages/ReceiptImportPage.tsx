@@ -197,7 +197,7 @@ export function ReceiptImportPage() {
       </p>
 
       <section>
-        <h2>1. Subir imagen</h2>
+        <h2>1. Subir la foto o el PDF</h2>
         <form onSubmit={(e) => void handlePreview(e)}>
           <label htmlFor="receipt-import-file">Foto o PDF del ticket</label>
           {/* Sin `capture`: con ese atributo, algunos navegadores móviles

@@ -1,6 +1,6 @@
 # Tasks — Spec 048 (tickets y facturas: documento original, cualquier comercio y enlace con el movimiento)
 
-**Fase:** 3 de 4 (aprobado)
+**Fase:** 4 de 4 (implementada)
 
 Orden de plan.md §10. Cada tarea es como mucho un commit (constitution §4) y no se da por hecha si rompe un test existente.
 
@@ -56,4 +56,27 @@ Orden de plan.md §10. Cada tarea es como mucho un commit (constitution §4) y n
 
 ## Checklist de cierre — spec 048
 
-*(se rellena al terminar cada tarea)*
+- [x] **T0.1** — `yazl`, `yauzl` y `heic-convert` con sus tipos (declaración propia para `heic-convert` en `src/types/`). `npm audit` sin avisos nuevos.
+- [x] **T0.2** — Comprobado en `linux/arm64` emulado. Docker Hub no es accesible desde este entorno, así que se emuló con `qemu-user-static`, las librerías `arm64` de Debian y el Node `linux-arm64` de npm: `.zip` creado con `yazl` y leído con `yauzl`, y un HEIC convertido a JPEG con `heic-convert`. La conversión de un HEIC de 12 MP cabe de sobra en la memoria del contenedor del backend.
+- [x] **T1.1** — Migración `0033_receipt_documents_and_links`, aplicada sobre una base con tickets, líneas y listas: no se pierde nada y los índices únicos parciales se comportan como se espera. **Desviación:** al hacer `receipt_lines.product_id` nullable hubo que adaptar ya en esta tarea `ProductsService` y `ReceiptsService.getById` (previsto en T4.1), porque si no el código dejaba de compilar.
+- [x] **T2.1–T2.4** — `detectDocumentType`, `receiptTotal`, `merchantSimilarity`/`rankLinkCandidates` y los cambios de `detectDate`/`detectPrintedTotal`, con sus tests escritos antes. Los tests existentes del parseo con tickets reales de Mercadona y Lidl pasan sin tocarlos.
+- [x] **T3.1** — `ReceiptDocumentsService` y la purga de pendientes a las 4:00 de Madrid. **Desviación:** la conversión HEIC → JPEG se hace en un `worker_thread`, porque `heic-convert` es JavaScript síncrono y bloqueaba el bucle de eventos varios segundos en la Raspberry Pi.
+- [x] **T3.2** — Vista previa y confirmación con `documentId` en la misma transacción. El test de importación existente usaba una "imagen" falsa; ahora lleva una cabecera JPEG real, porque el tipo se detecta por los bytes.
+- [x] **T3.3** — OCR de PDF con `files:annotate`, con `fetch` simulado. **Pendiente para Diego:** probarlo con su clave de Vision y un PDF real.
+- [x] **T3.4** — Endpoints del documento, con cabeceras (`nosniff`, `no-store`, `Content-Disposition`), 400 en español con más de 10 MB (`DocumentTooLargeFilter`) y 404 para otro usuario.
+- [x] **T3.5** — `api.getBlob`, `prepareUpload` y la reducción con `canvas`, vista previa del documento al importar y sección "Documento" del detalle.
+- [x] **T4.1–T4.2** — Tickets sin líneas, líneas sin producto, `total` único (también para el filtro por importe de la spec 040), "Guardar sin desglose", "— Sin producto —", "Comercio" en toda la interfaz y el menú "Tickets y facturas". Las tablas siguen llamándose `supermarkets` (solo cambia el texto).
+- [x] **T5.1–T5.2** — Candidatos, enlazar, cambiar y quitar (409 si el movimiento ya tiene ticket; 400 con un ingreso), `receiptId` en los movimientos, sección "Movimiento" sin opción de crear y "🧾 ticket" / "Ticket enlazado: ver" en movimientos.
+- [x] **T6.1** — Tickets, comercios, productos y listas en la exportación (claves opcionales) e importación con comprobación de propiedad (`usableIds`). Cierra además el hueco de la spec 032: las listas de la compra no se exportaban.
+- [x] **T6.2** — `AccountArchiveService` y `GET /users/me/export/archive`, en streaming y leyendo un documento cada vez.
+- [x] **T6.3** — Importación de `.zip` y `.json` con `diskStorage`, límites (500 MB / 10 MB), lector `yauzl` con límites (2 GB descomprimidos, 100 000 entradas, tamaños validados) y SHA-256 por documento. Tests e2e: ida y vuelta en otra cuenta, SHA-256 manipulado, documento ausente o en un `.json`, `.zip` dañado o sin `datos.json`, ruta manipulada, tamaño declarado falso y borrado del temporal. **Desviaciones:** `multer` fijado a 2.2.0 (npm había dejado dos copias, 2.2.0 y 2.5.0); el e2e de `data-import` reinicia el `RateLimitGuard` en cada test, porque con los tests nuevos se superaba el límite de inicios de sesión.
+- [x] **T6.4** — Exportación programada a carpeta en `.zip` (escrita en un `.partial` y renombrada al terminar) y purga de `.zip` y `.json`; Drive con subida reanudable desde un temporal, con tests de la sesión, de un error al abrirla, de un error a mitad y de la falta de URL de subida.
+- [x] **T6.5** — Copia de seguridad: "Exportar" descarga el `.zip`, la importación acepta `.zip,.json`, etiquetas en español de las tablas nuevas y columna "Omitidos" solo cuando hay documentos omitidos.
+- [x] **T7.1** — Borrado de cuenta con datos en todas las tablas nuevas o ampliadas, incluido un documento pendiente; el pendiente de otra cuenta no se toca.
+- [x] **T7.2** — `deploy/README.md`: crecimiento esperado de la base de datos y de `backups/`, cómo vigilarlo, y que las copias son ahora `.zip`.
+- [x] **T7.3** — Cierre:
+  - Backend: 343 unitarios y 782 e2e en 58 ficheros, en serie, todos en verde; `tsconfig.build.json` y oxlint limpios.
+  - Frontend: 736 de 736, `tsc -b` limpio y oxlint sin avisos nuevos (los 12 que da ya están en `master`). Siguen siendo intermitentes `RegisterMovementPage` › "Cancelar edición" (ya anotado en las specs 047 y 049) y, alguna vez, `SyncStatusPanel` › "descartar un ítem fallido", que falla igual en `master`.
+  - Revisión visual con Chromium (Playwright), con un usuario de prueba en `economia_dev`, a 1280 px y 375 px, sin scroll horizontal: historial con totales y 📎, detalle con foto, líneas sin producto y movimiento enlazado, factura PDF sin desglose con dos candidatos ordenados por comercio, listado y edición de movimientos con el ticket, Copia de seguridad e importación. La importación se probó con el OCR simulado en el navegador: una foto de 3024×4032 (1,1 MB) se sube reducida a 2250×3000 (287 KB). Se cambió el título "1. Subir imagen" por "1. Subir la foto o el PDF".
+  - Spec contrastada historia por historia: H1 (criterios 1–8), H2 (1–5) y H3 (1–6) cubiertos. H1 criterio 7 no necesita cambios en `deploy/backup.sh`: los documentos están en la base de datos y entran en `pg_dump`.
+  - **Pendiente para Diego:** probar el OCR con su clave de Vision y una factura PDF real. La migración no necesita ninguna comprobación previa en producción: solo crea una tabla, añade una columna nueva y hace nullable `receipt_lines.product_id`.
