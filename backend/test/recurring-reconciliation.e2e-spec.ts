@@ -374,4 +374,161 @@ describe('Conciliación de recibos recurrentes (e2e) — spec 049 H3', () => {
       expect(await resolutionsOf(ana.template.id)).toEqual([]);
     });
   });
+
+  describe('Por conciliar: sugerencias, posibles duplicados y recientes (T4.3)', () => {
+    /** Primer día del mes actual: siempre dentro de los últimos 90 días y no posterior a hoy. */
+    function currentMonthStart(): string {
+      return `${new Date().toISOString().slice(0, 7)}-01`;
+    }
+    function plusDays(iso: string, days: number): string {
+      return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+    }
+
+    async function addMovement(userId: string, categoryId: string, date: string, amount: string, concept = 'Movimiento') {
+      const [t] = await db.insert(transactions).values({ userId, type: 'EXPENSE', date, categoryId, concept, amount }).returning();
+      return t;
+    }
+
+    async function overview(token: string) {
+      const res = await request(app.getHttpServer()).get('/recurring-transactions/reconciliation').set('Authorization', token).expect(200);
+      return res.body as {
+        suggestions: Array<{ occurrence: { recurringId: string; date: string; concept: string; expectedAmount: string }; candidates: Array<{ id: string }> }>;
+        possibleDuplicates: Array<{ recurringId: string; date: string; createdTransaction: { id: string }; candidates: Array<{ id: string }> }>;
+        recentlyReconciled: Array<{ recurringId: string; date: string; reconciledAutomatically: boolean; transaction: { id: string } | null }>;
+      };
+    }
+
+    function post(token: string, path: string, body: object = {}) {
+      return request(app.getHttpServer()).post(`/recurring-transactions${path}`).set('Authorization', token).send(body);
+    }
+
+    it('un movimiento registrado a mano que encaja sale como sugerencia, sin conciliarse solo', async () => {
+      const { user, category, token, template } = await setup();
+      const date = currentMonthStart();
+      const movement = await addMovement(user.id, category.id, plusDays(date, 1), '800.00');
+
+      const { suggestions } = await overview(token);
+      expect(suggestions).toEqual([
+        expect.objectContaining({
+          occurrence: expect.objectContaining({ recurringId: template.id, date, concept: 'Alquiler', expectedAmount: '800.00' }),
+          candidates: [expect.objectContaining({ id: movement.id })],
+        }),
+      ]);
+      expect(await resolutionsOf(template.id)).toEqual([]);
+    });
+
+    it('con dos candidatos, los sugiere ordenados (el más cercano en fecha primero)', async () => {
+      const { user, category, token } = await setup();
+      const date = currentMonthStart();
+      const lejos = await addMovement(user.id, category.id, plusDays(date, 4), '800.00');
+      const cerca = await addMovement(user.id, category.id, plusDays(date, 1), '800.00');
+      const { suggestions } = await overview(token);
+      expect(suggestions[0].candidates.map((c) => c.id)).toEqual([cerca.id, lejos.id]);
+    });
+
+    it('descartar el único candidato hace desaparecer la sugerencia', async () => {
+      const { user, category, token, template } = await setup();
+      const date = currentMonthStart();
+      const movement = await addMovement(user.id, category.id, date, '800.00');
+      await post(token, `/${template.id}/occurrences/${date}/dismiss`, { transactionId: movement.id }).expect(204);
+      await post(token, `/${template.id}/occurrences/${date}/dismiss`, { transactionId: movement.id }).expect(204);
+      expect((await overview(token)).suggestions).toEqual([]);
+    });
+
+    it('un confirmado con su cargo importado gemelo sale como posible duplicado, también con más de 90 días', async () => {
+      const { user, category, token, template } = await setup();
+      const created = await post(token, `/${template.id}/occurrences/2026-01-01/confirm`).expect(200);
+      const imported = await addMovement(user.id, category.id, '2026-01-02', '800.00', 'RECIBO ALQUILER ENE');
+
+      const { possibleDuplicates } = await overview(token);
+      expect(possibleDuplicates).toEqual([
+        expect.objectContaining({
+          recurringId: template.id,
+          date: '2026-01-01',
+          createdTransaction: expect.objectContaining({ id: created.body.id as string }),
+          candidates: [expect.objectContaining({ id: imported.id })],
+        }),
+      ]);
+    });
+
+    it('resolver el duplicado borra el movimiento creado y concilia con el importado, en una sola operación', async () => {
+      const { user, category, token, template } = await setup();
+      const created = await post(token, `/${template.id}/occurrences/2026-01-01/confirm`).expect(200);
+      const imported = await addMovement(user.id, category.id, '2026-01-02', '800.00', 'RECIBO ALQUILER ENE');
+
+      await post(token, `/${template.id}/occurrences/2026-01-01/resolve-duplicate`, { keepTransactionId: imported.id }).expect(204);
+
+      expect((await movementsOf(user.id)).map((t) => t.id)).toEqual([imported.id]);
+      expect(await resolutionsOf(template.id)).toEqual([
+        expect.objectContaining({ status: 'RECONCILED', transactionId: imported.id, reconciledAutomatically: false }),
+      ]);
+      expect((await overview(token)).possibleDuplicates).toEqual([]);
+      expect(created.body.id).not.toBe(imported.id);
+    });
+
+    it('resolve-duplicate: 400 si se conserva el propio creado, 409 si no está confirmada, 404 con un movimiento ajeno', async () => {
+      const { user, category, token, template } = await setup();
+      const created = await post(token, `/${template.id}/occurrences/2026-01-01/confirm`).expect(200);
+      const imported = await addMovement(user.id, category.id, '2026-02-02', '800.00');
+      const otro = await setup('otro@example.com');
+      const ajeno = await addMovement(otro.user.id, otro.category.id, '2026-01-02', '800.00');
+
+      await post(token, `/${template.id}/occurrences/2026-01-01/resolve-duplicate`, { keepTransactionId: created.body.id as string }).expect(400);
+      await post(token, `/${template.id}/occurrences/2026-02-01/resolve-duplicate`, { keepTransactionId: imported.id }).expect(409);
+      await post(token, `/${template.id}/occurrences/2026-01-01/resolve-duplicate`, { keepTransactionId: ajeno.id }).expect(404);
+      await post(otro.token, `/${template.id}/occurrences/2026-01-01/resolve-duplicate`, { keepTransactionId: ajeno.id }).expect(404);
+      expect(await movementsOf(user.id)).toHaveLength(2);
+    });
+
+    it('"no es un duplicado" (descartar) lo quita de la lista sin borrar nada', async () => {
+      const { user, category, token, template } = await setup();
+      await post(token, `/${template.id}/occurrences/2026-01-01/confirm`).expect(200);
+      const imported = await addMovement(user.id, category.id, '2026-01-02', '800.00');
+      await post(token, `/${template.id}/occurrences/2026-01-01/dismiss`, { transactionId: imported.id }).expect(204);
+      expect((await overview(token)).possibleDuplicates).toEqual([]);
+      expect(await movementsOf(user.id)).toHaveLength(2);
+    });
+
+    it('una plantilla pausada no genera sugerencias, pero sus posibles duplicados siguen saliendo', async () => {
+      const { user, category, token, template } = await setup();
+      await post(token, `/${template.id}/occurrences/2026-01-01/confirm`).expect(200);
+      await addMovement(user.id, category.id, '2026-01-02', '800.00');
+      await addMovement(user.id, category.id, currentMonthStart(), '800.00');
+      await request(app.getHttpServer()).patch(`/recurring-transactions/${template.id}`).set('Authorization', token).send({ active: false }).expect(200);
+
+      const result = await overview(token);
+      expect(result.suggestions).toEqual([]);
+      expect(result.possibleDuplicates).toHaveLength(1);
+    });
+
+    it('recientes: lista las conciliaciones (automáticas y manuales) con su movimiento; deshacer la quita', async () => {
+      const { user, category, token, template } = await setup();
+      await importExcel(token, await workbook([{ fecha: '2026-10-02', concepto: 'RECIBO ALQUILER OCT', valor: 800 }])).expect(201);
+      const manual = await addMovement(user.id, category.id, '2026-09-01', '800.00');
+      await post(token, `/${template.id}/occurrences/2026-09-01/reconcile`, { transactionId: manual.id }).expect(204);
+
+      const { recentlyReconciled } = await overview(token);
+      expect(recentlyReconciled.map((r) => [r.date, r.reconciledAutomatically])).toEqual(
+        expect.arrayContaining([
+          ['2026-10-01', true],
+          ['2026-09-01', false],
+        ]),
+      );
+      expect(recentlyReconciled.find((r) => r.date === '2026-09-01')?.transaction?.id).toBe(manual.id);
+
+      await request(app.getHttpServer()).delete(`/recurring-transactions/${template.id}/occurrences/2026-09-01/reconciliation`).set('Authorization', token).expect(204);
+      expect((await overview(token)).recentlyReconciled.map((r) => r.date)).toEqual(['2026-10-01']);
+    });
+
+    it('aislamiento: cada usuario solo ve lo suyo', async () => {
+      const ana = await setup('ana@example.com');
+      const bea = await setup('bea@example.com');
+      await post(ana.token, `/${ana.template.id}/occurrences/2026-01-01/confirm`).expect(200);
+      await addMovement(ana.user.id, ana.category.id, '2026-01-02', '800.00');
+      await addMovement(ana.user.id, ana.category.id, currentMonthStart(), '800.00');
+
+      expect(await overview(bea.token)).toEqual({ suggestions: [], possibleDuplicates: [], recentlyReconciled: [] });
+      expect((await overview(ana.token)).possibleDuplicates).toHaveLength(1);
+    });
+  });
 });

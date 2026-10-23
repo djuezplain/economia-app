@@ -22,7 +22,7 @@ import { CreateRecurringTransactionDto } from './dto/create-recurring-transactio
 import { UpdateRecurringTransactionDto } from './dto/update-recurring-transaction.dto.js';
 import { OccurrencesQueryDto } from './dto/occurrences-query.dto.js';
 import { ConfirmOccurrenceDto } from './dto/confirm-occurrence.dto.js';
-import { TransactionRefDto } from './dto/transaction-ref.dto.js';
+import { KeepTransactionDto, TransactionRefDto } from './dto/transaction-ref.dto.js';
 import { RecurringReconciliationService } from './recurring-reconciliation.service.js';
 
 /** Spec 047. Mismo guard que `/transactions`. */
@@ -43,6 +43,12 @@ export class RecurringTransactionsController {
   @Get('occurrences')
   occurrences(@Req() req: Request & { user: RequestUser }, @Query() query: OccurrencesQueryDto) {
     return this.recurring.occurrences(req.user.id, query.from, query.to);
+  }
+
+  // Spec 049 H3 criterios 3, 5, 8 y 9. Ruta fija, antes de `:id`.
+  @Get('reconciliation')
+  reconciliationOverview(@Req() req: Request & { user: RequestUser }) {
+    return this.reconciliation.overview(req.user.id);
   }
 
   @Post()
@@ -127,5 +133,16 @@ export class RecurringTransactionsController {
     @Body() dto: TransactionRefDto,
   ) {
     await this.reconciliation.dismiss(req.user.id, id, date, dto.transactionId);
+  }
+
+  @Post(':id/occurrences/:date/resolve-duplicate')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resolveDuplicate(
+    @Req() req: Request & { user: RequestUser },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('date') date: string,
+    @Body() dto: KeepTransactionDto,
+  ) {
+    await this.reconciliation.resolveDuplicate(req.user.id, id, date, dto.keepTransactionId);
   }
 }
