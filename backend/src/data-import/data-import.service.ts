@@ -24,7 +24,13 @@ import {
   recurringOccurrenceResolutions,
   recurringReconciliationDismissals,
   recurringTransactions,
+  products,
+  receiptLines,
+  receipts,
   savingsGoals,
+  shoppingListItems,
+  shoppingLists,
+  supermarkets,
   stockDividends,
   stockPurchases,
   stockSales,
@@ -45,7 +51,10 @@ interface TableEntry {
 }
 
 /** Plan.md §3.2 — mismo orden que `ECONOMIC_DATA_TABLE_ORDER`; aquí solo se asocia cada clave con su tabla real. */
-const TABLES: Record<Exclude<keyof EconomicData, 'recurringOccurrenceResolutions' | 'recurringReconciliationDismissals'>, TableEntry> = {
+/** Tablas con su propia fusión (comprobación de propiedad de las filas a las que apuntan), fuera de `TABLES`. */
+type CustomMergeKey = 'recurringOccurrenceResolutions' | 'recurringReconciliationDismissals' | 'receipts' | 'receiptLines' | 'shoppingListItems';
+
+const TABLES: Record<Exclude<keyof EconomicData, CustomMergeKey>, TableEntry> = {
   categories: { table: categories, hasUserId: true },
   transactions: { table: transactions, hasUserId: true },
   savingsGoals: { table: savingsGoals, hasUserId: true },
@@ -72,6 +81,10 @@ const TABLES: Record<Exclude<keyof EconomicData, 'recurringOccurrenceResolutions
   cashHoldings: { table: cashHoldings, hasUserId: true },
   cashBalances: { table: cashBalances },
   recurringTransactions: { table: recurringTransactions, hasUserId: true },
+  // Spec 048: catálogos y listas, tablas raíz con `userId` propio.
+  supermarkets: { table: supermarkets, hasUserId: true },
+  products: { table: products, hasUserId: true },
+  shoppingLists: { table: shoppingLists, hasUserId: true },
 };
 
 /** `db.transaction(async (tx) => ...)` sin anotar el tipo del callback (mismo criterio que `ImportService.importWorkbook`) infiere el tipo de `tx` — se reutiliza aquí para poder compartir la misma lógica entre `preview` (solo lectura, sin transacción) y `confirm`. */
@@ -246,6 +259,18 @@ export class DataImportService {
         summary[key] = await this.mergeDismissals(executor, file, userId, write);
         continue;
       }
+      if (key === 'receipts') {
+        summary[key] = await this.mergeReceipts(executor, file, userId, write);
+        continue;
+      }
+      if (key === 'receiptLines') {
+        summary[key] = await this.mergeReceiptLines(executor, file, userId, write);
+        continue;
+      }
+      if (key === 'shoppingListItems') {
+        summary[key] = await this.mergeShoppingListItems(executor, file, userId, write);
+        continue;
+      }
       summary[key] =
         key === 'categories'
           ? await this.mergeCategories(executor, rows, userId, write)
@@ -409,5 +434,122 @@ export class DataImportService {
       await executor.insert(recurringReconciliationDismissals).values(toInsert as never[]).onConflictDoNothing();
     }
     return { total: rows.length, toImport: toInsert.length, alreadyExisting: candidates.length - toInsert.length };
+  }
+
+  // --- Spec 048 (plan.md §3.4): tickets y listas de la compra ----------------
+  // A diferencia de `mergeTable`, cada fila se importa solo si las filas a las
+  // que apunta son del propio usuario (ya en la base de datos) o vienen en el
+  // mismo fichero y se van a importar; nunca de otra cuenta.
+
+  /**
+   * ¿Se puede usar este id de una tabla raíz? Si ya existe en la base de
+   * datos, solo si es del usuario; si no existe, solo si viene en el fichero
+   * (`fileIds`) — en `confirm` ya se habrá insertado al llegar aquí, porque
+   * las tablas se recorren en orden de dependencias.
+   */
+  private async usableIds(
+    executor: Executor,
+    table: typeof supermarkets | typeof products | typeof transactions | typeof shoppingLists | typeof receipts,
+    ids: string[],
+    fileIds: Set<string>,
+    userId: string,
+  ): Promise<(id: string) => boolean> {
+    const t = table as typeof supermarkets;
+    const unique = [...new Set(ids)];
+    const rows = unique.length ? await executor.select({ id: t.id, userId: t.userId }).from(t).where(inArray(t.id, unique)) : [];
+    const ownerById = new Map(rows.map((r) => [r.id, r.userId]));
+    return (id: string) => (ownerById.has(id) ? ownerById.get(id) === userId : fileIds.has(id));
+  }
+
+  private fileIds(file: AccountExportFile, key: keyof EconomicData): Set<string> {
+    return new Set((file.economicData[key] as unknown as Row[]).map((r) => r.id as string));
+  }
+
+  /** Tickets del fichero que se importarán (nuevos y con un comercio utilizable). */
+  private async importableReceiptIds(executor: Executor, file: AccountExportFile, userId: string): Promise<Set<string>> {
+    const rows = file.economicData.receipts as unknown as Row[];
+    const supermarketOk = await this.usableIds(
+      executor,
+      supermarkets,
+      rows.map((r) => r.supermarketId as string),
+      this.fileIds(file, 'supermarkets'),
+      userId,
+    );
+    return new Set(rows.filter((r) => supermarketOk(r.supermarketId as string)).map((r) => r.id as string));
+  }
+
+  private async mergeReceipts(executor: Executor, file: AccountExportFile, userId: string, write: boolean): Promise<TableImportSummary> {
+    const rows = file.economicData.receipts as unknown as Row[];
+    if (rows.length === 0) return { total: 0, toImport: 0, alreadyExisting: 0 };
+
+    const existing = await executor.select({ id: receipts.id }).from(receipts).where(inArray(receipts.id, rows.map((r) => r.id as string)));
+    const existingIds = new Set(existing.map((r) => r.id));
+    const importable = await this.importableReceiptIds(executor, file, userId);
+    const transactionOk = await this.usableIds(
+      executor,
+      transactions,
+      rows.map((r) => r.transactionId).filter((id): id is string => typeof id === 'string'),
+      this.fileIds(file, 'transactions'),
+      userId,
+    );
+
+    const toInsert = rows
+      .filter((r) => !existingIds.has(r.id as string) && importable.has(r.id as string))
+      .map((r) =>
+        coerceTimestamps(receipts, {
+          ...r,
+          userId,
+          // Un enlace a un movimiento ajeno o desconocido se pierde; el ticket sí se importa.
+          transactionId: typeof r.transactionId === 'string' && transactionOk(r.transactionId) ? r.transactionId : null,
+        }),
+      );
+    if (write && toInsert.length > 0) await executor.insert(receipts).values(toInsert as never[]);
+    return { total: rows.length, toImport: toInsert.length, alreadyExisting: existingIds.size };
+  }
+
+  private async mergeReceiptLines(executor: Executor, file: AccountExportFile, userId: string, write: boolean): Promise<TableImportSummary> {
+    const rows = file.economicData.receiptLines as unknown as Row[];
+    if (rows.length === 0) return { total: 0, toImport: 0, alreadyExisting: 0 };
+
+    const existing = await executor.select({ id: receiptLines.id }).from(receiptLines).where(inArray(receiptLines.id, rows.map((r) => r.id as string)));
+    const existingIds = new Set(existing.map((r) => r.id));
+    const importableReceipts = await this.importableReceiptIds(executor, file, userId);
+    const receiptOk = await this.usableIds(executor, receipts, rows.map((r) => r.receiptId as string), importableReceipts, userId);
+    const productOk = await this.usableIds(
+      executor,
+      products,
+      rows.map((r) => r.productId).filter((id): id is string => typeof id === 'string'),
+      this.fileIds(file, 'products'),
+      userId,
+    );
+
+    const toInsert = rows
+      .filter((r) => !existingIds.has(r.id as string))
+      .filter((r) => receiptOk(r.receiptId as string))
+      // Spec 048 H2: una línea sin producto es válida; con un producto ajeno, no.
+      .filter((r) => r.productId === null || (typeof r.productId === 'string' && productOk(r.productId)))
+      .map((r) => coerceTimestamps(receiptLines, r));
+    if (write && toInsert.length > 0) await executor.insert(receiptLines).values(toInsert as never[]);
+    return { total: rows.length, toImport: toInsert.length, alreadyExisting: existingIds.size };
+  }
+
+  private async mergeShoppingListItems(executor: Executor, file: AccountExportFile, userId: string, write: boolean): Promise<TableImportSummary> {
+    const rows = file.economicData.shoppingListItems as unknown as Row[];
+    if (rows.length === 0) return { total: 0, toImport: 0, alreadyExisting: 0 };
+
+    const existing = await executor
+      .select({ id: shoppingListItems.id })
+      .from(shoppingListItems)
+      .where(inArray(shoppingListItems.id, rows.map((r) => r.id as string)));
+    const existingIds = new Set(existing.map((r) => r.id));
+    const listOk = await this.usableIds(executor, shoppingLists, rows.map((r) => r.shoppingListId as string), this.fileIds(file, 'shoppingLists'), userId);
+    const productOk = await this.usableIds(executor, products, rows.map((r) => r.productId as string), this.fileIds(file, 'products'), userId);
+
+    const toInsert = rows
+      .filter((r) => !existingIds.has(r.id as string))
+      .filter((r) => listOk(r.shoppingListId as string) && productOk(r.productId as string))
+      .map((r) => coerceTimestamps(shoppingListItems, r));
+    if (write && toInsert.length > 0) await executor.insert(shoppingListItems).values(toInsert as never[]).onConflictDoNothing();
+    return { total: rows.length, toImport: toInsert.length, alreadyExisting: existingIds.size };
   }
 }

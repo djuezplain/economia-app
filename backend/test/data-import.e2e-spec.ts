@@ -14,6 +14,12 @@ import {
   recurringOccurrenceResolutions,
   recurringReconciliationDismissals,
   recurringTransactions,
+  products,
+  receiptLines,
+  receipts,
+  shoppingListItems,
+  shoppingLists,
+  supermarkets,
   stockPurchases,
   stocks,
   transactions,
@@ -21,6 +27,7 @@ import {
 } from '../src/db/schema/index.js';
 import { ECONOMIC_DATA_TABLE_ORDER, EXPORT_FORMAT_VERSION } from '../src/data-export/account-export.types.js';
 import type { EconomicData } from '../src/data-export/account-export.types.js';
+import { RateLimitGuard } from '../src/common/rate-limit.guard.js';
 
 /**
  * Spec 032, plan.md §7. Fixtures tal como llegan realmente por HTTP: tras
@@ -74,6 +81,9 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
 
   beforeEach(async () => {
     await db.delete(users);
+    // Spec 048: con las suites nuevas este fichero hace más logins que el
+    // límite por IP; mismo reinicio que el resto de suites con muchos logins.
+    app.get(RateLimitGuard).resetForTests();
   });
 
   async function createUser(email: string) {
@@ -445,6 +455,131 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
         expect.objectContaining({ recurringId: tpl.id, occurrenceDate: '2026-03-05', transactionId: tx.id }),
       ]);
       expect(body.economicData).not.toHaveProperty('recurringRemindersSent');
+    });
+  });
+
+  describe('tickets y listas de la compra (spec 048 T6.1)', () => {
+    const now = () => new Date().toISOString();
+    const other = () => randomUUID();
+
+    /** Un fichero completo de otra cuenta: comercio, producto, gasto, ticket enlazado con 2 líneas (una sin producto) y una lista. */
+    function groceriesFile() {
+      const ids = { cat: other(), shop: other(), product: other(), tx: other(), receipt: other(), line1: other(), line2: other(), list: other(), item: other() };
+      const file = buildFile({
+        categories: [{ id: ids.cat, userId: other(), type: 'EXPENSE', name: 'Comida', parentId: null, isDefault: false, icon: null, createdAt: now() }],
+        transactions: [
+          { id: ids.tx, userId: other(), type: 'EXPENSE', date: '2026-10-15', categoryId: ids.cat, subcategoryId: null, concept: 'MERCADONA', merchant: null, amount: '3.10', paymentMethod: 'CARD', createdAt: now(), updatedAt: now() },
+        ],
+        supermarkets: [{ id: ids.shop, userId: other(), name: 'Mercadona', createdAt: now() }],
+        products: [{ id: ids.product, userId: other(), name: 'Leche', createdAt: now() }],
+        receipts: [{ id: ids.receipt, userId: other(), supermarketId: ids.shop, date: '2026-10-15', printedTotal: '3.10', transactionId: ids.tx, createdAt: now() }],
+        receiptLines: [
+          { id: ids.line1, receiptId: ids.receipt, productId: ids.product, description: 'LECHE', quantity: '1.000', unit: 'unidad', pricePerUnit: '0.950', amount: '0.95', createdAt: now() },
+          { id: ids.line2, receiptId: ids.receipt, productId: null, description: 'BOLSA', quantity: '1.000', unit: 'unidad', pricePerUnit: '2.150', amount: '2.15', createdAt: now() },
+        ],
+        shoppingLists: [{ id: ids.list, userId: other(), name: 'Semana', createdAt: now() }],
+        shoppingListItems: [{ id: ids.item, shoppingListId: ids.list, productId: ids.product, createdAt: now() }],
+      });
+      return { file, ids };
+    }
+
+    it('ida y vuelta en otra cuenta: todo queda bajo el usuario autenticado, con el enlace y la línea sin producto', async () => {
+      const user = await createUser('import-tickets@example.com');
+      const token = await login(user.email);
+      const { file, ids } = groceriesFile();
+
+      const preview = await attach('/data-import/preview', token, file).expect(201);
+      expect(preview.body).toMatchObject({
+        supermarkets: { toImport: 1 }, products: { toImport: 1 }, receipts: { toImport: 1 },
+        receiptLines: { toImport: 2 }, shoppingLists: { toImport: 1 }, shoppingListItems: { toImport: 1 },
+      });
+      expect(await db.select().from(receipts)).toEqual([]);
+
+      await attach('/data-import/confirm', token, file).expect(201);
+      const [receipt] = await db.select().from(receipts).where(eq(receipts.userId, user.id));
+      expect(receipt).toMatchObject({ id: ids.receipt, transactionId: ids.tx, supermarketId: ids.shop });
+      const lines = await db.select().from(receiptLines).where(eq(receiptLines.receiptId, ids.receipt));
+      expect(lines.map((l) => l.productId).sort()).toEqual([ids.product, null].sort());
+      expect((await db.select().from(shoppingListItems)).map((i) => i.productId)).toEqual([ids.product]);
+      expect((await db.select().from(supermarkets))[0].userId).toBe(user.id);
+
+      const again = await attach('/data-import/confirm', token, file).expect(201);
+      expect(again.body).toMatchObject({ receipts: { toImport: 0, alreadyExisting: 1 }, receiptLines: { toImport: 0, alreadyExisting: 2 } });
+    });
+
+    it('la exportación incluye los tickets y las listas', async () => {
+      const user = await createUser('export-tickets@example.com');
+      const token = await login(user.email);
+      await attach('/data-import/confirm', token, groceriesFile().file).expect(201);
+
+      const res = await request(app.getHttpServer()).get('/users/me/export').set('Authorization', `Bearer ${token}`).expect(200);
+      const data = res.body.economicData as Record<string, unknown[]>;
+      for (const key of ['supermarkets', 'products', 'receipts', 'receiptLines', 'shoppingLists', 'shoppingListItems']) {
+        expect(data[key]).toHaveLength(key === 'receiptLines' ? 2 : 1);
+      }
+    });
+
+    it('comprobaciones de propiedad: comercio ajeno → ticket omitido; movimiento ajeno → sin enlace; producto ajeno → línea y elemento omitidos', async () => {
+      const owner = await createUser('dueno-tickets@example.com');
+      const [ownerCat] = await db.insert(categories).values({ userId: owner.id, type: 'EXPENSE', name: 'Comida' }).returning();
+      const [foreignShop] = await db.insert(supermarkets).values({ userId: owner.id, name: 'Ajeno' }).returning();
+      const [foreignProduct] = await db.insert(products).values({ userId: owner.id, name: 'Ajeno' }).returning();
+      const [foreignTx] = await db.insert(transactions).values({ userId: owner.id, type: 'EXPENSE', date: '2026-10-15', categoryId: ownerCat.id, concept: 'X', amount: '1.00' }).returning();
+
+      const attacker = await createUser('atacante-tickets@example.com');
+      const token = await login(attacker.email);
+      const ownShop = other();
+      const ownReceipt = other();
+      const ownList = other();
+      const file = buildFile({
+        supermarkets: [{ id: ownShop, userId: other(), name: 'Propio', createdAt: now() }],
+        receipts: [
+          { id: other(), userId: other(), supermarketId: foreignShop.id, date: '2026-10-15', printedTotal: '1.00', transactionId: null, createdAt: now() },
+          { id: ownReceipt, userId: other(), supermarketId: ownShop, date: '2026-10-15', printedTotal: '1.00', transactionId: foreignTx.id, createdAt: now() },
+        ],
+        receiptLines: [
+          { id: other(), receiptId: ownReceipt, productId: foreignProduct.id, description: 'X', quantity: '1.000', unit: 'unidad', pricePerUnit: '1.000', amount: '1.00', createdAt: now() },
+        ],
+        shoppingLists: [{ id: ownList, userId: other(), name: 'Lista', createdAt: now() }],
+        shoppingListItems: [{ id: other(), shoppingListId: ownList, productId: foreignProduct.id, createdAt: now() }],
+      });
+
+      const res = await attach('/data-import/confirm', token, file).expect(201);
+      expect(res.body).toMatchObject({ receipts: { total: 2, toImport: 1 }, receiptLines: { toImport: 0 }, shoppingListItems: { toImport: 0 } });
+      const imported = await db.select().from(receipts).where(eq(receipts.userId, attacker.id));
+      expect(imported).toEqual([expect.objectContaining({ id: ownReceipt, transactionId: null })]);
+      expect(await db.select().from(receipts).where(eq(receipts.supermarketId, foreignShop.id))).toEqual([]);
+    });
+
+    it('un ticket cuyo id ya existe en otra cuenta no se toca ni se reasigna', async () => {
+      const owner = await createUser('dueno-id@example.com');
+      const [shop] = await db.insert(supermarkets).values({ userId: owner.id, name: 'Suyo' }).returning();
+      const [theirs] = await db.insert(receipts).values({ userId: owner.id, supermarketId: shop.id, date: '2026-10-15', printedTotal: '9.99' }).returning();
+
+      const attacker = await createUser('atacante-id@example.com');
+      const token = await login(attacker.email);
+      const ownShop = other();
+      const file = buildFile({
+        supermarkets: [{ id: ownShop, userId: other(), name: 'Propio', createdAt: now() }],
+        receipts: [{ id: theirs.id, userId: other(), supermarketId: ownShop, date: '2026-01-01', printedTotal: '0.01', transactionId: null, createdAt: now() }],
+        receiptLines: [{ id: other(), receiptId: theirs.id, productId: null, description: 'INYECTADA', quantity: '1.000', unit: 'unidad', pricePerUnit: '1.000', amount: '1.00', createdAt: now() }],
+      });
+
+      await attach('/data-import/confirm', token, file).expect(201);
+      const [after] = await db.select().from(receipts).where(eq(receipts.id, theirs.id));
+      expect(after).toMatchObject({ userId: owner.id, printedTotal: '9.99' });
+      expect(await db.select().from(receiptLines).where(eq(receiptLines.receiptId, theirs.id))).toEqual([]);
+    });
+
+    it('un fichero anterior a esta spec (sin estas claves) se sigue importando', async () => {
+      const user = await createUser('sin-tickets@example.com');
+      const token = await login(user.email);
+      const file = buildFile({});
+      for (const key of ['supermarkets', 'products', 'receipts', 'receiptLines', 'shoppingLists', 'shoppingListItems']) {
+        delete (file.economicData as unknown as Record<string, unknown>)[key];
+      }
+      const res = await attach('/data-import/confirm', token, file).expect(201);
+      expect(res.body.receipts).toEqual({ total: 0, toImport: 0, alreadyExisting: 0 });
     });
   });
 });

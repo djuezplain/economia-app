@@ -10,6 +10,12 @@ import {
   cashHoldings,
   recurringOccurrenceResolutions,
   recurringReconciliationDismissals,
+  supermarkets,
+  products,
+  receipts,
+  receiptLines,
+  shoppingLists,
+  shoppingListItems,
   recurringTransactions,
   categories,
   cryptoPurchases,
@@ -291,6 +297,7 @@ export class UsersService {
         recurringTransactions: userRecurringTransactions,
         recurringOccurrenceResolutions: userRecurringResolutions,
         recurringReconciliationDismissals: userReconciliationDismissals,
+        ...(await this.exportGroceries(userId)),
       },
     };
   }
@@ -353,6 +360,34 @@ export class UsersService {
       throw new UnauthorizedException('El usuario ya no existe.');
     }
     return user;
+  }
+
+  /**
+   * Spec 048 (plan.md §3.4): tickets, comercios, productos y listas de la
+   * compra. Las tablas hijas (`receiptLines`, `shoppingListItems`) no tienen
+   * `userId`: se filtran por las filas padre del usuario.
+   */
+  private async exportGroceries(userId: string): Promise<Pick<EconomicData, 'supermarkets' | 'products' | 'receipts' | 'receiptLines' | 'shoppingLists' | 'shoppingListItems'>> {
+    const [userSupermarkets, userProducts, userReceipts, userShoppingLists] = await Promise.all([
+      this.db.query.supermarkets.findMany({ where: eq(supermarkets.userId, userId) }),
+      this.db.query.products.findMany({ where: eq(products.userId, userId) }),
+      this.db.query.receipts.findMany({ where: eq(receipts.userId, userId) }),
+      this.db.query.shoppingLists.findMany({ where: eq(shoppingLists.userId, userId) }),
+    ]);
+    const receiptIds = userReceipts.map((r) => r.id);
+    const listIds = userShoppingLists.map((l) => l.id);
+    const [userReceiptLines, userShoppingListItems] = await Promise.all([
+      receiptIds.length ? this.db.query.receiptLines.findMany({ where: inArray(receiptLines.receiptId, receiptIds) }) : [],
+      listIds.length ? this.db.query.shoppingListItems.findMany({ where: inArray(shoppingListItems.shoppingListId, listIds) }) : [],
+    ]);
+    return {
+      supermarkets: userSupermarkets,
+      products: userProducts,
+      receipts: userReceipts,
+      receiptLines: userReceiptLines,
+      shoppingLists: userShoppingLists,
+      shoppingListItems: userShoppingListItems,
+    };
   }
 
   private toProfile(user: UserRow): UserProfile {
