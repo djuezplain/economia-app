@@ -86,6 +86,8 @@ export class ProductsService {
 
     const linesByProduct = new Map<string, typeof lineRows>();
     for (const line of lineRows) {
+      // Spec 048: la consulta ya filtra por producto, pero el tipo admite `null`.
+      if (line.productId === null) continue;
       const lines = linesByProduct.get(line.productId) ?? [];
       lines.push(line);
       linesByProduct.set(line.productId, lines);

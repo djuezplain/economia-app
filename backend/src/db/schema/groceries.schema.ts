@@ -1,5 +1,17 @@
-import { pgTable, uuid, varchar, numeric, date, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, numeric, date, timestamp, index, uniqueIndex, integer, smallint, char, customType } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { users } from './auth.schema.js';
+import { transactions } from './transactions.schema.js';
+
+/**
+ * Spec 048 plan.md §0 decisión 3: Drizzle 0.45 no trae `bytea`. El driver
+ * `pg` ya devuelve `bytea` como `Buffer`, así que no hace falta convertir.
+ */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
 
 // --- Tables ----------------------------------------------------------------
 
@@ -47,8 +59,9 @@ export const products = pgTable(
  * como lo leyó el OCR — puramente informativo (plan.md §1: la prueba real
  * de spec.md §1 demostró que es justo la línea con más riesgo de salir mal,
  * p. ej. por un pliegue del papel), nunca se valida contra la suma de
- * líneas ni bloquea nada. No se guarda la foto original (spec.md §4,
- * decisión 4).
+ * líneas ni bloquea nada. Spec 048: la foto o el PDF original se guarda
+ * en `receiptDocuments` (revierte la decisión 4 de la spec 034), y
+ * `transactionId` enlaza el ticket con su movimiento (H3).
  */
 export const receipts = pgTable(
   'receipts',
@@ -77,9 +90,18 @@ export const receipts = pgTable(
       .references(() => supermarkets.id, { onDelete: 'cascade' }),
     date: date('date').notNull(),
     printedTotal: numeric('printed_total', { precision: 10, scale: 2 }),
+    // Spec 048 H3: como mucho un movimiento por ticket y un ticket por
+    // movimiento (índice único parcial). Borrar el movimiento deja el ticket
+    // sin enlace (`set null`); borrar el ticket se lleva el enlace con él.
+    transactionId: uuid('transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('receipts_user_date_idx').on(table.userId, table.date)],
+  (table) => [
+    index('receipts_user_date_idx').on(table.userId, table.date),
+    uniqueIndex('receipts_transaction_uidx')
+      .on(table.transactionId)
+      .where(sql`${table.transactionId} IS NOT NULL`),
+  ],
 );
 
 /**
@@ -102,9 +124,9 @@ export const receiptLines = pgTable(
     // `cascade`, mismo motivo que `receipts.supermarketId` arriba (bug real
     // de orden de cascada entre ramas de distinta profundidad, no solo
     // teórico — reproducido contra Postgres real antes de corregirlo).
-    productId: uuid('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
+    // Spec 048 H2 criterio 4: nullable — una línea sin emparejar con un
+    // producto se guarda igual, pero no entra en la comparativa de precios.
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }),
     description: varchar('description', { length: 200 }).notNull(),
     quantity: numeric('quantity', { precision: 10, scale: 3 }).notNull(),
     unit: varchar('unit', { length: 10 }).notNull(),
@@ -115,5 +137,39 @@ export const receiptLines = pgTable(
   (table) => [
     index('receipt_lines_receipt_idx').on(table.receiptId),
     index('receipt_lines_product_idx').on(table.productId),
+  ],
+);
+
+/**
+ * Spec 048 H1 (plan.md §1): la foto o el PDF original de un ticket. Tabla
+ * propia para que los listados de tickets nunca carguen los binarios.
+ * `receiptId` nulo = documento pendiente: subido en la vista previa de la
+ * importación y todavía sin confirmar (plan.md §0 decisión 4); los que
+ * nadie confirma se borran a las 24 horas. `userId` propio porque un
+ * pendiente aún no tiene ticket por el que filtrar.
+ */
+export const receiptDocuments = pgTable(
+  'receipt_documents',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    receiptId: uuid('receipt_id').references(() => receipts.id, { onDelete: 'cascade' }),
+    /** El tipo detectado por los primeros bytes, nunca el que declara el navegador. */
+    mimeType: varchar('mime_type', { length: 50 }).notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    sha256: char('sha256', { length: 64 }).notNull(),
+    originalFilename: varchar('original_filename', { length: 255 }).notNull(),
+    /** Solo PDF. */
+    pageCount: smallint('page_count'),
+    content: bytea('content').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('receipt_documents_receipt_uidx')
+      .on(table.receiptId)
+      .where(sql`${table.receiptId} IS NOT NULL`),
+    index('receipt_documents_user_receipt_idx').on(table.userId, table.receiptId),
   ],
 );

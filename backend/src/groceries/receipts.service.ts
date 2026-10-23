@@ -25,8 +25,9 @@ export interface ReceiptLineDetail {
   unit: string;
   pricePerUnit: string;
   amount: string;
-  productId: string;
-  productName: string;
+  /** Spec 048 H2 criterio 4: `null` = línea sin emparejar con ningún producto. */
+  productId: string | null;
+  productName: string | null;
 }
 
 export interface ReceiptDetail extends ReceiptSummary {
@@ -116,7 +117,7 @@ export class ReceiptsService {
     const [supermarket] = await this.db.select().from(supermarkets).where(eq(supermarkets.id, receipt.supermarketId));
 
     const lineRows = await this.db.select().from(receiptLines).where(eq(receiptLines.receiptId, receiptId));
-    const productIds = [...new Set(lineRows.map((line) => line.productId))];
+    const productIds = [...new Set(lineRows.map((line) => line.productId).filter((id): id is string => id !== null))];
     const productRows = productIds.length > 0 ? await this.db.select().from(products).where(inArray(products.id, productIds)) : [];
     const productById = new Map(productRows.map((p) => [p.id, p]));
 
@@ -135,7 +136,7 @@ export class ReceiptsService {
         pricePerUnit: line.pricePerUnit,
         amount: line.amount,
         productId: line.productId,
-        productName: productById.get(line.productId)!.name,
+        productName: line.productId === null ? null : productById.get(line.productId)!.name,
       })),
     };
   }
