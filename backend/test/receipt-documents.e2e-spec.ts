@@ -117,4 +117,100 @@ describe('Documentos de tickets (e2e) — spec 048 H1', () => {
       expect(left).toEqual([reciente.id, asociadoViejo.id].sort());
     });
   });
+
+  describe('vista previa y confirmación (T3.2)', () => {
+    function preview(token: string, file: Buffer, filename = 'ticket.jpg') {
+      return request(app.getHttpServer()).post('/receipt-import/preview').set('Authorization', token).attach('file', file, filename);
+    }
+
+    function confirm(token: string, body: object) {
+      return request(app.getHttpServer()).post('/receipt-import/confirm').set('Authorization', token).send(body);
+    }
+
+    const ticket = (extra: object = {}) => ({
+      supermarket: { name: 'Mercadona' },
+      date: '2026-04-01',
+      printedTotal: '1.30',
+      lines: [{ description: 'CHOCOLATE', quantity: '1', unit: 'unidad', pricePerUnit: '1.300', amount: '1.30', product: { name: 'Chocolate' } }],
+      ...extra,
+    });
+
+    it('la vista previa guarda el documento como pendiente y lo devuelve; confirmar lo asocia al ticket', async () => {
+      const user = await createUser('ana@example.com');
+      const token = await login(user.email);
+      const res = await preview(token, JPEG).expect(201);
+      expect(res.body.document).toMatchObject({ mimeType: 'image/jpeg', sizeBytes: JPEG.length });
+      const documentId = res.body.document.id as string;
+      expect((await db.select().from(receiptDocuments).where(eq(receiptDocuments.id, documentId)))[0].receiptId).toBeNull();
+
+      const saved = await confirm(token, ticket({ documentId })).expect(201);
+      const [row] = await db.select().from(receiptDocuments).where(eq(receiptDocuments.id, documentId));
+      expect(row.receiptId).toBe(saved.body.receiptId);
+    });
+
+    it('acepta un PDF (el OCR recibe el tipo detectado)', async () => {
+      const user = await createUser('ana@example.com');
+      const token = await login(user.email);
+      const res = await preview(token, PDF, 'factura.pdf').expect(201);
+      expect(res.body.document).toMatchObject({ mimeType: 'application/pdf', pageCount: 2 });
+      expect(extractTextMock).toHaveBeenCalledWith(expect.any(Buffer), 'application/pdf');
+    });
+
+    it('guarda el documento aunque el OCR no reconozca nada', async () => {
+      extractTextMock.mockResolvedValue('');
+      const user = await createUser('ana@example.com');
+      const token = await login(user.email);
+      const res = await preview(token, JPEG).expect(201);
+      expect(res.body.lines).toEqual([]);
+      expect(res.body.document.id).toBeDefined();
+    });
+
+    it('si el OCR falla no deja ningún pendiente', async () => {
+      extractTextMock.mockRejectedValue(new Error('Vision caído'));
+      const user = await createUser('ana@example.com');
+      const token = await login(user.email);
+      await preview(token, JPEG).expect(500);
+      expect(await db.select().from(receiptDocuments)).toEqual([]);
+    });
+
+    it('rechaza (400) un fichero que no es foto ni PDF, y uno de más de 10 MB con mensaje en español', async () => {
+      const user = await createUser('ana@example.com');
+      const token = await login(user.email);
+      await preview(token, SVG, 'ticket.png').expect(400);
+      const big = await preview(token, Buffer.concat([JPEG, Buffer.alloc(10 * 1024 * 1024)])).expect(400);
+      expect(big.body.message).toBe('El documento ocupa más de 10 MB.');
+      expect(extractTextMock).not.toHaveBeenCalled();
+    });
+
+    it('confirmar con un documento de otro usuario, ya usado o inexistente → 400 y no guarda el ticket', async () => {
+      const ana = await createUser('ana@example.com');
+      const bea = await createUser('bea@example.com');
+      const anaToken = await login(ana.email);
+      const beaToken = await login(bea.email);
+      const deAna = (await preview(anaToken, JPEG).expect(201)).body.document.id as string;
+
+      await confirm(beaToken, ticket({ documentId: deAna })).expect(400);
+      await confirm(beaToken, ticket({ documentId: '00000000-0000-4000-8000-000000000000' })).expect(400);
+      await confirm(anaToken, ticket({ documentId: deAna })).expect(201);
+      await confirm(anaToken, ticket({ documentId: deAna })).expect(400);
+
+      expect(await db.select().from(receipts).where(eq(receipts.userId, bea.id))).toEqual([]);
+      expect(await db.select().from(receipts).where(eq(receipts.userId, ana.id))).toHaveLength(1);
+    });
+
+    it('si falla al guardar las líneas, el documento sigue pendiente (todo en la misma transacción)', async () => {
+      const user = await createUser('ana@example.com');
+      const token = await login(user.email);
+      const documentId = (await preview(token, JPEG).expect(201)).body.document.id as string;
+      const conProductoInexistente = ticket({
+        documentId,
+        lines: [{ description: 'X', quantity: '1', unit: 'unidad', pricePerUnit: '1.000', amount: '1.00', product: { id: '00000000-0000-4000-8000-000000000000' } }],
+      });
+      await confirm(token, conProductoInexistente).expect(404);
+
+      const [row] = await db.select().from(receiptDocuments).where(eq(receiptDocuments.id, documentId));
+      expect(row.receiptId).toBeNull();
+      expect(await db.select().from(receipts)).toEqual([]);
+    });
+  });
 });

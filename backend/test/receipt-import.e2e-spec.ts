@@ -25,7 +25,9 @@ const DEFAULT_TICKET_TEXT = ['MERCADONA, S.A.', '01/04/2026 16:10', 'Descripcion
 );
 
 function fakeImageBuffer(): Buffer {
-  return Buffer.from('contenido de prueba, nunca llega a Vision de verdad');
+  // Spec 048: el tipo se comprueba por los primeros bytes, así que la imagen
+  // falsa lleva una cabecera JPEG real; el resto sigue sin llegar a Vision.
+  return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('contenido de prueba, nunca llega a Vision de verdad')]);
 }
 
 describe('Importar tickets escaneados por OCR (e2e) — spec 034', () => {

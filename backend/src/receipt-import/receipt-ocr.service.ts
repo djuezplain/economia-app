@@ -126,7 +126,8 @@ export function reconstructRowText(words: PositionedWord[]): string {
 export class ReceiptOcrService {
   constructor(private readonly config: ConfigService) {}
 
-  async extractText(imageBuffer: Buffer): Promise<string> {
+  /** Spec 048: `mimeType` es el tipo ya detectado del documento (el PDF se lee en T3.3). */
+  async extractText(imageBuffer: Buffer, _mimeType = 'image/jpeg'): Promise<string> {
     const apiKey = this.config.get<string>('GOOGLE_CLOUD_VISION_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(

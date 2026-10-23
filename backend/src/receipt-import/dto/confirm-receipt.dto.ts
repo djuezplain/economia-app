@@ -66,3 +66,15 @@ export class ConfirmReceiptDto {
   @Type(() => ConfirmReceiptLineDto)
   lines!: ConfirmReceiptLineDto[];
 }
+
+/**
+ * Spec 048 H1 criterio 1: al confirmar una importación, el documento que se
+ * guardó como pendiente en la vista previa. Solo aquí: editar un ticket
+ * guardado (`PUT /receipts/:id`, spec 035) no toca el documento, que tiene
+ * sus propios endpoints.
+ */
+export class ConfirmImportReceiptDto extends ConfirmReceiptDto {
+  @IsOptional()
+  @IsUUID()
+  documentId?: string;
+}

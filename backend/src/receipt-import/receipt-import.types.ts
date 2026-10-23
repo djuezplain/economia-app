@@ -7,6 +7,11 @@ export interface ReceiptPreview {
   lines: ReceiptPreviewLine[];
   /** p. ej. "no se ha podido leer el total del ticket" (H1 criterio 4, H2 criterio 3). */
   warnings: string[];
+  /**
+   * Spec 048 H1: el documento ya está guardado como pendiente; se asocia al
+   * ticket al confirmar pasando este `id` como `documentId`.
+   */
+  document: { id: string; mimeType: string; sizeBytes: number; pageCount: number | null };
 }
 
 export interface ReceiptPreviewLine {
