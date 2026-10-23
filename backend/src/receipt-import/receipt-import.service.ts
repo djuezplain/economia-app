@@ -12,6 +12,9 @@ import { ReceiptOcrService } from './receipt-ocr.service.js';
 import { resolveEntityRef } from './resolve-entity-ref.util.js';
 import type { ReceiptPreview, ReceiptPreviewLine } from './receipt-import.types.js';
 
+/** Máximo de páginas que lee `files:annotate` de Vision en modo síncrono. */
+const MAX_OCR_PDF_PAGES = 5;
+
 /**
  * Spec 034 (H1-H5). A diferencia de `StockImportService` (spec 033),
  * `preview` y `confirm` no comparten la misma función de cálculo: el OCR no
@@ -71,6 +74,10 @@ export class ReceiptImportService {
     if (lines.length === 0) warnings.push('No se ha podido reconocer ninguna línea de producto en la imagen.');
     if (!date) warnings.push('No se ha podido leer la fecha del ticket.');
     if (!printedTotal) warnings.push('No se ha podido leer el total del ticket.');
+    // Spec 048 plan.md §3.2: Vision solo lee las 5 primeras páginas de un PDF.
+    if (prepared.pageCount !== null && prepared.pageCount > MAX_OCR_PDF_PAGES) {
+      warnings.push(`El PDF tiene ${prepared.pageCount} páginas: solo se han leído las ${MAX_OCR_PDF_PAGES} primeras. El documento se guarda entero.`);
+    }
 
     const document = await this.documents.storePending(userId, prepared);
 

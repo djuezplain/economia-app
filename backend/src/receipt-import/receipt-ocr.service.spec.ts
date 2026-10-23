@@ -123,4 +123,71 @@ describe('ReceiptOcrService', () => {
 
     await expect(service.extractText(Buffer.from('img'))).rejects.toThrow(/Bad image data/);
   });
+
+  // Spec 048 H2 criterio 1 / plan.md §3.2: facturas en PDF por `files:annotate`.
+  describe('PDF (spec 048)', () => {
+    /** Palabra de un PDF: Vision da coordenadas normalizadas (0..1), no píxeles. */
+    function pdfWord(text: string, x: number, y: number) {
+      return {
+        boundingBox: {
+          normalizedVertices: [
+            { x, y },
+            { x: x + 0.05, y },
+            { x: x + 0.05, y: y + 0.02 },
+            { x, y: y + 0.02 },
+          ],
+        },
+        symbols: text.split('').map((c) => ({ text: c })),
+      };
+    }
+    function page(words: Array<ReturnType<typeof pdfWord>>) {
+      return { fullTextAnnotation: { text: 'sin usar', pages: [{ blocks: [{ paragraphs: [{ words }] }] }] } };
+    }
+
+    it('usa files:annotate con el PDF en línea y une las páginas en orden', async () => {
+      vi.mocked(global.fetch).mockResolvedValue(
+        jsonResponse(200, {
+          responses: [
+            {
+              totalPages: 2,
+              responses: [
+                page([pdfWord('IBERDROLA', 0.1, 0.05), pdfWord('15/10/2026', 0.6, 0.05)]),
+                page([pdfWord('TOTAL', 0.1, 0.9), pdfWord('64,20', 0.7, 0.9)]),
+              ],
+            },
+          ],
+        }),
+      );
+      const service = new ReceiptOcrService(configWithApiKey('fake-key'));
+
+      const text = await service.extractText(Buffer.from('%PDF-1.7'), 'application/pdf');
+
+      expect(text).toBe('IBERDROLA 15/10/2026\nTOTAL 64,20');
+      const [url, init] = vi.mocked(global.fetch).mock.calls[0];
+      expect(String(url)).toContain('/v1/files:annotate?key=fake-key');
+      const body = JSON.parse(String((init as RequestInit).body));
+      expect(body.requests[0].inputConfig).toEqual({ content: Buffer.from('%PDF-1.7').toString('base64'), mimeType: 'application/pdf' });
+      expect(body.requests[0].features).toEqual([{ type: 'DOCUMENT_TEXT_DETECTION' }]);
+    });
+
+    it('ordena por filas con coordenadas normalizadas (no se colapsa todo en una línea)', async () => {
+      vi.mocked(global.fetch).mockResolvedValue(
+        jsonResponse(200, { responses: [{ responses: [page([pdfWord('64,20', 0.7, 0.5), pdfWord('TOTAL', 0.1, 0.5), pdfWord('FACTURA', 0.1, 0.1)])] }] }),
+      );
+      const service = new ReceiptOcrService(configWithApiKey('fake-key'));
+      await expect(service.extractText(Buffer.from('%PDF'), 'application/pdf')).resolves.toBe('FACTURA\nTOTAL 64,20');
+    });
+
+    it('un error de Vision en una página lanza con su mensaje', async () => {
+      vi.mocked(global.fetch).mockResolvedValue(jsonResponse(200, { responses: [{ responses: [{ error: { message: 'Bad PDF.' } }] }] }));
+      const service = new ReceiptOcrService(configWithApiKey('fake-key'));
+      await expect(service.extractText(Buffer.from('%PDF'), 'application/pdf')).rejects.toThrow(/Bad PDF/);
+    });
+
+    it('un PDF sin texto devuelve cadena vacía', async () => {
+      vi.mocked(global.fetch).mockResolvedValue(jsonResponse(200, { responses: [{ responses: [{}] }] }));
+      const service = new ReceiptOcrService(configWithApiKey('fake-key'));
+      await expect(service.extractText(Buffer.from('%PDF'), 'application/pdf')).resolves.toBe('');
+    });
+  });
 });

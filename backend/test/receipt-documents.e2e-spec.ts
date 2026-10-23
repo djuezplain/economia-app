@@ -156,6 +156,15 @@ describe('Documentos de tickets (e2e) — spec 048 H1', () => {
       expect(extractTextMock).toHaveBeenCalledWith(expect.any(Buffer), 'application/pdf');
     });
 
+    it('avisa si el PDF tiene más de 5 páginas, pero lo guarda entero', async () => {
+      const user = await createUser('ana@example.com');
+      const token = await login(user.email);
+      const sevenPages = Buffer.from(`%PDF-1.7\n${'<< /Type /Page >>\n'.repeat(7)}%%EOF`);
+      const res = await preview(token, sevenPages, 'factura.pdf').expect(201);
+      expect(res.body.warnings).toContain('El PDF tiene 7 páginas: solo se han leído las 5 primeras. El documento se guarda entero.');
+      expect(res.body.document).toMatchObject({ pageCount: 7, sizeBytes: sevenPages.length });
+    });
+
     it('guarda el documento aunque el OCR no reconozca nada', async () => {
       extractTextMock.mockResolvedValue('');
       const user = await createUser('ana@example.com');
