@@ -1798,3 +1798,20 @@ code {
 details > summary {
   cursor: pointer;
 }
+/* Las filas de candidatos van dentro de una tarjeta: sin el borde ni el
+   relleno de `main ul li`, pensados para listas de texto. */
+.reconcile-candidates > li {
+  padding: 0;
+  border-bottom: none;
+}
+/* Cabecera de una tarjeta de conciliación: misma disposición que la de
+   una ocurrencia prevista (`.cal-item-planned > .card-row`). */
+.reconcile-list > .card > .card-row {
+  display: flex;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.reconcile-list .card-amount {
+  font-size: 17px;
+}

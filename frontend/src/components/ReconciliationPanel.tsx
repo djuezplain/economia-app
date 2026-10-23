@@ -74,12 +74,15 @@ export function ReconciliationPanel({ overview, onChanged }: { overview: Reconci
               {recentlyReconciled.map((r) => {
                 const key = `r|${r.recurringId}|${r.date}`;
                 return (
-                  <li className="card" key={key}>
-                    <strong>{r.concept}</strong> <span className="card-meta">del {formatDate(r.date)}</span>{' '}
-                    <span className="tag tag-neutral">{r.reconciledAutomatically ? 'automática' : 'manual'}</span>
-                    <p className="card-meta">
-                      {r.transaction ? <MovementSummary movement={r.transaction} /> : 'El movimiento enlazado se borró.'}
-                    </p>
+                  <li className="card card-row" key={key}>
+                    <div>
+                      <strong>{r.concept}</strong>{' '}
+                      <span className="tag tag-neutral">{r.reconciledAutomatically ? 'automática' : 'manual'}</span>
+                      <p className="card-meta">Recibo del {formatDate(r.date)}</p>
+                      <p className="card-meta">
+                        {r.transaction ? <MovementSummary movement={r.transaction} /> : 'El movimiento enlazado se borró.'}
+                      </p>
+                    </div>
                     <button
                       type="button"
                       className="btn"
@@ -110,11 +113,19 @@ function SuggestionItem({ suggestion, busyKey, run }: { suggestion: Reconciliati
 
   return (
     <li className="card" aria-label={`Sugerencia para ${label}`}>
-      <strong>{occurrence.concept}</strong> <span className="card-meta">previsto el {formatDate(occurrence.date)}</span>{' '}
-      <span className={occurrence.variableAmount ? 'amount-estimated' : undefined}>
-        {occurrence.variableAmount ? '≈ ' : ''}
-        {formatCurrency(occurrence.expectedAmount)}
-      </span>
+      <div className="card-row">
+        <div>
+          <strong>{occurrence.concept}</strong> <span className="tag tag-neutral">por conciliar</span>
+          <p className="card-meta">Previsto el {formatDate(occurrence.date)}</p>
+        </div>
+        <div
+          className={`card-amount ${occurrence.type === 'INCOME' ? 'cal-income' : 'cal-expense'}${occurrence.variableAmount ? ' amount-estimated' : ''}`}
+        >
+          {occurrence.variableAmount ? '≈ ' : ''}
+          {occurrence.type === 'INCOME' ? '+' : '−'}
+          {formatCurrency(occurrence.expectedAmount)}
+        </div>
+      </div>
       <p className="card-meta">{candidates.length === 1 ? 'Posible cargo:' : 'Posibles cargos:'}</p>
       <ul className="reconcile-candidates">
         {candidates.map((c) => (
@@ -134,20 +145,22 @@ function SuggestionItem({ suggestion, busyKey, run }: { suggestion: Reconciliati
           </li>
         ))}
       </ul>
-      <button
-        type="button"
-        className="btn"
-        disabled={isBusy}
-        onClick={() =>
-          run(
-            key,
-            () => Promise.all(candidates.map((c) => dismissCandidate(occurrence.recurringId, occurrence.date, c.id))),
-            'No se ha podido descartar la sugerencia.',
-          )
-        }
-      >
-        {candidates.length === 1 ? 'No es este' : 'Ninguno de estos'}
-      </button>
+      <div className="occurrence-actions">
+        <button
+          type="button"
+          className="btn"
+          disabled={isBusy}
+          onClick={() =>
+            run(
+              key,
+              () => Promise.all(candidates.map((c) => dismissCandidate(occurrence.recurringId, occurrence.date, c.id))),
+              'No se ha podido descartar la sugerencia.',
+            )
+          }
+        >
+          {candidates.length === 1 ? 'No es este' : 'Ninguno de estos'}
+        </button>
+      </div>
     </li>
   );
 }
@@ -159,7 +172,10 @@ function DuplicateItem({ duplicate, busyKey, run }: { duplicate: PossibleDuplica
 
   return (
     <li className="card" aria-label={`Posible duplicado de ${duplicate.concept} del ${formatDate(duplicate.date)}`}>
-      <strong>Posible duplicado:</strong> {duplicate.concept} <span className="card-meta">del {formatDate(duplicate.date)}</span>
+      <div>
+        <strong>{duplicate.concept}</strong> <span className="tag tag-accent">posible duplicado</span>
+        <p className="card-meta">Recibo del {formatDate(duplicate.date)}</p>
+      </div>
       <p className="card-meta">
         Creado al confirmar: <MovementSummary movement={created} />
       </p>
