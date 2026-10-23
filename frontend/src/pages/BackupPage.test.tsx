@@ -152,6 +152,21 @@ describe('BackupPage', () => {
       expect(screen.getByText(/sus tickets se importan igualmente, sin documento/)).toBeInTheDocument();
     });
 
+    it('muestra las ventas de fondos y las filas omitidas por apuntar a datos ajenos (spec 050)', async () => {
+      vi.spyOn(dataImportApi, 'previewDataImport').mockResolvedValue({
+        ...emptySummary(),
+        fundSales: { total: 3, toImport: 2, alreadyExisting: 0, omitted: 1 },
+      });
+
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Fichero .zip o .json'), new File(['{}'], 'copia.json'));
+
+      const table = await screen.findByRole('table');
+      const row = within(table).getByRole('row', { name: /Ventas de fondos/ });
+      expect(within(row).getAllByRole('cell').map((c) => c.textContent)).toEqual(['Ventas de fondos', '2', '0', '1']);
+      expect(screen.getByText(/apuntan a datos que no son de tu cuenta/)).toBeInTheDocument();
+    });
+
     it('sin documentos omitidos no muestra la columna "Omitidos"', async () => {
       vi.spyOn(dataImportApi, 'previewDataImport').mockResolvedValue({
         ...emptySummary(),
