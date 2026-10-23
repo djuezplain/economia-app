@@ -18,6 +18,7 @@ import {
   cryptoPurchases,
   cryptos,
   expenseBudgets,
+  fundPurchases,
   fundSales,
   funds,
   pensionPlanContributions,
@@ -862,5 +863,60 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
         expect(await db.select().from(transactions).where(eq(transactions.userId, ana.id))).toEqual([]);
       });
     }
+  });
+
+  describe('ida y vuelta completa y ventas de fondos (spec 050 T4.1)', () => {
+    it('una copia exportada por la app se restaura entera en una cuenta vacía, sin ningún omitido, con las ventas de fondos', async () => {
+      const ana = await createUser('ana-ida-vuelta@example.com');
+      const [root] = await db.insert(categories).values({ userId: ana.id, type: 'EXPENSE', name: 'Casa' }).returning();
+      const [child] = await db.insert(categories).values({ userId: ana.id, type: 'EXPENSE', name: 'Luz', parentId: root.id }).returning();
+      await db.insert(transactions).values({ userId: ana.id, type: 'EXPENSE', date: '2026-10-01', categoryId: root.id, subcategoryId: child.id, concept: 'Luz', amount: '50.00' });
+      await db.insert(expenseBudgets).values({ userId: ana.id, categoryId: root.id, targetType: 'AMOUNT', targetValue: '300', alertThresholdPercent: '80' });
+      await db.insert(recurringTransactions).values({
+        userId: ana.id, type: 'EXPENSE', categoryId: root.id, subcategoryId: child.id, concept: 'Luz', amount: '50.00', frequency: 'MONTHLY', startDate: '2026-01-01',
+      });
+      const [account] = await db.insert(bankAccounts).values({ userId: ana.id, bank: 'Banco', accountNumber: 'ES00' }).returning();
+      await db.insert(bankAccountBalances).values({ bankAccountId: account.id, euros: '1000', date: '2026-10-01' });
+      const [stock] = await db.insert(stocks).values({ userId: ana.id, custodyBank: 'Broker', stock: 'ACME' }).returning();
+      await db.insert(stockPurchases).values({ stockId: stock.id, shareCount: '10', purchasePrice: '5', date: '2026-01-01' });
+      const [fund] = await db.insert(funds).values({ userId: ana.id, custodyBank: 'Banco', fund: 'Indexado' }).returning();
+      await db.insert(fundPurchases).values({ fundId: fund.id, shareCount: '10', purchasePrice: '10', date: '2026-01-01' });
+      await db.insert(fundSales).values({ fundId: fund.id, shareCount: '4', salePrice: '12', date: '2026-06-01' });
+      const [crypto] = await db.insert(cryptos).values({ userId: ana.id, exchange: 'Exchange', crypto: 'BTC' }).returning();
+      await db.insert(cryptoPurchases).values({ cryptoId: crypto.id, quantity: '0.1', purchasePrice: '30000', date: '2026-01-01' });
+      const [vehicle] = await db.insert(vehicles).values({ userId: ana.id, brandModel: 'Coche', plate: '0000AAA', purchasePrice: '10000', purchaseDate: '2020-01-01' }).returning();
+      await db.insert(vehicleValuations).values({ vehicleId: vehicle.id, value: '8000', date: '2026-01-01' });
+      const [plan] = await db.insert(pensionPlans).values({ userId: ana.id, managingEntity: 'Gestora', plan: 'Plan' }).returning();
+      await db.insert(pensionPlanContributions).values({ pensionPlanId: plan.id, amount: '100', date: '2026-01-01' });
+      const [cash] = await db.insert(cashHoldings).values({ userId: ana.id, location: 'Casa' }).returning();
+      await db.insert(cashBalances).values({ cashHoldingId: cash.id, amount: '50', date: '2026-01-01' });
+
+      const exported = await request(app.getHttpServer()).get('/users/me/export').set('Authorization', `Bearer ${await login(ana.email)}`).expect(200);
+      await db.delete(recurringTransactions).where(eq(recurringTransactions.userId, ana.id));
+      await db.delete(users).where(eq(users.id, ana.id));
+
+      const bea = await createUser('bea-ida-vuelta@example.com');
+      const res = await attach('/data-import/confirm', await login(bea.email), exported.body).expect(201);
+      for (const [key, summary] of Object.entries(res.body as Record<string, { total: number; toImport: number; omitted?: number }>)) {
+        expect({ key, toImport: summary.toImport, omitted: summary.omitted ?? 0 }).toEqual({ key, toImport: summary.total, omitted: 0 });
+      }
+      expect(res.body.fundSales).toEqual({ total: 1, toImport: 1, alreadyExisting: 0, omitted: 0 });
+      expect(res.body.categories.toImport).toBe(2);
+      const [sale] = await db.select().from(fundSales).where(eq(fundSales.fundId, fund.id));
+      expect(sale).toMatchObject({ shareCount: '4.00000000', date: '2026-06-01' });
+      const [restoredFund] = await db.select().from(funds).where(eq(funds.id, fund.id));
+      expect(restoredFund.userId).toBe(bea.id);
+    });
+
+    it('una copia antigua sin ventas de fondos se sigue importando', async () => {
+      const ana = await createUser('ana-sin-ventas@example.com');
+      const fundId = randomUUID();
+      const file = buildFile({ funds: [{ id: fundId, userId: randomUUID(), custodyBank: 'Banco', fund: 'Indexado', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] });
+      delete (file.economicData as unknown as Record<string, unknown>).fundSales;
+
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.funds.toImport).toBe(1);
+      expect(res.body.fundSales).toEqual({ total: 0, toImport: 0, alreadyExisting: 0, omitted: 0 });
+    });
   });
 });

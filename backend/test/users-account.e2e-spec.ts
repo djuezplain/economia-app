@@ -356,6 +356,17 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       expect(await db.select().from(receiptDocuments).where(eq(receiptDocuments.userId, other.id))).toHaveLength(1);
     });
 
+    it('borra también las ventas de fondos (spec 050 H2)', async () => {
+      const user = await createActiveUser('eliminar-ventas-fondos@example.com');
+      const accessToken = await login(user.email);
+      const [fund] = await db.insert(funds).values({ userId: user.id, custodyBank: 'Banco', fund: 'Indexado' }).returning();
+      await db.insert(fundSales).values({ fundId: fund.id, shareCount: '1', salePrice: '10', date: '2026-05-01' });
+
+      await request(app.getHttpServer()).delete('/users/me').set('Authorization', `Bearer ${accessToken}`).send({ password: PASSWORD }).expect(204);
+
+      expect(await db.select().from(fundSales).where(eq(fundSales.fundId, fund.id))).toHaveLength(0);
+    });
+
     it('en una cuenta sin contraseña (solo Google), exige y valida el email de confirmación en su lugar', async () => {
       const { accessToken, user } = await authService.loginWithGoogleProfile(
         { googleId: 'google-sub-eliminar-1', email: 'solo-google-eliminar@example.com', name: 'Usuario de Google' },
