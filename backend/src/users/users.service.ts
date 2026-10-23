@@ -58,6 +58,8 @@ export interface UserProfile {
    * intentar primero y fallar. Nunca se expone `passwordHash` en sí.
    */
   hasPassword: boolean;
+  /** Spec 049 H1 criterio 6. */
+  recurringReminderEmails: boolean;
 }
 
 /**
@@ -112,6 +114,7 @@ export class UsersService {
     if (dto.name !== undefined) updates.name = dto.name;
     if (dto.currency !== undefined) updates.currency = dto.currency;
     if (dto.locale !== undefined) updates.locale = dto.locale;
+    if (dto.recurringReminderEmails !== undefined) updates.recurringReminderEmails = dto.recurringReminderEmails;
 
     const [updated] = await this.db.update(users).set(updates).where(eq(users.id, userId)).returning();
     if (!updated) {
@@ -354,6 +357,7 @@ export class UsersService {
       status: user.status,
       createdAt: user.createdAt,
       hasPassword: user.passwordHash !== null,
+      recurringReminderEmails: user.recurringReminderEmails,
     };
   }
 }

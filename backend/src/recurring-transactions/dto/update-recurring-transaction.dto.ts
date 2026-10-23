@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Max, Min, ValidateIf } from 'class-validator';
 import { IsMoneyAmount } from '../../common/is-money-amount.decorator.js';
 
 /** Spec 047, H1: edición parcial. `type` no es editable (mismo criterio que `UpdateTransactionDto`). */
@@ -50,4 +50,16 @@ export class UpdateRecurringTransactionDto {
   @IsOptional()
   @IsBoolean()
   variableAmount?: boolean;
+
+  /** Spec 049 H1: aviso por email antes de cada ocurrencia. */
+  @IsOptional()
+  @IsBoolean()
+  reminderEnabled?: boolean;
+
+  /** Spec 049 H1 criterio 1: días de antelación del aviso (0 = el mismo día). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(7)
+  reminderDaysBefore?: number;
 }

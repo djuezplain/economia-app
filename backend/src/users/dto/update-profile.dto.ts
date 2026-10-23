@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, Length, Matches } from 'class-validator';
 
 /**
  * H7 (spec 001), criterio 1: solo nombre, moneda por defecto e idioma. El
@@ -28,4 +28,9 @@ export class UpdateProfileDto {
   @IsOptional()
   @Matches(/^[a-z]{2}(-[A-Z]{2})?$/, { message: 'El idioma debe tener el formato "es" o "es-ES".' })
   locale?: string;
+
+  /** Spec 049 H1 criterio 6: interruptor global de los avisos de recibos por email. */
+  @IsOptional()
+  @IsBoolean()
+  recurringReminderEmails?: boolean;
 }

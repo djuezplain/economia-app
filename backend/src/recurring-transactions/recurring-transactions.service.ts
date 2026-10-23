@@ -85,6 +85,8 @@ export class RecurringTransactionsService {
         startDate: dto.startDate,
         endDate: dto.endDate ?? null,
         variableAmount: dto.variableAmount ?? false,
+        reminderEnabled: dto.reminderEnabled ?? false,
+        ...(dto.reminderDaysBefore !== undefined && { reminderDaysBefore: dto.reminderDaysBefore }),
       })
       .returning();
     return created;
@@ -123,6 +125,8 @@ export class RecurringTransactionsService {
         ...(dto.endDate !== undefined && { endDate: dto.endDate }),
         ...(dto.active !== undefined && { active: dto.active }),
         ...(dto.variableAmount !== undefined && { variableAmount: dto.variableAmount }),
+        ...(dto.reminderEnabled !== undefined && { reminderEnabled: dto.reminderEnabled }),
+        ...(dto.reminderDaysBefore !== undefined && { reminderDaysBefore: dto.reminderDaysBefore }),
         updatedAt: new Date(),
       })
       .where(eq(recurringTransactions.id, id))
