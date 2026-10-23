@@ -1,9 +1,11 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
-import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
-import { products, receiptLines, receipts, supermarkets } from '../db/schema/index.js';
+import { products, receiptLines, receipts, supermarkets, transactions } from '../db/schema/index.js';
+import { isUniqueViolation } from '../common/db-errors.util.js';
+import { LINK_DAYS_AFTER, LINK_DAYS_BEFORE, rankLinkCandidates } from './receipt-link.js';
 import type { ConfirmReceiptDto } from '../receipt-import/dto/confirm-receipt.dto.js';
 import { resolveEntityRef } from '../receipt-import/resolve-entity-ref.util.js';
 import { assertReceiptHasAmount, resolveLineProduct } from '../receipt-import/receipt-rules.js';
@@ -25,6 +27,8 @@ export interface ReceiptSummary {
    * sin líneas, el total impreso). Es el que usa el filtro por importe.
    */
   total: string | null;
+  /** Spec 048 H3: el movimiento enlazado, o `null`. */
+  transactionId: string | null;
   /** Spec 048 H1: metadatos del documento original (sin el contenido), o `null` si no tiene. */
   document: DocumentInfo | null;
 }
@@ -116,6 +120,7 @@ export class ReceiptsService {
         printedTotal: receipt.printedTotal,
         linesTotal,
         total: receiptTotal(lines, receipt.printedTotal),
+        transactionId: receipt.transactionId,
         document: documentByReceipt.get(receipt.id) ?? null,
         // Presencia del producto filtrado, para el filtro de `productId` (T1.3) — se calcula
         // aquí porque `lines` ya está disponible, se descarta abajo si no se necesita.
@@ -151,6 +156,7 @@ export class ReceiptsService {
       printedTotal: receipt.printedTotal,
       linesTotal: lineRows.reduce((sum, line) => sum.plus(line.amount), new Decimal(0)).toFixed(2),
       total: receiptTotal(lineRows, receipt.printedTotal),
+      transactionId: receipt.transactionId,
       document: documentByReceipt.get(receipt.id) ?? null,
       lines: lineRows.map((line) => ({
         id: line.id,
@@ -215,4 +221,77 @@ export class ReceiptsService {
     if (!existing) throw new NotFoundException('El ticket indicado no existe.');
     await this.db.delete(receipts).where(eq(receipts.id, receiptId));
   }
+
+  // --- Spec 048 H3: enlace con el movimiento ------------------------------
+  // Ninguno de estos métodos crea ni modifica un movimiento (H3 criterio 6,
+  // decisión de Diego): solo escriben `receipts.transaction_id`.
+
+  /** H3 criterio 1: gastos sin ticket enlazado que pueden corresponder a este ticket, ordenados. */
+  async linkCandidates(userId: string, receiptId: string): Promise<Array<typeof transactions.$inferSelect>> {
+    const receipt = await this.findOwnReceiptOrThrow(userId, receiptId);
+    const [shop] = await this.db.select({ name: supermarkets.name }).from(supermarkets).where(eq(supermarkets.id, receipt.supermarketId));
+    const lines = await this.db.select({ amount: receiptLines.amount }).from(receiptLines).where(eq(receiptLines.receiptId, receiptId));
+
+    const from = shiftDays(receipt.date, -LINK_DAYS_BEFORE);
+    const to = shiftDays(receipt.date, LINK_DAYS_AFTER);
+    const rows = await this.db
+      .select({ transaction: transactions })
+      .from(transactions)
+      .leftJoin(receipts, eq(receipts.transactionId, transactions.id))
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.type, 'EXPENSE'),
+          gte(transactions.date, from),
+          lte(transactions.date, to),
+          isNull(receipts.id),
+        ),
+      );
+
+    return rankLinkCandidates(
+      {
+        date: receipt.date,
+        printedTotal: receipt.printedTotal,
+        linesTotal: lines.length > 0 ? receiptTotal(lines, null) : null,
+        merchantName: shop.name,
+      },
+      rows.map((r) => r.transaction),
+    );
+  }
+
+  /** H3 criterios 1 y 2: enlaza el ticket con un gasto del usuario, o cambia el enlace. */
+  async linkTransaction(userId: string, receiptId: string, transactionId: string): Promise<ReceiptDetail> {
+    await this.findOwnReceiptOrThrow(userId, receiptId);
+    const [movement] = await this.db
+      .select({ id: transactions.id, type: transactions.type })
+      .from(transactions)
+      .where(and(eq(transactions.id, transactionId), eq(transactions.userId, userId)));
+    if (!movement) throw new NotFoundException('El movimiento indicado no existe.');
+    if (movement.type !== 'EXPENSE') throw new BadRequestException('Un ticket solo se puede enlazar con un gasto.');
+
+    try {
+      await this.db.update(receipts).set({ transactionId }).where(and(eq(receipts.id, receiptId), eq(receipts.userId, userId)));
+    } catch (err) {
+      // H3 criterio 3: un movimiento, como mucho un ticket (índice único).
+      if (isUniqueViolation(err)) throw new ConflictException('Ese movimiento ya está enlazado a otro ticket.');
+      throw err;
+    }
+    return this.getById(userId, receiptId);
+  }
+
+  /** H3: quita el enlace. Ni el ticket ni el movimiento se borran. */
+  async unlinkTransaction(userId: string, receiptId: string): Promise<void> {
+    await this.findOwnReceiptOrThrow(userId, receiptId);
+    await this.db.update(receipts).set({ transactionId: null }).where(and(eq(receipts.id, receiptId), eq(receipts.userId, userId)));
+  }
+
+  private async findOwnReceiptOrThrow(userId: string, receiptId: string) {
+    const [receipt] = await this.db.select().from(receipts).where(and(eq(receipts.id, receiptId), eq(receipts.userId, userId)));
+    if (!receipt) throw new NotFoundException('El ticket indicado no existe.');
+    return receipt;
+  }
+}
+
+function shiftDays(iso: string, days: number): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }

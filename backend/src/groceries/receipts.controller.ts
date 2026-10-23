@@ -24,6 +24,7 @@ import { RequireActiveUserGuard } from '../auth/guards/require-active-user.guard
 import type { RequestUser } from '../auth/guards/require-active-user.guard.js';
 import { ConfirmReceiptDto } from '../receipt-import/dto/confirm-receipt.dto.js';
 import { ListReceiptsQueryDto } from './dto/list-receipts-query.dto.js';
+import { LinkTransactionDto } from './dto/link-transaction.dto.js';
 import { ReceiptsService } from './receipts.service.js';
 import { MAX_DOCUMENT_SIZE_BYTES, ReceiptDocumentsService } from './receipt-documents.service.js';
 import { DocumentTooLargeFilter } from './document-too-large.filter.js';
@@ -109,5 +110,27 @@ export class ReceiptsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteDocument(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }): Promise<void> {
     await this.documents.remove(req.user.id, id);
+  }
+
+  // --- Spec 048 H3: enlace con el movimiento -------------------------------
+
+  @Get(':id/transaction-candidates')
+  linkCandidates(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }) {
+    return this.receiptsService.linkCandidates(req.user.id, id);
+  }
+
+  @Put(':id/transaction')
+  linkTransaction(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: LinkTransactionDto,
+    @Req() req: Request & { user: RequestUser },
+  ) {
+    return this.receiptsService.linkTransaction(req.user.id, id, dto.transactionId);
+  }
+
+  @Delete(':id/transaction')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async unlinkTransaction(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }): Promise<void> {
+    await this.receiptsService.unlinkTransaction(req.user.id, id);
   }
 }
