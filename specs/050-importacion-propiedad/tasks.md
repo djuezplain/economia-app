@@ -1,6 +1,6 @@
 # Tasks — Spec 050 (importación de copias: propiedad de las referencias y ventas de fondos)
 
-**Fase:** 3 de 4 (aprobado)
+**Fase:** 4 de 4 (implementada)
 
 Orden de plan.md §7. Cada tarea es como mucho un commit (constitution §4) y no se da por hecha si rompe un test existente.
 
@@ -30,4 +30,14 @@ Orden de plan.md §7. Cada tarea es como mucho un commit (constitution §4) y no
 
 ## Checklist de cierre — spec 050
 
-*(se rellena al terminar cada tarea)*
+- [x] **T1.1** — `fundSales` en la exportación (JSON y `datos.json` del `.zip`), clave opcional tras `fundPurchases`. Tests e2e: solo las ventas propias, y la clave en `datos.json`.
+- [x] **T2.1** — `ImportContext`, `refs` declaradas en todas las tablas de `TABLES` (plan.md §1) y `mergeTable` ampliado, con `omitted` en las tablas con referencias. Una referencia que no es un UUID se trata como desconocida (antes podía llegar a Postgres). 23 tests e2e nuevos; los 23 fallan con el código anterior. Se adaptaron 5 expectativas de tests existentes que comparaban resúmenes con `toEqual` (ahora traen `omitted: 0`).
+- [x] **T2.2** — Resoluciones, descartes, tickets, líneas, documentos y elementos de lista usan `usableIds` sobre el `ImportContext`; desaparecen `fileIds` e `importableReceiptIds`. Los tests existentes de esas fusiones pasan sin tocar sus expectativas. Test nuevo: una plantilla y un movimiento omitidos por su categoría ajena, con una resolución, un descarte y un ticket que apuntan a ellos; con el código de T2.1 la importación fallaba entera, ahora se omiten o pierden el enlace.
+- [x] **T3.1** — Errores de Postgres de clase `22` o `23` → 400 "El fichero contiene datos que no se pueden importar.". Una fecha de creación imposible (falla en Drizzle antes de llegar a Postgres) da el mismo 400. 4 tests e2e: en ninguno se escribe nada. **Desviación de lo que decía la spec (§0, punto 2):** hoy no salía un 500, sino un 400 con el mensaje en bruto de Postgres (nombres de tablas, restricciones y valores), para cualquier error, incluso uno de la base de datos que no fuera culpa del fichero. Ahora el mensaje es claro y un error que no es de datos vuelve a ser un 500.
+- [x] **T4.1** — La importación de `fundSales` (con `fundId → funds`) ya entró en T2.1. Tests e2e: ida y vuelta completa de una cuenta con una fila de cada familia, categorías padre e hija, subcategoría, presupuesto, plantilla y compras y ventas de fondos, sin ningún omitido (H1 criterio 6); copia antigua sin `fundSales`; el borrado de cuenta se lleva las ventas de fondos.
+- [x] **T5.1** — "Ventas de fondos" en el resumen y el texto de "Omitidos" ampliado. 1 test de componente.
+- [x] **T5.2** — Cierre:
+  - Backend: 343 unitarios y 815 e2e en 58 ficheros, en serie, todos en verde (782 antes de esta spec); `tsconfig.build.json` y oxlint limpios.
+  - Frontend: 737 de 737, `tsc -b` limpio, oxlint sin avisos nuevos.
+  - Spec contrastada: H1 criterios 1–6 y H2 criterios 1–3 cubiertos. Sin revisión visual en navegador: el único cambio de interfaz es una etiqueta y un texto en una tabla que ya se revisó en la spec 048.
+  - Pendiente: fusionar antes la spec 048 (#93), de la que parte esta rama.
