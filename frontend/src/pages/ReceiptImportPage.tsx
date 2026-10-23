@@ -4,12 +4,14 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { confirmReceiptImport, previewReceiptImport } from '../api/receipt-import';
-import type { ConfirmReceiptLine, ConfirmReceiptPayload, ReceiptPreview } from '../api/receipt-import';
+import type { ConfirmImportPayload, ConfirmReceiptLine, ReceiptPreview } from '../api/receipt-import';
 import { listSupermarkets, searchProducts } from '../api/groceries';
 import type { Product, Supermarket } from '../api/groceries';
 import { ApiError } from '../api/client';
 import { ReceiptFieldsEditor } from '../components/ReceiptFieldsEditor';
 import { NEW_OPTION_VALUE, newLineKey } from '../components/receipt-line.types';
+import { describeDocument } from '../components/ReceiptDocumentSection';
+import { ACCEPTED_DOCUMENTS, prepareUpload } from './receipt-upload';
 import type { EditableLine } from '../components/receipt-line.types';
 
 function toEditableLines(preview: ReceiptPreview): EditableLine[] {
@@ -49,6 +51,10 @@ export function ReceiptImportPage() {
   const [date, setDate] = useState('');
   const [printedTotal, setPrintedTotal] = useState('');
   const [lines, setLines] = useState<EditableLine[] | null>(null);
+  // Spec 048 H1: el documento ya guardado como pendiente en la vista previa,
+  // y una URL local del fichero elegido para verlo junto a lo reconocido.
+  const [document, setDocument] = useState<ReceiptPreview['document'] | null>(null);
+  const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
 
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -60,8 +66,19 @@ export function ReceiptImportPage() {
     void searchProducts().then(setProducts);
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!selectedFile || !selectedFile.type.startsWith('image/') || typeof URL.createObjectURL !== 'function') return;
+    const url = URL.createObjectURL(selectedFile);
+    setLocalPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+      setLocalPreviewUrl(null);
+    };
+  }, [selectedFile]);
+
   function resetPreviewState() {
     setLines(null);
+    setDocument(null);
     setSupermarketId(NEW_OPTION_VALUE);
     setSupermarketName('');
     setDate('');
@@ -82,7 +99,15 @@ export function ReceiptImportPage() {
     setPreviewError(null);
     setIsPreviewing(true);
     try {
-      const result = await previewReceiptImport(selectedFile);
+      // Spec 048 H1 criterio 8 / plan.md §4: se reduce la foto y se avisa
+      // por tamaño antes de subir nada.
+      const { file, error } = await prepareUpload(selectedFile);
+      if (error) {
+        setPreviewError(error);
+        return;
+      }
+      const result = await previewReceiptImport(file);
+      setDocument(result.document);
       setSupermarketId(result.supermarket.matchedId ?? NEW_OPTION_VALUE);
       setSupermarketName(result.supermarket.suggestedName ?? '');
       setDate(result.date ?? '');
@@ -115,7 +140,8 @@ export function ReceiptImportPage() {
     setConfirmError(null);
     setIsConfirming(true);
     try {
-      const payload: ConfirmReceiptPayload = {
+      const payload: ConfirmImportPayload = {
+        documentId: document?.id,
         supermarket: supermarketId ? { id: supermarketId } : { name: supermarketName },
         date,
         printedTotal: printedTotal || undefined,
@@ -180,13 +206,13 @@ export function ReceiptImportPage() {
       <section>
         <h2>1. Subir imagen</h2>
         <form onSubmit={(e) => void handlePreview(e)}>
-          <label htmlFor="receipt-import-file">Foto del ticket</label>
+          <label htmlFor="receipt-import-file">Foto o PDF del ticket</label>
           {/* Sin `capture`: con ese atributo, algunos navegadores móviles
               (sobre todo iOS Safari) abren la cámara directamente en vez de
               ofrecer también la opción de elegir una foto ya existente de
               la galería — spec.md §3 ya preveía el selector de fichero
               estándar con ambas opciones, no una vista de cámara forzada. */}
-          <input id="receipt-import-file" type="file" accept="image/*" className="input" onChange={handleFileChange} />
+          <input id="receipt-import-file" type="file" accept={ACCEPTED_DOCUMENTS} className="input" onChange={handleFileChange} />
 
           {previewError && <p role="alert">{previewError}</p>}
 
@@ -199,6 +225,15 @@ export function ReceiptImportPage() {
       {lines && confirmedReceiptId === null && (
         <section>
           <h2>2. Revisar y corregir</h2>
+
+          {document && (
+            <div className="card" aria-label="Documento subido">
+              <p className="card-meta">
+                Se guardará con el ticket: {describeDocument(document)}
+              </p>
+              {localPreviewUrl && <img className="receipt-document-image" src={localPreviewUrl} alt="Foto del ticket subida" />}
+            </div>
+          )}
 
           <ReceiptFieldsEditor
             supermarkets={supermarkets}

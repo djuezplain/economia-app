@@ -7,6 +7,7 @@ import type { Product, ReceiptDetail, Supermarket } from '../api/groceries';
 import type { ConfirmReceiptLine, ConfirmReceiptPayload } from '../api/receipt-import';
 import { ApiError } from '../api/client';
 import { ReceiptFieldsEditor } from '../components/ReceiptFieldsEditor';
+import { ReceiptDocumentSection } from '../components/ReceiptDocumentSection';
 import { NEW_OPTION_VALUE, newLineKey } from '../components/receipt-line.types';
 import type { EditableLine } from '../components/receipt-line.types';
 
@@ -232,6 +233,12 @@ export function ReceiptDetailPage() {
               ))}
             </tbody>
           </table>
+
+          <ReceiptDocumentSection
+            receiptId={receipt.id}
+            document={receipt.document}
+            onChanged={(document) => setReceipt((current) => (current ? { ...current, document } : current))}
+          />
         </>
       )}
 

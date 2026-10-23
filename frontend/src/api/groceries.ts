@@ -40,6 +40,17 @@ export interface ReceiptSummary {
   printedTotal: string | null;
   /** Spec 040, plan.md §3: suma real de las líneas — el importe usado para filtrar, no `printedTotal` (puede ser `null`). */
   linesTotal: string;
+  /** Spec 048 H1: el documento original (foto o PDF), o `null` si el ticket no tiene. */
+  document: ReceiptDocumentInfo | null;
+}
+
+/** Spec 048 H1: metadatos del documento de un ticket (el contenido se pide aparte). */
+export interface ReceiptDocumentInfo {
+  id: string;
+  mimeType: string;
+  sizeBytes: number;
+  pageCount: number | null;
+  originalFilename: string;
 }
 
 /** Spec 040, plan.md §1 (H1): filtros de `GET /receipts`, todos opcionales y combinables. */
@@ -125,4 +136,21 @@ export function updateReceipt(id: string, payload: ConfirmReceiptPayload): Promi
 /** Spec 035, plan.md §4 (H1). */
 export function deleteReceipt(id: string): Promise<void> {
   return api.delete<void>(`/receipts/${id}`);
+}
+
+// --- Spec 048 H1: documento original de un ticket --------------------------
+
+export function getReceiptDocument(receiptId: string): Promise<Blob> {
+  return api.getBlob(`/receipts/${receiptId}/document`);
+}
+
+/** Adjunta un documento a un ticket guardado, o sustituye el que tenga. */
+export function uploadReceiptDocument(receiptId: string, file: File): Promise<ReceiptDocumentInfo> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.putForm<ReceiptDocumentInfo>(`/receipts/${receiptId}/document`, formData);
+}
+
+export function deleteReceiptDocument(receiptId: string): Promise<void> {
+  return api.delete<void>(`/receipts/${receiptId}/document`);
 }
