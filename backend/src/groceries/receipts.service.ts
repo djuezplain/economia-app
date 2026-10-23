@@ -7,6 +7,8 @@ import { products, receiptLines, receipts, supermarkets } from '../db/schema/ind
 import type { ConfirmReceiptDto } from '../receipt-import/dto/confirm-receipt.dto.js';
 import { resolveEntityRef } from '../receipt-import/resolve-entity-ref.util.js';
 import type { ListReceiptsQueryDto } from './dto/list-receipts-query.dto.js';
+import { ReceiptDocumentsService } from './receipt-documents.service.js';
+import type { DocumentInfo } from './receipt-documents.service.js';
 
 export interface ReceiptSummary {
   id: string;
@@ -16,6 +18,8 @@ export interface ReceiptSummary {
   printedTotal: string | null;
   /** Spec 040, plan.md §2: suma real de las líneas — el importe usado para filtrar (H1 criterio 4), no `printedTotal` (puede ser `null`). */
   linesTotal: string;
+  /** Spec 048 H1: metadatos del documento original (sin el contenido), o `null` si no tiene. */
+  document: DocumentInfo | null;
 }
 
 export interface ReceiptLineDetail {
@@ -37,7 +41,10 @@ export interface ReceiptDetail extends ReceiptSummary {
 /** Spec 034, plan.md §3 (H5). Mismo criterio "sin joins SQL" que `ProductsService`. */
 @Injectable()
 export class ReceiptsService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly documents: ReceiptDocumentsService,
+  ) {}
 
   /**
    * Spec 040, plan.md §2 (H1): filtros de `query`, todos opcionales y
@@ -80,6 +87,10 @@ export class ReceiptsService {
           receiptRows.map((r) => r.id),
         ),
       );
+    const documentByReceipt = await this.documents.infoByReceipt(
+      userId,
+      receiptRows.map((r) => r.id),
+    );
     const linesByReceipt = new Map<string, (typeof lineRows)[number][]>();
     for (const line of lineRows) {
       const lines = linesByReceipt.get(line.receiptId) ?? [];
@@ -97,6 +108,7 @@ export class ReceiptsService {
         supermarketName: supermarketById.get(receipt.supermarketId)!.name,
         printedTotal: receipt.printedTotal,
         linesTotal,
+        document: documentByReceipt.get(receipt.id) ?? null,
         // Presencia del producto filtrado, para el filtro de `productId` (T1.3) — se calcula
         // aquí porque `lines` ya está disponible, se descarta abajo si no se necesita.
         hasFilteredProduct: query.productId ? lines.some((line) => line.productId === query.productId) : true,
@@ -120,6 +132,7 @@ export class ReceiptsService {
     const productIds = [...new Set(lineRows.map((line) => line.productId).filter((id): id is string => id !== null))];
     const productRows = productIds.length > 0 ? await this.db.select().from(products).where(inArray(products.id, productIds)) : [];
     const productById = new Map(productRows.map((p) => [p.id, p]));
+    const documentByReceipt = await this.documents.infoByReceipt(userId, [receipt.id]);
 
     return {
       id: receipt.id,
@@ -128,6 +141,7 @@ export class ReceiptsService {
       supermarketName: supermarket.name,
       printedTotal: receipt.printedTotal,
       linesTotal: lineRows.reduce((sum, line) => sum.plus(line.amount), new Decimal(0)).toFixed(2),
+      document: documentByReceipt.get(receipt.id) ?? null,
       lines: lineRows.map((line) => ({
         id: line.id,
         description: line.description,

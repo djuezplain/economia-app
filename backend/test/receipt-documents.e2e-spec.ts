@@ -222,4 +222,100 @@ describe('Documentos de tickets (e2e) — spec 048 H1', () => {
       expect(await db.select().from(receipts)).toEqual([]);
     });
   });
+
+  describe('documento de un ticket guardado (T3.4)', () => {
+    const server = () => app.getHttpServer();
+
+    async function withReceipt(email = 'ana@example.com') {
+      const user = await createUser(email);
+      const token = await login(email);
+      const receipt = await createReceipt(user.id);
+      return { user, token, receipt };
+    }
+
+    it('adjuntar a un ticket antiguo, verlo en el detalle y el listado, y descargarlo', async () => {
+      const { token, receipt } = await withReceipt();
+      const put = await request(server()).put(`/receipts/${receipt.id}/document`).set('Authorization', token).attach('file', JPEG, 'mi ticket.jpg').expect(200);
+      expect(put.body).toMatchObject({ mimeType: 'image/jpeg', sizeBytes: JPEG.length, originalFilename: 'mi ticket.jpg' });
+
+      const detail = await request(server()).get(`/receipts/${receipt.id}`).set('Authorization', token).expect(200);
+      expect(detail.body.document).toMatchObject({ mimeType: 'image/jpeg', originalFilename: 'mi ticket.jpg' });
+      const list = await request(server()).get('/receipts').set('Authorization', token).expect(200);
+      expect(list.body[0].document).toMatchObject({ mimeType: 'image/jpeg' });
+      expect(list.body[0].document).not.toHaveProperty('content');
+
+      const inline = await request(server())
+        .get(`/receipts/${receipt.id}/document`)
+        .set('Authorization', token)
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => done(null, Buffer.concat(chunks)));
+        })
+        .expect(200);
+      expect(Buffer.compare(inline.body as Buffer, JPEG)).toBe(0);
+      expect(inline.headers['content-type']).toBe('image/jpeg');
+      expect(inline.headers['content-disposition']).toBe("inline; filename*=UTF-8''mi%20ticket.jpg");
+      expect(inline.headers['x-content-type-options']).toBe('nosniff');
+      expect(inline.headers['cache-control']).toBe('private, no-store');
+
+      const download = await request(server()).get(`/receipts/${receipt.id}/document?download=1`).set('Authorization', token).expect(200);
+      expect(download.headers['content-disposition']).toMatch(/^attachment;/);
+    });
+
+    it('sin documento, el detalle trae document: null y la descarga da 404', async () => {
+      const { token, receipt } = await withReceipt();
+      const detail = await request(server()).get(`/receipts/${receipt.id}`).set('Authorization', token).expect(200);
+      expect(detail.body.document).toBeNull();
+      await request(server()).get(`/receipts/${receipt.id}/document`).set('Authorization', token).expect(404);
+    });
+
+    it('sustituir deja un solo documento, el nuevo', async () => {
+      const { token, receipt } = await withReceipt();
+      await request(server()).put(`/receipts/${receipt.id}/document`).set('Authorization', token).attach('file', JPEG, 'a.jpg').expect(200);
+      await request(server()).put(`/receipts/${receipt.id}/document`).set('Authorization', token).attach('file', PDF, 'b.pdf').expect(200);
+      const rows = await db.select().from(receiptDocuments).where(eq(receiptDocuments.receiptId, receipt.id));
+      expect(rows.map((r) => r.mimeType)).toEqual(['application/pdf']);
+    });
+
+    it('quitar borra el documento; quitarlo otra vez da 404', async () => {
+      const { token, receipt } = await withReceipt();
+      await request(server()).put(`/receipts/${receipt.id}/document`).set('Authorization', token).attach('file', JPEG, 'a.jpg').expect(200);
+      await request(server()).delete(`/receipts/${receipt.id}/document`).set('Authorization', token).expect(204);
+      expect(await db.select().from(receiptDocuments)).toEqual([]);
+      await request(server()).delete(`/receipts/${receipt.id}/document`).set('Authorization', token).expect(404);
+    });
+
+    it('rechaza un tipo no admitido y un documento de más de 10 MB (mensaje en español)', async () => {
+      const { token, receipt } = await withReceipt();
+      await request(server()).put(`/receipts/${receipt.id}/document`).set('Authorization', token).attach('file', SVG, 'a.jpg').expect(400);
+      const big = await request(server())
+        .put(`/receipts/${receipt.id}/document`)
+        .set('Authorization', token)
+        .attach('file', Buffer.concat([JPEG, Buffer.alloc(10 * 1024 * 1024)]), 'a.jpg')
+        .expect(400);
+      expect(big.body.message).toBe('El documento ocupa más de 10 MB.');
+    });
+
+    it('borrar el ticket se lleva su documento (H1 criterio 4)', async () => {
+      const { token, receipt } = await withReceipt();
+      await request(server()).put(`/receipts/${receipt.id}/document`).set('Authorization', token).attach('file', JPEG, 'a.jpg').expect(200);
+      await request(server()).delete(`/receipts/${receipt.id}`).set('Authorization', token).expect(204);
+      expect(await db.select().from(receiptDocuments)).toEqual([]);
+    });
+
+    it('aislamiento: 404 en cada endpoint con el ticket de otro usuario, sin tocar su documento', async () => {
+      const ana = await withReceipt('ana@example.com');
+      const bea = await withReceipt('bea@example.com');
+      await request(server()).put(`/receipts/${ana.receipt.id}/document`).set('Authorization', ana.token).attach('file', JPEG, 'a.jpg').expect(200);
+
+      await request(server()).get(`/receipts/${ana.receipt.id}/document`).set('Authorization', bea.token).expect(404);
+      await request(server()).put(`/receipts/${ana.receipt.id}/document`).set('Authorization', bea.token).attach('file', PDF, 'x.pdf').expect(404);
+      await request(server()).delete(`/receipts/${ana.receipt.id}/document`).set('Authorization', bea.token).expect(404);
+
+      const rows = await db.select().from(receiptDocuments).where(eq(receiptDocuments.receiptId, ana.receipt.id));
+      expect(rows.map((r) => r.mimeType)).toEqual(['image/jpeg']);
+    });
+  });
 });
