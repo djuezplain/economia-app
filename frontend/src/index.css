@@ -1297,6 +1297,7 @@ a.card-title:hover {
 
 /* Últimos movimientos: una única tarjeta con filas separadas por línea
    tenue (como las listas de la captura), en vez de filas sueltas. */
+#home-upcoming-bills,
 #home-recent-list {
   list-style: none;
   margin: var(--space-3) 0;
@@ -1306,6 +1307,7 @@ a.card-title:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
+#home-upcoming-bills li,
 #home-recent-list li {
   display: flex;
   align-items: center;
@@ -1313,12 +1315,15 @@ a.card-title:hover {
   padding: 12px var(--space-4);
   border-bottom: 1px solid var(--chart-grid);
 }
+#home-upcoming-bills li:last-child,
 #home-recent-list li:last-child {
   border-bottom: none;
 }
+#home-upcoming-bills small,
 #home-recent-list small {
   color: var(--text-muted);
 }
+#home-upcoming-bills li > span:last-child,
 #home-recent-list li > span:last-child {
   margin-inline-start: auto;
   font-weight: 600;

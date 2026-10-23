@@ -23,6 +23,9 @@ export interface RecurringTransaction {
   active: boolean;
   /** Spec 049 H2: `amount` es el importe inicial y las ocurrencias usan una estimación. */
   variableAmount: boolean;
+  /** Spec 049 H1: aviso por email `reminderDaysBefore` días antes (0..7). */
+  reminderEnabled: boolean;
+  reminderDaysBefore: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,6 +59,8 @@ export interface CreateRecurringInput {
   startDate: string;
   endDate?: string;
   variableAmount?: boolean;
+  reminderEnabled?: boolean;
+  reminderDaysBefore?: number;
 }
 
 export type UpdateRecurringInput = Partial<Omit<CreateRecurringInput, 'type' | 'endDate'>> & {

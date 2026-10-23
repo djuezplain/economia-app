@@ -12,12 +12,15 @@ export interface UserProfile {
   // H8 (spec 001): decide qué pide el modal de borrado de cuenta — contraseña
   // o email de confirmación (ver DeleteAccountPayload).
   hasPassword: boolean;
+  /** Spec 049 H1 criterio 6: interruptor global de los avisos de recibos por email. */
+  recurringReminderEmails: boolean;
 }
 
 export interface UpdateProfileInput {
   name?: string;
   currency?: string;
   locale?: string;
+  recurringReminderEmails?: boolean;
 }
 
 export interface ChangePasswordInput {

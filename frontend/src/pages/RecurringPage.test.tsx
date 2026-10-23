@@ -26,7 +26,7 @@ function template(overrides: Partial<RecurringTransaction> = {}): RecurringTrans
   return {
     id: 'rec-1', userId: 'user-1', type: 'EXPENSE', categoryId: 'cat-expense-1', subcategoryId: null,
     concept: 'Alquiler', merchant: null, amount: '600.00', paymentMethod: null, frequency: 'MONTHLY',
-    startDate: '2026-01-05', endDate: null, active: true, variableAmount: false, createdAt: '2026-01-01T00:00:00.000Z',
+    startDate: '2026-01-05', endDate: null, active: true, variableAmount: false, reminderEnabled: false, reminderDaysBefore: 2, createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z', ...overrides,
   };
 }
@@ -47,7 +47,7 @@ describe('RecurringPage', () => {
     resetForTests(true);
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue({
       id: 'user-1', email: 'ana@example.com', name: 'Ana', currency: 'EUR', locale: 'es',
-      status: 'ACTIVE', createdAt: '2026-01-01T00:00:00.000Z', hasPassword: true,
+      status: 'ACTIVE', createdAt: '2026-01-01T00:00:00.000Z', hasPassword: true, recurringReminderEmails: true,
     });
     vi.spyOn(categoriesApi, 'listCategories').mockImplementation(async (type) =>
       type === 'INCOME' ? [INCOME_CATEGORY] : [EXPENSE_CATEGORY],
@@ -130,6 +130,34 @@ describe('RecurringPage', () => {
     expect(within(form).getByLabelText('Importe variable')).toBeChecked();
     await userEvent.click(within(form).getByRole('button', { name: 'Guardar cambios' }));
     expect(update).toHaveBeenCalledWith('rec-1', expect.objectContaining({ variableAmount: true }));
+  });
+
+  it('configura el aviso por email: los días solo aparecen con la casilla marcada (spec 049 H1)', async () => {
+    const create = vi.spyOn(recurringApi, 'createRecurring').mockResolvedValue(template({ id: 'rec-2' }));
+    renderPage();
+    await screen.findByText('Cada mes, el día 5');
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Nuevo recurrente' }));
+    const form = screen.getByRole('form', { name: 'Nuevo recurrente' });
+    expect(within(form).queryByLabelText('Con cuánta antelación')).not.toBeInTheDocument();
+    await userEvent.type(within(form).getByLabelText('Concepto'), 'Seguro');
+    await userEvent.selectOptions(within(form).getByLabelText('Categoría'), 'cat-expense-1');
+    await userEvent.type(within(form).getByLabelText('Importe'), '30.00');
+    await userEvent.click(within(form).getByLabelText('Avisarme por email'));
+    await userEvent.selectOptions(within(form).getByLabelText('Con cuánta antelación'), 'El mismo día');
+    await userEvent.click(within(form).getByRole('button', { name: 'Crear' }));
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ reminderEnabled: true, reminderDaysBefore: 0 }));
+  });
+
+  it('al editar, carga la configuración del aviso y el listado la etiqueta', async () => {
+    vi.spyOn(recurringApi, 'listRecurring').mockResolvedValue([template({ reminderEnabled: true, reminderDaysBefore: 5 })]);
+    renderPage();
+    expect(await screen.findByText('aviso por email')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Editar' }));
+    const form = screen.getByRole('form', { name: 'Editar recurrente' });
+    expect(within(form).getByLabelText('Avisarme por email')).toBeChecked();
+    expect(within(form).getByLabelText('Con cuánta antelación')).toHaveValue('5');
   });
 
   it('muestra el error del servidor al guardar', async () => {

@@ -38,6 +38,8 @@ function emptyForm() {
     startDate: todayIso(),
     endDate: '',
     variableAmount: false,
+    reminderEnabled: false,
+    reminderDaysBefore: 2,
   };
 }
 
@@ -118,6 +120,8 @@ export function RecurringPage() {
       startDate: t.startDate,
       endDate: t.endDate ?? '',
       variableAmount: t.variableAmount,
+      reminderEnabled: t.reminderEnabled,
+      reminderDaysBefore: t.reminderDaysBefore,
     });
     setFormError(null);
     setShowForm(true);
@@ -139,6 +143,8 @@ export function RecurringPage() {
         frequency: form.frequency,
         startDate: form.startDate,
         variableAmount: form.variableAmount,
+        reminderEnabled: form.reminderEnabled,
+        reminderDaysBefore: form.reminderDaysBefore,
       };
       if (editingId) {
         await updateRecurring(editingId, { ...common, endDate: form.endDate || null });
@@ -342,6 +348,34 @@ export function RecurringPage() {
               <label htmlFor="rec-end">Hasta (opcional)</label>
               <input id="rec-end" className="input" type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
             </div>
+            <div className="field">
+              <label htmlFor="rec-reminder">
+                <input
+                  id="rec-reminder"
+                  type="checkbox"
+                  checked={form.reminderEnabled}
+                  onChange={(e) => setForm({ ...form, reminderEnabled: e.target.checked })}
+                />{' '}
+                Avisarme por email
+              </label>
+            </div>
+            {form.reminderEnabled && (
+              <div className="field">
+                <label htmlFor="rec-reminder-days">Con cuánta antelación</label>
+                <select
+                  id="rec-reminder-days"
+                  className="input"
+                  value={form.reminderDaysBefore}
+                  onChange={(e) => setForm({ ...form, reminderDaysBefore: Number(e.target.value) })}
+                >
+                  {[0, 1, 2, 3, 4, 5, 6, 7].map((days) => (
+                    <option key={days} value={days}>
+                      {days === 0 ? 'El mismo día' : days === 1 ? '1 día antes' : `${days} días antes`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {formError && <p role="alert">{formError}</p>}
             <div>
@@ -366,6 +400,7 @@ export function RecurringPage() {
                   </span>{' '}
                   <strong>{t.concept}</strong> <span className="tag tag-neutral">{categoryName(allCategories, t.categoryId)}</span>
                   {t.variableAmount && <span className="tag tag-neutral">importe variable</span>}
+                  {t.reminderEnabled && <span className="tag tag-neutral">aviso por email</span>}
                   {!t.active && <span className="tag tag-accent">en pausa</span>}
                   <p className="card-meta">
                     {describeRecurrence(t.frequency, t.startDate)}

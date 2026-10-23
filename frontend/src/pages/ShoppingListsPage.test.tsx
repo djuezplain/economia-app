@@ -17,7 +17,7 @@ const PROFILE: usersApi.UserProfile = {
   locale: 'es',
   status: 'ACTIVE',
   createdAt: '2026-01-01T00:00:00.000Z',
-  hasPassword: true,
+  hasPassword: true, recurringReminderEmails: true,
 };
 
 const LISTS: ShoppingListSummary[] = [
