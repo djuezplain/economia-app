@@ -65,6 +65,10 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
   });
 
   afterAll(async () => {
+    // Igual que las suites de la spec 047: las demás suites borran
+    // `categories` sin saber de plantillas (FK restrict), así que no se dejan
+    // plantillas al terminar.
+    await db.delete(recurringTransactions);
     await app.close();
   });
 
