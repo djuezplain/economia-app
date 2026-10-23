@@ -10,7 +10,20 @@ import { AppModule } from '../src/app.module.js';
 import { DB } from '../src/db/db.module.js';
 import type { Database } from '../src/db/db.module.js';
 import {
+  bankAccountBalances,
+  bankAccounts,
+  cashBalances,
+  cashHoldings,
   categories,
+  cryptoPurchases,
+  cryptos,
+  expenseBudgets,
+  fundSales,
+  funds,
+  pensionPlanContributions,
+  pensionPlans,
+  vehicleValuations,
+  vehicles,
   recurringOccurrenceResolutions,
   recurringReconciliationDismissals,
   recurringTransactions,
@@ -166,8 +179,8 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
     });
 
     const res = await attach('/data-import/preview', token, file).expect(201);
-    expect(res.body.categories).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
-    expect(res.body.transactions).toEqual({ total: 0, toImport: 0, alreadyExisting: 0 });
+    expect(res.body.categories).toEqual({ total: 1, toImport: 1, alreadyExisting: 0, omitted: 0 });
+    expect(res.body.transactions).toEqual({ total: 0, toImport: 0, alreadyExisting: 0, omitted: 0 });
 
     const rows = await db.select().from(categories).where(eq(categories.userId, user.id));
     expect(rows).toHaveLength(0);
@@ -186,7 +199,7 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
 
     const res = await attach('/data-import/confirm', token, file).expect(201);
     expect(res.body.stocks).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
-    expect(res.body.stockPurchases).toEqual({ total: 1, toImport: 1, alreadyExisting: 0 });
+    expect(res.body.stockPurchases).toEqual({ total: 1, toImport: 1, alreadyExisting: 0, omitted: 0 });
 
     const [insertedStock] = await db.select().from(stocks).where(eq(stocks.id, stockId));
     // H2 criterio 6: el `userId` del fichero se ignora siempre — la fila queda bajo el usuario autenticado.
@@ -209,7 +222,7 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
     await attach('/data-import/confirm', token, file).expect(201);
     const second = await attach('/data-import/confirm', token, file).expect(201);
 
-    expect(second.body.categories).toEqual({ total: 1, toImport: 0, alreadyExisting: 1 });
+    expect(second.body.categories).toEqual({ total: 1, toImport: 0, alreadyExisting: 1, omitted: 0 });
     const rows = await db.select().from(categories).where(eq(categories.id, categoryId));
     expect(rows).toHaveLength(1);
   });
@@ -278,7 +291,7 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
 
       const res = await attach('/data-import/confirm', token, file).expect(201);
       expect(res.body.categories.toImport).toBe(1);
-      expect(res.body.recurringTransactions).toEqual({ total: 0, toImport: 0, alreadyExisting: 0 });
+      expect(res.body.recurringTransactions).toEqual({ total: 0, toImport: 0, alreadyExisting: 0, omitted: 0 });
     });
 
     it('importa plantillas y sus resoluciones bajo el usuario autenticado, y reimportar no duplica', async () => {
@@ -579,6 +592,179 @@ describe('Importar datos (e2e) — spec 032 H2', () => {
       }
       const res = await attach('/data-import/confirm', token, file).expect(201);
       expect(res.body.receipts).toEqual({ total: 0, toImport: 0, alreadyExisting: 0 });
+    });
+  });
+
+  describe('propiedad de las referencias (spec 050 T2.1)', () => {
+    const now = () => new Date().toISOString();
+    const categoryRow = (id: string, parentId: string | null = null) => ({
+      id, userId: randomUUID(), type: 'EXPENSE', name: `Cat ${id.slice(0, 4)}`, parentId, isDefault: false, icon: null, createdAt: now(),
+    });
+    const transactionRow = (categoryId: string, subcategoryId: string | null = null) => ({
+      id: randomUUID(), userId: randomUUID(), type: 'EXPENSE', date: '2026-10-01', categoryId, subcategoryId, concept: 'Compra', amount: '10.00', createdAt: now(), updatedAt: now(),
+    });
+
+    /**
+     * Una familia: la tabla padre (raíz, con `userId`), cómo crear un padre
+     * en la base de datos para otra cuenta, y una fila hija del fichero que
+     * apunta a un padre dado.
+     */
+    const families = [
+      {
+        name: 'cuentas bancarias', childKey: 'bankAccountBalances', childTable: bankAccountBalances, column: 'bankAccountId',
+        createParent: (userId: string) => db.insert(bankAccounts).values({ userId, bank: 'Banco', accountNumber: 'ES00' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), bankAccountId: parentId, euros: '100.00', date: '2026-10-01', createdAt: now() }),
+      },
+      {
+        name: 'acciones', childKey: 'stockPurchases', childTable: stockPurchases, column: 'stockId',
+        createParent: (userId: string) => db.insert(stocks).values({ userId, custodyBank: 'Broker', stock: 'ACME' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), stockId: parentId, shareCount: '1', purchasePrice: '5', date: '2026-10-01', createdAt: now(), updatedAt: now() }),
+      },
+      {
+        name: 'fondos', childKey: 'fundSales', childTable: fundSales, column: 'fundId',
+        createParent: (userId: string) => db.insert(funds).values({ userId, custodyBank: 'Banco', fund: 'Indexado' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), fundId: parentId, shareCount: '1', salePrice: '5', date: '2026-10-01', createdAt: now(), updatedAt: now() }),
+      },
+      {
+        name: 'cripto', childKey: 'cryptoPurchases', childTable: cryptoPurchases, column: 'cryptoId',
+        createParent: (userId: string) => db.insert(cryptos).values({ userId, exchange: 'Exchange', crypto: 'BTC' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), cryptoId: parentId, quantity: '1', purchasePrice: '5', date: '2026-10-01', createdAt: now(), updatedAt: now() }),
+      },
+      {
+        name: 'vehículos', childKey: 'vehicleValuations', childTable: vehicleValuations, column: 'vehicleId',
+        createParent: (userId: string) =>
+          db.insert(vehicles).values({ userId, brandModel: 'Coche', plate: '0000AAA', purchasePrice: '10000', purchaseDate: '2020-01-01' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), vehicleId: parentId, value: '9000', date: '2026-10-01', createdAt: now(), updatedAt: now() }),
+      },
+      {
+        name: 'planes de pensiones', childKey: 'pensionPlanContributions', childTable: pensionPlanContributions, column: 'pensionPlanId',
+        createParent: (userId: string) => db.insert(pensionPlans).values({ userId, managingEntity: 'Gestora', plan: 'Plan' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), pensionPlanId: parentId, amount: '100', date: '2026-10-01', createdAt: now(), updatedAt: now() }),
+      },
+      {
+        name: 'efectivo', childKey: 'cashBalances', childTable: cashBalances, column: 'cashHoldingId',
+        createParent: (userId: string) => db.insert(cashHoldings).values({ userId, location: 'Casa' }).returning(),
+        child: (parentId: string) => ({ id: randomUUID(), cashHoldingId: parentId, amount: '50', date: '2026-10-01', createdAt: now() }),
+      },
+      {
+        name: 'categorías (movimientos)', childKey: 'transactions', childTable: transactions, column: 'categoryId',
+        createParent: (userId: string) => db.insert(categories).values({ userId, type: 'EXPENSE', name: 'Ajena' }).returning(),
+        child: (parentId: string) => transactionRow(parentId),
+      },
+      {
+        name: 'categorías (presupuestos)', childKey: 'expenseBudgets', childTable: expenseBudgets, column: 'categoryId',
+        createParent: (userId: string) => db.insert(categories).values({ userId, type: 'EXPENSE', name: 'Ajena' }).returning(),
+        child: (parentId: string) => ({
+          id: randomUUID(), userId: randomUUID(), categoryId: parentId, targetType: 'AMOUNT', targetValue: '100', alertThresholdPercent: '80', createdAt: now(), updatedAt: now(),
+        }),
+      },
+    ] as const;
+
+    for (const family of families) {
+      it(`${family.name}: una fila que apunta a un padre de otra cuenta o desconocido se omite y no toca la otra cuenta`, async () => {
+        const ana = await createUser('ana-refs@example.com');
+        const bea = await createUser('bea-refs@example.com');
+        const [beaParent] = await family.createParent(bea.id);
+        const foreign = family.child(beaParent.id);
+        const unknown = family.child(randomUUID());
+        const file = buildFile({ [family.childKey]: [foreign, unknown] });
+        const token = await login(ana.email);
+
+        const preview = await attach('/data-import/preview', token, file).expect(201);
+        const res = await attach('/data-import/confirm', token, file).expect(201);
+        expect(res.body[family.childKey]).toEqual({ total: 2, toImport: 0, alreadyExisting: 0, omitted: 2 });
+        expect(preview.body[family.childKey]).toEqual(res.body[family.childKey]);
+
+        const table = family.childTable as unknown as typeof stockPurchases;
+        const column = (family.childTable as unknown as Record<string, typeof stockPurchases.stockId>)[family.column];
+        expect(await db.select().from(table).where(eq(column, beaParent.id))).toEqual([]);
+      });
+
+      it(`${family.name}: con el padre en el fichero o ya en la cuenta, se importa`, async () => {
+        const ana = await createUser('ana-refs-ok@example.com');
+        const [ownParent] = await family.createParent(ana.id);
+        const file = buildFile({ [family.childKey]: [family.child(ownParent.id)] });
+        const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+        expect(res.body[family.childKey]).toEqual({ total: 1, toImport: 1, alreadyExisting: 0, omitted: 0 });
+      });
+    }
+
+    it('subcategoría ajena o desconocida: el movimiento se importa sin subcategoría', async () => {
+      const ana = await createUser('ana-subcat@example.com');
+      const bea = await createUser('bea-subcat@example.com');
+      const [beaSub] = await db.insert(categories).values({ userId: bea.id, type: 'EXPENSE', name: 'Ajena' }).returning();
+      const ownCategory = categoryRow(randomUUID());
+      const withForeign = transactionRow(ownCategory.id, beaSub.id);
+      const withUnknown = transactionRow(ownCategory.id, randomUUID());
+      const file = buildFile({ categories: [ownCategory], transactions: [withForeign, withUnknown] });
+
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.transactions).toEqual({ total: 2, toImport: 2, alreadyExisting: 0, omitted: 0 });
+      const rows = await db.select().from(transactions).where(eq(transactions.userId, ana.id));
+      expect(rows.map((r) => r.subcategoryId)).toEqual([null, null]);
+      expect(rows.every((r) => r.categoryId === ownCategory.id)).toBe(true);
+    });
+
+    it('una categoría hija con padre ajeno se omite, y con ella el movimiento que cuelga de ella', async () => {
+      const ana = await createUser('ana-cat-hija@example.com');
+      const bea = await createUser('bea-cat-hija@example.com');
+      const [beaParent] = await db.insert(categories).values({ userId: bea.id, type: 'EXPENSE', name: 'Ajena' }).returning();
+      const child = categoryRow(randomUUID(), beaParent.id);
+      const ownRoot = categoryRow(randomUUID());
+      const ownChild = categoryRow(randomUUID(), ownRoot.id);
+      const file = buildFile({
+        categories: [child, ownRoot, ownChild],
+        transactions: [transactionRow(child.id), transactionRow(ownChild.id)],
+      });
+      const token = await login(ana.email);
+
+      const preview = await attach('/data-import/preview', token, file).expect(201);
+      const res = await attach('/data-import/confirm', token, file).expect(201);
+      expect(res.body.categories).toEqual({ total: 3, toImport: 2, alreadyExisting: 0, omitted: 1 });
+      expect(res.body.transactions).toEqual({ total: 2, toImport: 1, alreadyExisting: 0, omitted: 1 });
+      expect(preview.body).toEqual(res.body);
+      expect(await db.select().from(categories).where(eq(categories.parentId, beaParent.id))).toEqual([]);
+    });
+
+    it('un padre del fichero cuyo id ya es de otra cuenta no se importa, y sus hijas se omiten', async () => {
+      const ana = await createUser('ana-padre-ajeno@example.com');
+      const bea = await createUser('bea-padre-ajeno@example.com');
+      const [beaStock] = await db.insert(stocks).values({ userId: bea.id, custodyBank: 'Broker', stock: 'Ajena' }).returning();
+      const file = buildFile({
+        stocks: [{ id: beaStock.id, userId: ana.id, custodyBank: 'Broker', stock: 'Mía', createdAt: now(), updatedAt: now() }],
+        stockPurchases: [families[1].child(beaStock.id)],
+      });
+
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.stocks).toEqual({ total: 1, toImport: 0, alreadyExisting: 1 });
+      expect(res.body.stockPurchases).toEqual({ total: 1, toImport: 0, alreadyExisting: 0, omitted: 1 });
+      expect(await db.select().from(stockPurchases).where(eq(stockPurchases.stockId, beaStock.id))).toEqual([]);
+      const [stillBeas] = await db.select().from(stocks).where(eq(stocks.id, beaStock.id));
+      expect(stillBeas).toMatchObject({ userId: bea.id, stock: 'Ajena' });
+    });
+
+    it('una plantilla recurrente con categoría ajena se omite; con subcategoría ajena se importa sin ella', async () => {
+      const ana = await createUser('ana-plantilla@example.com');
+      const bea = await createUser('bea-plantilla@example.com');
+      const [beaCat] = await db.insert(categories).values({ userId: bea.id, type: 'EXPENSE', name: 'Ajena' }).returning();
+      const own = categoryRow(randomUUID());
+      const template = (categoryId: string, subcategoryId: string | null) => ({
+        id: randomUUID(), userId: randomUUID(), type: 'EXPENSE', categoryId, subcategoryId, concept: 'Luz', amount: '50.00', frequency: 'MONTHLY',
+        startDate: '2026-01-01', createdAt: now(), updatedAt: now(),
+      });
+      const file = buildFile({ categories: [own], recurringTransactions: [template(beaCat.id, null), template(own.id, beaCat.id)] });
+
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.recurringTransactions).toEqual({ total: 2, toImport: 1, alreadyExisting: 0, omitted: 1 });
+      const rows = await db.select().from(recurringTransactions).where(eq(recurringTransactions.userId, ana.id));
+      expect(rows).toMatchObject([{ categoryId: own.id, subcategoryId: null }]);
+    });
+
+    it('una referencia que no es un UUID se trata como desconocida, sin 500', async () => {
+      const ana = await createUser('ana-no-uuid@example.com');
+      const file = buildFile({ stockPurchases: [families[1].child('no-es-un-uuid')] });
+      const res = await attach('/data-import/confirm', await login(ana.email), file).expect(201);
+      expect(res.body.stockPurchases).toMatchObject({ toImport: 0, omitted: 1 });
     });
   });
 });

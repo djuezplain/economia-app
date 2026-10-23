@@ -50,11 +50,50 @@ import { ECONOMIC_DATA_TABLE_ORDER, EXPORT_FORMAT_VERSION, OPTIONAL_ECONOMIC_DAT
 import type { AccountExportFile, EconomicData } from '../data-export/account-export.types.js';
 import type { DataImportSummary, TableImportSummary } from './data-import.types.js';
 
+/** Spec 050: tablas raíz (con `userId` propio) a las que apuntan las filas hijas de otras tablas. */
+type RefTarget = 'categories' | 'bankAccounts' | 'stocks' | 'funds' | 'cryptos' | 'vehicles' | 'pensionPlans' | 'cashHoldings';
+
+/**
+ * Spec 050, plan.md §1: una referencia de una fila a otra tabla. Si no es
+ * utilizable (ni del usuario ni importada en esta misma operación), la fila
+ * se omite (`omit`) o se importa con esa columna a `null` (`nullify`).
+ */
+interface TableRef {
+  column: string;
+  target: RefTarget;
+  onInvalid: 'omit' | 'nullify';
+}
+
 interface TableEntry {
   table: PgTable & { id: AnyPgColumn };
   /** Solo en tablas raíz (con `userId` propio) — plan.md §3.3: el valor del fichero se ignora siempre, se fuerza al del usuario autenticado. */
   hasUserId?: boolean;
+  /** Spec 050: referencias a comprobar antes de importar una fila nueva. */
+  refs?: TableRef[];
 }
+
+/**
+ * Spec 050, plan.md §2.1: los `id` que se van a importar en esta operación,
+ * por tabla. Se va llenando al recorrer las tablas en orden de dependencias,
+ * sin depender de haber escrito nada, así que la vista previa y la
+ * confirmación cuentan lo mismo. Una fila del fichero que se omite nunca
+ * entra aquí, así que tampoco puede servir de padre a otra.
+ */
+class ImportContext {
+  private readonly imported = new Map<keyof EconomicData, Set<string>>();
+
+  add(key: keyof EconomicData, ids: Iterable<string>): void {
+    const set = this.imported.get(key) ?? new Set<string>();
+    for (const id of ids) set.add(id);
+    this.imported.set(key, set);
+  }
+
+  has(key: keyof EconomicData, id: string): boolean {
+    return this.imported.get(key)?.has(id) ?? false;
+  }
+}
+
+const omitIfNotOwned = (column: string, target: RefTarget): TableRef => ({ column, target, onInvalid: 'omit' });
 
 /** Plan.md §3.2 — mismo orden que `ECONOMIC_DATA_TABLE_ORDER`; aquí solo se asocia cada clave con su tabla real. */
 /** Tablas con su propia fusión (comprobación de propiedad de las filas a las que apuntan), fuera de `TABLES`. */
@@ -67,33 +106,42 @@ type CustomMergeKey =
   | 'shoppingListItems';
 
 const TABLES: Record<Exclude<keyof EconomicData, CustomMergeKey>, TableEntry> = {
-  categories: { table: categories, hasUserId: true },
-  transactions: { table: transactions, hasUserId: true },
+  // Spec 050, plan.md §1: cada tabla declara a qué apunta.
+  categories: { table: categories, hasUserId: true, refs: [omitIfNotOwned('parentId', 'categories')] },
+  transactions: {
+    table: transactions,
+    hasUserId: true,
+    refs: [omitIfNotOwned('categoryId', 'categories'), { column: 'subcategoryId', target: 'categories', onInvalid: 'nullify' }],
+  },
   savingsGoals: { table: savingsGoals, hasUserId: true },
-  expenseBudgets: { table: expenseBudgets, hasUserId: true },
+  expenseBudgets: { table: expenseBudgets, hasUserId: true, refs: [omitIfNotOwned('categoryId', 'categories')] },
   bankAccounts: { table: bankAccounts, hasUserId: true },
-  bankAccountBalances: { table: bankAccountBalances },
+  bankAccountBalances: { table: bankAccountBalances, refs: [omitIfNotOwned('bankAccountId', 'bankAccounts')] },
   stocks: { table: stocks, hasUserId: true },
-  stockPurchases: { table: stockPurchases },
-  stockSales: { table: stockSales },
-  stockValuations: { table: stockValuations },
-  stockDividends: { table: stockDividends },
+  stockPurchases: { table: stockPurchases, refs: [omitIfNotOwned('stockId', 'stocks')] },
+  stockSales: { table: stockSales, refs: [omitIfNotOwned('stockId', 'stocks')] },
+  stockValuations: { table: stockValuations, refs: [omitIfNotOwned('stockId', 'stocks')] },
+  stockDividends: { table: stockDividends, refs: [omitIfNotOwned('stockId', 'stocks')] },
   funds: { table: funds, hasUserId: true },
-  fundPurchases: { table: fundPurchases },
-  fundSales: { table: fundSales },
-  fundValuations: { table: fundValuations },
-  fundDividends: { table: fundDividends },
+  fundPurchases: { table: fundPurchases, refs: [omitIfNotOwned('fundId', 'funds')] },
+  fundSales: { table: fundSales, refs: [omitIfNotOwned('fundId', 'funds')] },
+  fundValuations: { table: fundValuations, refs: [omitIfNotOwned('fundId', 'funds')] },
+  fundDividends: { table: fundDividends, refs: [omitIfNotOwned('fundId', 'funds')] },
   cryptos: { table: cryptos, hasUserId: true },
-  cryptoPurchases: { table: cryptoPurchases },
-  cryptoValuations: { table: cryptoValuations },
+  cryptoPurchases: { table: cryptoPurchases, refs: [omitIfNotOwned('cryptoId', 'cryptos')] },
+  cryptoValuations: { table: cryptoValuations, refs: [omitIfNotOwned('cryptoId', 'cryptos')] },
   vehicles: { table: vehicles, hasUserId: true },
-  vehicleValuations: { table: vehicleValuations },
+  vehicleValuations: { table: vehicleValuations, refs: [omitIfNotOwned('vehicleId', 'vehicles')] },
   pensionPlans: { table: pensionPlans, hasUserId: true },
-  pensionPlanContributions: { table: pensionPlanContributions },
-  pensionPlanValuations: { table: pensionPlanValuations },
+  pensionPlanContributions: { table: pensionPlanContributions, refs: [omitIfNotOwned('pensionPlanId', 'pensionPlans')] },
+  pensionPlanValuations: { table: pensionPlanValuations, refs: [omitIfNotOwned('pensionPlanId', 'pensionPlans')] },
   cashHoldings: { table: cashHoldings, hasUserId: true },
-  cashBalances: { table: cashBalances },
-  recurringTransactions: { table: recurringTransactions, hasUserId: true },
+  cashBalances: { table: cashBalances, refs: [omitIfNotOwned('cashHoldingId', 'cashHoldings')] },
+  recurringTransactions: {
+    table: recurringTransactions,
+    hasUserId: true,
+    refs: [omitIfNotOwned('categoryId', 'categories'), { column: 'subcategoryId', target: 'categories', onInvalid: 'nullify' }],
+  },
   // Spec 048: catálogos y listas, tablas raíz con `userId` propio.
   supermarkets: { table: supermarkets, hasUserId: true },
   products: { table: products, hasUserId: true },
@@ -333,6 +381,7 @@ export class DataImportService {
     zip: ZipReader | null = null,
   ): Promise<DataImportSummary> {
     const summary = {} as DataImportSummary;
+    const context = new ImportContext();
     for (const key of ECONOMIC_DATA_TABLE_ORDER) {
       const rows = file.economicData[key] as unknown as Row[];
       if (key === 'recurringOccurrenceResolutions') {
@@ -361,8 +410,8 @@ export class DataImportService {
       }
       summary[key] =
         key === 'categories'
-          ? await this.mergeCategories(executor, rows, userId, write)
-          : await this.mergeTable(executor, TABLES[key], rows, userId, write);
+          ? await this.mergeCategories(executor, rows, userId, write, context)
+          : await this.mergeTable(executor, key, rows, userId, write, context);
     }
     return summary;
   }
@@ -374,15 +423,17 @@ export class DataImportService {
    * siempre resuelva contra una fila ya presente (recién insertada en la
    * primera pasada, o ya existente de antes).
    */
-  private async mergeCategories(executor: Executor, rows: Row[], userId: string, write: boolean): Promise<TableImportSummary> {
+  private async mergeCategories(executor: Executor, rows: Row[], userId: string, write: boolean, context: ImportContext): Promise<TableImportSummary> {
     const rootRows = rows.filter((row) => row.parentId == null);
     const childRows = rows.filter((row) => row.parentId != null);
-    const rootSummary = await this.mergeTable(executor, TABLES.categories, rootRows, userId, write);
-    const childSummary = await this.mergeTable(executor, TABLES.categories, childRows, userId, write);
+    const rootSummary = await this.mergeTable(executor, 'categories', rootRows, userId, write, context);
+    // Spec 050: las hijas ven a las raíz recién importadas en el `ImportContext`.
+    const childSummary = await this.mergeTable(executor, 'categories', childRows, userId, write, context);
     return {
       total: rootSummary.total + childSummary.total,
       toImport: rootSummary.toImport + childSummary.toImport,
       alreadyExisting: rootSummary.alreadyExisting + childSummary.alreadyExisting,
+      omitted: (rootSummary.omitted ?? 0) + (childSummary.omitted ?? 0),
     };
   }
 
@@ -393,10 +444,17 @@ export class DataImportService {
    * `userId` al del usuario autenticado en las tablas raíz (`hasUserId`) —
    * nunca se confía en el `userId` que traiga el fichero (H2 criterio 6).
    */
-  private async mergeTable(executor: Executor, entry: TableEntry, rows: Row[], userId: string, write: boolean): Promise<TableImportSummary> {
-    if (rows.length === 0) {
-      return { total: 0, toImport: 0, alreadyExisting: 0 };
-    }
+  private async mergeTable(
+    executor: Executor,
+    key: keyof typeof TABLES,
+    rows: Row[],
+    userId: string,
+    write: boolean,
+    context: ImportContext,
+  ): Promise<TableImportSummary> {
+    const entry = TABLES[key];
+    const empty: TableImportSummary = entry.refs ? { total: 0, toImport: 0, alreadyExisting: 0, omitted: 0 } : { total: 0, toImport: 0, alreadyExisting: 0 };
+    if (rows.length === 0) return empty;
 
     const ids = rows.map((row) => row.id as string);
     const existing = await executor
@@ -404,16 +462,55 @@ export class DataImportService {
       .from(entry.table)
       .where(inArray(entry.table.id, ids));
     const existingIds = new Set(existing.map((row) => row.id as string));
+    const newRows = rows.filter((row) => !existingIds.has(row.id as string));
 
-    const toInsert = rows
-      .filter((row) => !existingIds.has(row.id as string))
-      .map((row) => coerceTimestamps(entry.table, entry.hasUserId ? { ...row, userId } : row));
+    // Spec 050: una sola consulta por referencia declarada (no una por fila).
+    const usable = new Map<string, (id: string) => boolean>();
+    for (const ref of entry.refs ?? []) {
+      const owned = await this.ownedIds(executor, ref.target, newRows.map((row) => row[ref.column]), userId);
+      usable.set(ref.column, (id) => owned.has(id) || context.has(ref.target, id));
+    }
+
+    const toInsert: Row[] = [];
+    for (const row of newRows) {
+      let candidate: Row | null = entry.hasUserId ? { ...row, userId } : { ...row };
+      for (const ref of entry.refs ?? []) {
+        const value = candidate[ref.column];
+        if (value == null || usable.get(ref.column)!(value as string)) continue;
+        if (ref.onInvalid === 'omit') {
+          candidate = null;
+          break;
+        }
+        candidate[ref.column] = null;
+      }
+      if (candidate) toInsert.push(coerceTimestamps(entry.table, candidate));
+    }
 
     if (write && toInsert.length > 0) {
       await executor.insert(entry.table).values(toInsert as never[]);
     }
+    context.add(key, toInsert.map((row) => row.id as string));
 
-    return { total: rows.length, toImport: toInsert.length, alreadyExisting: existingIds.size };
+    const summary: TableImportSummary = { total: rows.length, toImport: toInsert.length, alreadyExisting: existingIds.size };
+    if (entry.refs) summary.omitted = newRows.length - toInsert.length;
+    return summary;
+  }
+
+  /**
+   * Spec 050, plan.md §2.1: cuáles de estos `id` ya existen en la base de
+   * datos y son del usuario. Los destinos son siempre tablas raíz, con su
+   * propio `userId`. Los valores que no son texto (fichero manipulado) se
+   * ignoran: no pueden ser de nadie.
+   */
+  private async ownedIds(executor: Executor, target: RefTarget, values: unknown[], userId: string): Promise<Set<string>> {
+    const ids = [...new Set(values.filter((v): v is string => typeof v === 'string' && isUUID(v)))];
+    if (ids.length === 0) return new Set();
+    const table = TABLES[target].table as unknown as PgTable & { id: AnyPgColumn; userId: AnyPgColumn };
+    const rows = await executor
+      .select({ id: table.id })
+      .from(table)
+      .where(and(inArray(table.id, ids), eq(table.userId, userId)));
+    return new Set(rows.map((row) => row.id as string));
   }
 
   /**
