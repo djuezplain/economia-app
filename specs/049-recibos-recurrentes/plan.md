@@ -1,6 +1,6 @@
 # Plan — Spec 049 (recibos recurrentes: avisos, importes variables y conciliación)
 
-**Fase:** 2 de 4 (pendiente de aprobación)
+**Fase:** 2 de 4 (aprobado)
 **Parte de:** spec 049 aprobada. Construye sobre el modelo de la spec 047 (`backend/src/db/schema/recurring.schema.ts`, `backend/src/recurring-transactions/`) sin cambiar su comportamiento salvo donde la spec lo pide.
 
 ## 0. Ideas clave del diseño
