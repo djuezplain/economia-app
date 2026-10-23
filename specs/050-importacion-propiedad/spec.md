@@ -1,6 +1,6 @@
 # Spec 050 — Importación de copias: propiedad de las referencias y ventas de fondos
 
-**Estado:** Pendiente de aprobación
+**Estado:** Aprobada
 **Fase:** 1 de 4 (Spec → Plan → Tasks → Implementación)
 **Basado en:** hueco encontrado al implementar la spec 048 (T6.1), anterior a ella y a la 047. Diego pidió tratarlo aparte. Depende de la spec 048 (PR #93), que reescribió buena parte de `DataImportService`.
 
@@ -56,4 +56,4 @@ Como usuario quiero que importar una copia nunca toque datos de otra cuenta, aun
 1. **Se trata aparte de la spec 048**, en esta spec (respuesta "sí" al cierre de la 048).
 
 ---
-**Siguiente paso:** revisión de Diego y, si la aprueba, `plan.md`.
+**Siguiente paso:** `plan.md`.
