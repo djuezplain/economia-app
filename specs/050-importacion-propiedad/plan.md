@@ -1,6 +1,6 @@
 # Plan — Spec 050 (importación de copias: propiedad de las referencias y ventas de fondos)
 
-**Fase:** 2 de 4 (pendiente de aprobación)
+**Fase:** 2 de 4 (aprobado)
 **Parte de:** spec 050 aprobada. Construye sobre `backend/src/data-import/data-import.service.ts` tal como queda tras la spec 048 (`usableIds`, fusiones propias de tickets y listas) y sobre la exportación de la spec 032 (`UsersService.exportData`, `account-export.types.ts`).
 
 ## 0. Decisiones de diseño
