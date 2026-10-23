@@ -386,6 +386,15 @@ function ImportResultSummary({ result }: { result: ImportConfirmResult }) {
 
       {result.categoriesCreated.length > 0 && <p>Categorías nuevas creadas: {result.categoriesCreated.join(', ')}.</p>}
 
+      {(result.reconciledCount ?? 0) > 0 && (
+        <p>
+          {result.reconciledCount === 1
+            ? '1 recibo recurrente conciliado con lo importado'
+            : `${result.reconciledCount} recibos recurrentes conciliados con lo importado`}{' '}
+          (<Link to="/recurring">ver en Recurrentes</Link>).
+        </p>
+      )}
+
       <InvalidRowsTable title="Ingresos descartados" rows={result.income.invalid} />
       <InvalidRowsTable title="Gastos descartados" rows={result.expense.invalid} />
     </>

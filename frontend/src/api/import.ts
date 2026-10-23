@@ -27,6 +27,12 @@ export interface ImportConfirmResult {
   income: { importedCount: number; invalid: InvalidImportRow[]; skippedDuplicateCount: number; updatedAmountCount: number };
   expense: { importedCount: number; invalid: InvalidImportRow[]; skippedDuplicateCount: number; updatedAmountCount: number };
   categoriesCreated: string[];
+  /**
+   * Spec 049 H3: recibos recurrentes conciliados con movimientos de esta
+   * importación. Opcional: los resultados guardados de Google Sheets
+   * anteriores a esa spec no lo tienen.
+   */
+  reconciledCount?: number;
 }
 
 function fileFormData(file: File): FormData {

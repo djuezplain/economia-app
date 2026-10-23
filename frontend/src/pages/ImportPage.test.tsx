@@ -352,4 +352,44 @@ describe('ImportPage', () => {
       expect(await screen.findByRole('button', { name: 'Guardar hoja' })).toBeInTheDocument();
     });
   });
+
+  describe('recibos recurrentes conciliados (spec 049 T4.5)', () => {
+    it('el resultado de importar un Excel indica cuántos recibos se conciliaron, con enlace a Recurrentes', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(importApi, 'previewImport').mockResolvedValue(PREVIEW_RESULT_CON_DUPLICADOS);
+      vi.spyOn(importApi, 'confirmImport').mockResolvedValue({ ...CONFIRM_RESULT_CON_DUPLICADOS, reconciledCount: 2 });
+
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Fichero .xlsx'), buildXlsxFile());
+      await userEvent.click(screen.getByRole('button', { name: 'Validar' }));
+      await screen.findByRole('heading', { name: 'Confirmar' });
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmar importación' }));
+
+      expect(await screen.findByText(/2 recibos recurrentes conciliados con lo importado/)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'ver en Recurrentes' })).toHaveAttribute('href', '/recurring');
+    });
+
+    it('la última ejecución de Google Sheets muestra el recuento en singular', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(googleSheetsImportApi, 'getGoogleSheetConfig').mockResolvedValue({
+        ...GOOGLE_SHEET_CONFIG_CON_HOJA,
+        lastRun: { at: '2026-10-23T08:00:00.000Z', result: { ...CONFIRM_RESULT, reconciledCount: 1 }, error: null },
+      });
+
+      renderPage();
+      expect(await screen.findByText(/1 recibo recurrente conciliado con lo importado/)).toBeInTheDocument();
+    });
+
+    it('sin conciliaciones, o con un resultado guardado antes de la spec 049 (sin el campo), no dice nada', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(googleSheetsImportApi, 'getGoogleSheetConfig').mockResolvedValue({
+        ...GOOGLE_SHEET_CONFIG_CON_HOJA,
+        lastRun: { at: '2026-10-23T08:00:00.000Z', result: CONFIRM_RESULT, error: null },
+      });
+
+      renderPage();
+      expect(await screen.findByText(/Ingresos importados: 2/)).toBeInTheDocument();
+      expect(screen.queryByText(/conciliad/)).not.toBeInTheDocument();
+    });
+  });
 });
