@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsDateString, IsIn, IsOptional, IsString, IsUUID, MinLength, ValidateNested } from 'class-validator';
+import { IsArray, IsDateString, IsIn, IsOptional, IsString, IsUUID, MinLength, ValidateIf, ValidateNested } from 'class-validator';
 import { IsMoneyAmount } from '../../common/is-money-amount.decorator.js';
 import { IsReceiptQuantity } from '../../common/is-receipt-quantity.decorator.js';
 import { IsReceiptUnitPrice } from '../../common/is-receipt-unit-price.decorator.js';
@@ -38,9 +38,11 @@ export class ConfirmReceiptLineDto {
   @IsMoneyAmount()
   amount!: string;
 
+  /** Spec 048 H2 criterio 4: `null` = línea sin emparejar con ningún producto (no entra en la comparativa). */
+  @ValidateIf((line: ConfirmReceiptLineDto) => line.product !== null)
   @ValidateNested()
   @Type(() => EntityRefDto)
-  product!: EntityRefDto;
+  product!: EntityRefDto | null;
 }
 
 /**
@@ -60,8 +62,9 @@ export class ConfirmReceiptDto {
   @IsMoneyAmount()
   printedTotal?: string;
 
+  // Spec 048 H2 criterio 2: un ticket o factura puede guardarse sin líneas
+  // (entonces el total impreso es obligatorio, ver `assertReceiptHasAmount`).
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => ConfirmReceiptLineDto)
   lines!: ConfirmReceiptLineDto[];

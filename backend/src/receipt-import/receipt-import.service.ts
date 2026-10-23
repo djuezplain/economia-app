@@ -10,6 +10,7 @@ import { detectDate, detectPrintedTotal, extractProductLines, guessSupermarketNa
 import type { NamedEntity } from './receipt-import.parsing.js';
 import { ReceiptOcrService } from './receipt-ocr.service.js';
 import { resolveEntityRef } from './resolve-entity-ref.util.js';
+import { assertReceiptHasAmount, resolveLineProduct } from './receipt-rules.js';
 import type { ReceiptPreview, ReceiptPreviewLine } from './receipt-import.types.js';
 
 /** Máximo de páginas que lee `files:annotate` de Vision en modo síncrono. */
@@ -96,6 +97,7 @@ export class ReceiptImportService {
 
   /** H2-H5: todo dentro de una única transacción — mismo criterio "todo o nada" que spec 033. */
   async confirm(userId: string, dto: ConfirmImportReceiptDto): Promise<{ receiptId: string }> {
+    assertReceiptHasAmount(dto);
     try {
       return await this.db.transaction(async (tx) => {
         const supermarketId = await resolveEntityRef(tx, supermarkets, userId, dto.supermarket, 'El supermercado indicado no existe.');
@@ -105,7 +107,7 @@ export class ReceiptImportService {
           .returning();
 
         for (const line of dto.lines) {
-          const productId = await resolveEntityRef(tx, products, userId, line.product, 'El producto indicado no existe.');
+          const productId = await resolveLineProduct(tx, userId, line.product);
           await tx.insert(receiptLines).values({
             receiptId: receipt.id,
             productId,

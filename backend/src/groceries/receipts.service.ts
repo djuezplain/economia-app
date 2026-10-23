@@ -6,6 +6,8 @@ import type { Database } from '../db/db.module.js';
 import { products, receiptLines, receipts, supermarkets } from '../db/schema/index.js';
 import type { ConfirmReceiptDto } from '../receipt-import/dto/confirm-receipt.dto.js';
 import { resolveEntityRef } from '../receipt-import/resolve-entity-ref.util.js';
+import { assertReceiptHasAmount, resolveLineProduct } from '../receipt-import/receipt-rules.js';
+import { receiptTotal } from './receipt-total.js';
 import type { ListReceiptsQueryDto } from './dto/list-receipts-query.dto.js';
 import { ReceiptDocumentsService } from './receipt-documents.service.js';
 import type { DocumentInfo } from './receipt-documents.service.js';
@@ -18,6 +20,11 @@ export interface ReceiptSummary {
   printedTotal: string | null;
   /** Spec 040, plan.md §2: suma real de las líneas — el importe usado para filtrar (H1 criterio 4), no `printedTotal` (puede ser `null`). */
   linesTotal: string;
+  /**
+   * Spec 048 plan.md §0 decisión 6: el importe del ticket (suma de líneas o,
+   * sin líneas, el total impreso). Es el que usa el filtro por importe.
+   */
+  total: string | null;
   /** Spec 048 H1: metadatos del documento original (sin el contenido), o `null` si no tiene. */
   document: DocumentInfo | null;
 }
@@ -108,6 +115,7 @@ export class ReceiptsService {
         supermarketName: supermarketById.get(receipt.supermarketId)!.name,
         printedTotal: receipt.printedTotal,
         linesTotal,
+        total: receiptTotal(lines, receipt.printedTotal),
         document: documentByReceipt.get(receipt.id) ?? null,
         // Presencia del producto filtrado, para el filtro de `productId` (T1.3) — se calcula
         // aquí porque `lines` ya está disponible, se descarta abajo si no se necesita.
@@ -117,8 +125,9 @@ export class ReceiptsService {
 
     return summaries
       .filter((summary) => summary.hasFilteredProduct)
-      .filter((summary) => !query.amountMin || new Decimal(summary.linesTotal).greaterThanOrEqualTo(query.amountMin))
-      .filter((summary) => !query.amountMax || new Decimal(summary.linesTotal).lessThanOrEqualTo(query.amountMax))
+      // Spec 048: sobre `total`; para un ticket con líneas es su suma, igual que en la spec 040.
+      .filter((summary) => !query.amountMin || (summary.total !== null && new Decimal(summary.total).greaterThanOrEqualTo(query.amountMin)))
+      .filter((summary) => !query.amountMax || (summary.total !== null && new Decimal(summary.total).lessThanOrEqualTo(query.amountMax)))
       .map(({ hasFilteredProduct: _hasFilteredProduct, ...summary }) => summary);
   }
 
@@ -141,6 +150,7 @@ export class ReceiptsService {
       supermarketName: supermarket.name,
       printedTotal: receipt.printedTotal,
       linesTotal: lineRows.reduce((sum, line) => sum.plus(line.amount), new Decimal(0)).toFixed(2),
+      total: receiptTotal(lineRows, receipt.printedTotal),
       document: documentByReceipt.get(receipt.id) ?? null,
       lines: lineRows.map((line) => ({
         id: line.id,
@@ -163,6 +173,7 @@ export class ReceiptsService {
    * borrar+reinsertar.
    */
   async update(userId: string, receiptId: string, dto: ConfirmReceiptDto): Promise<ReceiptDetail> {
+    assertReceiptHasAmount(dto);
     try {
       await this.db.transaction(async (tx) => {
         const [existing] = await tx.select({ id: receipts.id }).from(receipts).where(and(eq(receipts.id, receiptId), eq(receipts.userId, userId)));
@@ -176,7 +187,7 @@ export class ReceiptsService {
 
         await tx.delete(receiptLines).where(eq(receiptLines.receiptId, receiptId));
         for (const line of dto.lines) {
-          const productId = await resolveEntityRef(tx, products, userId, line.product, 'El producto indicado no existe.');
+          const productId = await resolveLineProduct(tx, userId, line.product);
           await tx.insert(receiptLines).values({
             receiptId,
             productId,
