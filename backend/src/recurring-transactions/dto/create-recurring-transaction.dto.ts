@@ -1,4 +1,4 @@
-import { IsDateString, IsIn, IsOptional, IsString, IsUUID, Length } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, IsUUID, Length } from 'class-validator';
 import { IsMoneyAmount } from '../../common/is-money-amount.decorator.js';
 
 /**
@@ -42,4 +42,9 @@ export class CreateRecurringTransactionDto {
   @IsOptional()
   @IsDateString({ strict: true })
   endDate?: string;
+
+  /** Spec 049 H2: con `true`, `amount` es el importe inicial y las ocurrencias usan una estimación. */
+  @IsOptional()
+  @IsBoolean()
+  variableAmount?: boolean;
 }

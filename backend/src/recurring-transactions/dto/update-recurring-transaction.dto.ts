@@ -45,4 +45,9 @@ export class UpdateRecurringTransactionDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  /** Spec 049 H2. */
+  @IsOptional()
+  @IsBoolean()
+  variableAmount?: boolean;
 }

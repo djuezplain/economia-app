@@ -6,13 +6,14 @@ import { recurringOccurrenceResolutions, recurringTransactions, transactions } f
 import { TransactionsService } from '../transactions/transactions.service.js';
 import type { Transaction } from '../transactions/transactions.service.js';
 import { occurrencesBetween } from './recurring.calculations.js';
+import { loadExpectedAmounts } from './recurring-estimates.query.js';
 import type { CreateRecurringTransactionDto } from './dto/create-recurring-transaction.dto.js';
 import type { UpdateRecurringTransactionDto } from './dto/update-recurring-transaction.dto.js';
 
 export type RecurringTransaction = typeof recurringTransactions.$inferSelect;
 
 /** Estado de una ocurrencia calculada (spec 047, H2/H3). */
-export type OccurrenceStatus = 'PENDING' | 'OVERDUE' | 'CONFIRMED' | 'SKIPPED';
+export type OccurrenceStatus = 'PENDING' | 'OVERDUE' | 'CONFIRMED' | 'SKIPPED' | 'RECONCILED';
 
 export interface Occurrence {
   recurringId: string;
@@ -24,7 +25,13 @@ export interface Occurrence {
   subcategoryId: string | null;
   concept: string;
   merchant: string | null;
+  /**
+   * En una ocurrencia sin resolver de una plantilla variable, la estimación
+   * (spec 049 H2); en el resto, el importe de la plantilla.
+   */
   amount: string;
+  /** Spec 049 H2 criterio 3: `amount` es una estimación, no un importe fijo. */
+  estimated: boolean;
   paymentMethod: RecurringTransaction['paymentMethod'];
 }
 
@@ -77,6 +84,7 @@ export class RecurringTransactionsService {
         frequency: dto.frequency,
         startDate: dto.startDate,
         endDate: dto.endDate ?? null,
+        variableAmount: dto.variableAmount ?? false,
       })
       .returning();
     return created;
@@ -114,6 +122,7 @@ export class RecurringTransactionsService {
         ...(dto.startDate !== undefined && { startDate: dto.startDate }),
         ...(dto.endDate !== undefined && { endDate: dto.endDate }),
         ...(dto.active !== undefined && { active: dto.active }),
+        ...(dto.variableAmount !== undefined && { variableAmount: dto.variableAmount }),
         updatedAt: new Date(),
       })
       .where(eq(recurringTransactions.id, id))
@@ -156,12 +165,14 @@ export class RecurringTransactionsService {
         ),
       );
     const resolutionByKey = new Map(resolutions.map((r) => [`${r.recurringId}|${r.occurrenceDate}`, r]));
+    const expectedAmounts = await loadExpectedAmounts(this.db, userId, templates);
 
     const today = todayIso();
     const result: Occurrence[] = [];
     for (const t of templates) {
       for (const date of occurrencesBetween(t, from, to)) {
         const resolution = resolutionByKey.get(`${t.id}|${date}`);
+        const estimated = t.variableAmount && !resolution;
         result.push({
           recurringId: t.id,
           date,
@@ -172,7 +183,8 @@ export class RecurringTransactionsService {
           subcategoryId: t.subcategoryId,
           concept: t.concept,
           merchant: t.merchant,
-          amount: t.amount,
+          amount: estimated ? expectedAmounts.get(t.id)! : t.amount,
+          estimated,
           paymentMethod: t.paymentMethod,
         });
       }
@@ -189,6 +201,11 @@ export class RecurringTransactionsService {
   async confirm(userId: string, id: string, date: string, amount?: string): Promise<Transaction> {
     const template = await this.findOwnOrThrow(userId, id);
     this.assertIsOccurrence(template, date);
+    // Spec 049 H2 criterio 4 / plan.md §3.1: en una plantilla variable no se
+    // confirma nunca una estimación sin que alguien haya mirado el importe.
+    if (template.variableAmount && amount === undefined) {
+      throw new BadRequestException('Este recurrente tiene importe variable: indica el importe real al confirmar.');
+    }
 
     const created = await this.db.transaction(async (tx) => {
       const [reserved] = await tx
