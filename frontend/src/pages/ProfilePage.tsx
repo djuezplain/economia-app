@@ -27,6 +27,10 @@ export function ProfilePage() {
   const [profileSaved, setProfileSaved] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
+  // Spec 049 H1 criterio 6: interruptor global de avisos de recibos.
+  const [isSavingReminders, setIsSavingReminders] = useState(false);
+  const [remindersError, setRemindersError] = useState<string | null>(null);
+
   // Formulario de cambio de contraseña (H7 criterio 2).
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -78,6 +82,18 @@ export function ProfilePage() {
       setProfileError(err instanceof ApiError ? err.message : 'No se han podido guardar los cambios.');
     } finally {
       setIsSavingProfile(false);
+    }
+  }
+
+  async function handleToggleReminders(enabled: boolean) {
+    setRemindersError(null);
+    setIsSavingReminders(true);
+    try {
+      setProfile(await updateProfile({ recurringReminderEmails: enabled }));
+    } catch (err) {
+      setRemindersError(err instanceof ApiError ? err.message : 'No se ha podido guardar la preferencia de avisos.');
+    } finally {
+      setIsSavingReminders(false);
     }
   }
 
@@ -252,6 +268,29 @@ export function ProfilePage() {
                   {isSavingProfile ? 'Guardando…' : 'Guardar cambios'}
                 </button>
               </form>
+            </div>
+          </section>
+
+          <section aria-label="Avisos">
+            <h2>Avisos</h2>
+            <div className="card elev-sm">
+              <div className="field">
+                <label htmlFor="recurring-reminder-emails">
+                  <input
+                    id="recurring-reminder-emails"
+                    type="checkbox"
+                    checked={profile.recurringReminderEmails}
+                    disabled={isSavingReminders}
+                    onChange={(e) => void handleToggleReminders(e.target.checked)}
+                  />{' '}
+                  Avisos de recibos por email
+                </label>
+                <p className="card-meta">
+                  Emails antes de que venzan los recibos recurrentes que tengan el aviso activado. Apagándolo aquí no se envía ninguno,
+                  sin cambiar la configuración de cada recibo.
+                </p>
+              </div>
+              {remindersError && <p role="alert">{remindersError}</p>}
             </div>
           </section>
 

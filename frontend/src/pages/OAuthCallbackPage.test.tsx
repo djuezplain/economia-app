@@ -24,7 +24,7 @@ describe('OAuthCallbackPage', () => {
       locale: 'es',
       status: 'ACTIVE',
       createdAt: '2026-01-01T00:00:00.000Z',
-      hasPassword: false,
+      hasPassword: false, recurringReminderEmails: true,
     });
   });
 

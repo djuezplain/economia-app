@@ -1297,6 +1297,7 @@ a.card-title:hover {
 
 /* Últimos movimientos: una única tarjeta con filas separadas por línea
    tenue (como las listas de la captura), en vez de filas sueltas. */
+#home-upcoming-bills,
 #home-recent-list {
   list-style: none;
   margin: var(--space-3) 0;
@@ -1306,6 +1307,7 @@ a.card-title:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
+#home-upcoming-bills li,
 #home-recent-list li {
   display: flex;
   align-items: center;
@@ -1313,12 +1315,15 @@ a.card-title:hover {
   padding: 12px var(--space-4);
   border-bottom: 1px solid var(--chart-grid);
 }
+#home-upcoming-bills li:last-child,
 #home-recent-list li:last-child {
   border-bottom: none;
 }
+#home-upcoming-bills small,
 #home-recent-list small {
   color: var(--text-muted);
 }
+#home-upcoming-bills li > span:last-child,
 #home-recent-list li > span:last-child {
   margin-inline-start: auto;
   font-weight: 600;
@@ -1759,4 +1764,54 @@ code {
   padding: 0;
   border: none;
   background: none;
+}
+
+/* — importe estimado de recibos variables (spec 049 H2) — */
+.amount-estimated {
+  opacity: 0.75;
+  font-style: italic;
+}
+
+/* — conciliación de recibos (spec 049 H3) — */
+.reconcile-list,
+.reconcile-candidates {
+  list-style: none;
+  margin: var(--space-2) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.reconcile-candidates > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.occurrence-link {
+  margin-top: var(--space-2);
+}
+.details-heading {
+  display: inline;
+  font-size: inherit;
+}
+details > summary {
+  cursor: pointer;
+}
+/* Las filas de candidatos van dentro de una tarjeta: sin el borde ni el
+   relleno de `main ul li`, pensados para listas de texto. */
+.reconcile-candidates > li {
+  padding: 0;
+  border-bottom: none;
+}
+/* Cabecera de una tarjeta de conciliación: misma disposición que la de
+   una ocurrencia prevista (`.cal-item-planned > .card-row`). */
+.reconcile-list > .card > .card-row {
+  display: flex;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.reconcile-list .card-amount {
+  font-size: 17px;
 }

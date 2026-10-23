@@ -22,6 +22,7 @@ import {
   pensionPlanValuations,
   pensionPlans,
   recurringOccurrenceResolutions,
+  recurringReconciliationDismissals,
   recurringTransactions,
   savingsGoals,
   stockDividends,
@@ -44,7 +45,7 @@ interface TableEntry {
 }
 
 /** Plan.md §3.2 — mismo orden que `ECONOMIC_DATA_TABLE_ORDER`; aquí solo se asocia cada clave con su tabla real. */
-const TABLES: Record<Exclude<keyof EconomicData, 'recurringOccurrenceResolutions'>, TableEntry> = {
+const TABLES: Record<Exclude<keyof EconomicData, 'recurringOccurrenceResolutions' | 'recurringReconciliationDismissals'>, TableEntry> = {
   categories: { table: categories, hasUserId: true },
   transactions: { table: transactions, hasUserId: true },
   savingsGoals: { table: savingsGoals, hasUserId: true },
@@ -89,9 +90,30 @@ function isValidResolutionRow(row: unknown): row is Row {
     typeof row.recurringId === 'string' &&
     isUUID(row.recurringId) &&
     typeof row.occurrenceDate === 'string' &&
-    /^\d{4}-\d{2}-\d{2}$/.test(row.occurrenceDate)
+    /^\d{4}-\d{2}-\d{2}$/.test(row.occurrenceDate) &&
+    // Spec 049: un estado desconocido acabaría en un error de Postgres al insertar.
+    ['CONFIRMED', 'SKIPPED', 'RECONCILED'].includes(row.status as string) &&
+    (row.reconciledAutomatically === undefined || typeof row.reconciledAutomatically === 'boolean')
   );
 }
+
+/** Spec 049: descarte de conciliación — PK compuesta, sin `id` propio. */
+function isValidDismissalRow(row: unknown): row is Row {
+  return (
+    isPlainObject(row) &&
+    typeof row.recurringId === 'string' &&
+    isUUID(row.recurringId) &&
+    typeof row.occurrenceDate === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(row.occurrenceDate) &&
+    typeof row.transactionId === 'string' &&
+    isUUID(row.transactionId)
+  );
+}
+
+const ROW_VALIDATORS: Partial<Record<keyof EconomicData, (row: unknown) => row is Row>> = {
+  recurringOccurrenceResolutions: isValidResolutionRow,
+  recurringReconciliationDismissals: isValidDismissalRow,
+};
 
 function isValidRow(row: unknown): row is Row {
   return isPlainObject(row) && typeof row.id === 'string' && isUUID(row.id);
@@ -198,7 +220,7 @@ export class DataImportService {
         continue;
       }
       const rows = economicData[key];
-      const isValid = key === 'recurringOccurrenceResolutions' ? isValidResolutionRow : isValidRow;
+      const isValid = ROW_VALIDATORS[key] ?? isValidRow;
       if (!Array.isArray(rows) || !rows.every(isValid)) {
         throw new BadRequestException(`El fichero no tiene el formato esperado (${key}).`);
       }
@@ -218,6 +240,10 @@ export class DataImportService {
       const rows = file.economicData[key] as unknown as Row[];
       if (key === 'recurringOccurrenceResolutions') {
         summary[key] = await this.mergeResolutions(executor, file, userId, write);
+        continue;
+      }
+      if (key === 'recurringReconciliationDismissals') {
+        summary[key] = await this.mergeDismissals(executor, file, userId, write);
         continue;
       }
       summary[key] =
@@ -330,6 +356,57 @@ export class DataImportService {
 
     if (write && toInsert.length > 0) {
       await executor.insert(recurringOccurrenceResolutions).values(toInsert as never[]).onConflictDoNothing();
+    }
+    return { total: rows.length, toImport: toInsert.length, alreadyExisting: candidates.length - toInsert.length };
+  }
+
+  /**
+   * Spec 049. Mismo criterio que `mergeResolutions`: solo descartes de una
+   * plantilla del propio usuario (existente o del mismo fichero) y de un
+   * movimiento propio (existente o del mismo fichero). Un descarte sin su
+   * movimiento no tiene sentido, así que en ese caso se omite.
+   */
+  private async mergeDismissals(executor: Executor, file: AccountExportFile, userId: string, write: boolean): Promise<TableImportSummary> {
+    const rows = file.economicData.recurringReconciliationDismissals as unknown as Row[];
+    if (rows.length === 0) return { total: 0, toImport: 0, alreadyExisting: 0 };
+
+    const recurringIds = [...new Set(rows.map((row) => row.recurringId as string))];
+    const transactionIds = [...new Set(rows.map((row) => row.transactionId as string))];
+    const [templateRows, transactionRows, existing] = await Promise.all([
+      executor
+        .select({ id: recurringTransactions.id, userId: recurringTransactions.userId })
+        .from(recurringTransactions)
+        .where(inArray(recurringTransactions.id, recurringIds)),
+      executor.select({ id: transactions.id, userId: transactions.userId }).from(transactions).where(inArray(transactions.id, transactionIds)),
+      executor
+        .select({
+          recurringId: recurringReconciliationDismissals.recurringId,
+          occurrenceDate: recurringReconciliationDismissals.occurrenceDate,
+          transactionId: recurringReconciliationDismissals.transactionId,
+        })
+        .from(recurringReconciliationDismissals)
+        .where(inArray(recurringReconciliationDismissals.recurringId, recurringIds)),
+    ]);
+
+    const fileTemplateIds = new Set((file.economicData.recurringTransactions as unknown as Row[]).map((t) => t.id as string));
+    const fileTransactionIds = new Set((file.economicData.transactions as unknown as Row[]).map((t) => t.id as string));
+    const isOwnedOrImportable = (id: string, dbRows: { id: string; userId: string }[], fileIds: Set<string>) => {
+      const inDb = dbRows.find((r) => r.id === id);
+      return inDb ? inDb.userId === userId : fileIds.has(id);
+    };
+    const existingKeys = new Set(existing.map((r) => `${r.recurringId}|${r.occurrenceDate}|${r.transactionId}`));
+
+    const candidates = rows.filter(
+      (row) =>
+        isOwnedOrImportable(row.recurringId as string, templateRows, fileTemplateIds) &&
+        isOwnedOrImportable(row.transactionId as string, transactionRows, fileTransactionIds),
+    );
+    const toInsert = candidates
+      .filter((row) => !existingKeys.has(`${row.recurringId}|${row.occurrenceDate}|${row.transactionId}`))
+      .map((row) => coerceTimestamps(recurringReconciliationDismissals, row));
+
+    if (write && toInsert.length > 0) {
+      await executor.insert(recurringReconciliationDismissals).values(toInsert as never[]).onConflictDoNothing();
     }
     return { total: rows.length, toImport: toInsert.length, alreadyExisting: candidates.length - toInsert.length };
   }

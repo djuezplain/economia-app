@@ -1,4 +1,4 @@
-import { IsDateString, IsIn, IsOptional, IsString, IsUUID, Length } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator';
 import { IsMoneyAmount } from '../../common/is-money-amount.decorator.js';
 
 /**
@@ -42,4 +42,21 @@ export class CreateRecurringTransactionDto {
   @IsOptional()
   @IsDateString({ strict: true })
   endDate?: string;
+
+  /** Spec 049 H2: con `true`, `amount` es el importe inicial y las ocurrencias usan una estimación. */
+  @IsOptional()
+  @IsBoolean()
+  variableAmount?: boolean;
+
+  /** Spec 049 H1: aviso por email antes de cada ocurrencia. */
+  @IsOptional()
+  @IsBoolean()
+  reminderEnabled?: boolean;
+
+  /** Spec 049 H1 criterio 1: días de antelación del aviso (0 = el mismo día). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(7)
+  reminderDaysBefore?: number;
 }

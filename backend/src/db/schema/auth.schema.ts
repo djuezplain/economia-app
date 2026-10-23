@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   integer,
+  boolean,
   pgEnum,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
@@ -59,6 +60,10 @@ export const users = pgTable('users', {
   // criterio 3) y no solo "los últimos 5 acumulados alguna vez": si ha pasado
   // más de la ventana desde el último fallo, el contador se reinicia.
   lastFailedLoginAt: timestamp('last_failed_login_at', { withTimezone: true }),
+  // Spec 049 H1 criterio 6: interruptor global de los avisos de recibos por
+  // email. Con `false` no se envía ninguno, sin tocar la configuración de
+  // cada plantilla.
+  recurringReminderEmails: boolean('recurring_reminder_emails').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

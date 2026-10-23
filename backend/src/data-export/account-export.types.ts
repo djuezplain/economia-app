@@ -16,6 +16,7 @@ import type {
   pensionPlanValuations,
   pensionPlans,
   recurringOccurrenceResolutions,
+  recurringReconciliationDismissals,
   recurringTransactions,
   savingsGoals,
   stockDividends,
@@ -62,6 +63,7 @@ export type CashHoldingRow = typeof cashHoldings.$inferSelect;
 export type CashBalanceRow = typeof cashBalances.$inferSelect;
 export type RecurringTransactionRow = typeof recurringTransactions.$inferSelect;
 export type RecurringOccurrenceResolutionRow = typeof recurringOccurrenceResolutions.$inferSelect;
+export type RecurringReconciliationDismissalRow = typeof recurringReconciliationDismissals.$inferSelect;
 
 /**
  * Spec 032, plan.md §1. Todo el dato económico del usuario, en 24 arrays
@@ -103,6 +105,10 @@ export interface EconomicData {
   // Spec 047: copias de seguridad anteriores no traen estas dos claves — el import las tolera ausentes (`OPTIONAL_ECONOMIC_DATA_KEYS`).
   recurringTransactions: RecurringTransactionRow[];
   recurringOccurrenceResolutions: RecurringOccurrenceResolutionRow[];
+  // Spec 049: "este movimiento no corresponde a esta ocurrencia". Opcional en
+  // el import, igual que las dos anteriores. `recurring_reminders_sent` no se
+  // exporta: es un registro de operación, no un dato económico (plan.md §3.6).
+  recurringReconciliationDismissals: RecurringReconciliationDismissalRow[];
 }
 
 /**
@@ -147,7 +153,12 @@ export const ECONOMIC_DATA_TABLE_ORDER: (keyof EconomicData)[] = [
   'cashBalances',
   'recurringTransactions',
   'recurringOccurrenceResolutions',
+  'recurringReconciliationDismissals',
 ];
 
 /** Spec 047: claves añadidas después de la versión 1 original del formato; un fichero antiguo puede no traerlas. */
-export const OPTIONAL_ECONOMIC_DATA_KEYS: (keyof EconomicData)[] = ['recurringTransactions', 'recurringOccurrenceResolutions'];
+export const OPTIONAL_ECONOMIC_DATA_KEYS: (keyof EconomicData)[] = [
+  'recurringTransactions',
+  'recurringOccurrenceResolutions',
+  'recurringReconciliationDismissals',
+];

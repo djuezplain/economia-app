@@ -39,6 +39,7 @@ export const DATA_TABLE_LABELS: Record<string, string> = {
   cashBalances: 'Saldos de efectivo',
   recurringTransactions: 'Movimientos recurrentes',
   recurringOccurrenceResolutions: 'Ocurrencias recurrentes resueltas',
+  recurringReconciliationDismissals: 'Descartes de conciliación de recibos',
 };
 
 function fileFormData(file: File): FormData {

@@ -9,6 +9,7 @@ import {
   cashBalances,
   cashHoldings,
   recurringOccurrenceResolutions,
+  recurringReconciliationDismissals,
   recurringTransactions,
   categories,
   cryptoPurchases,
@@ -58,6 +59,8 @@ export interface UserProfile {
    * intentar primero y fallar. Nunca se expone `passwordHash` en sí.
    */
   hasPassword: boolean;
+  /** Spec 049 H1 criterio 6. */
+  recurringReminderEmails: boolean;
 }
 
 /**
@@ -112,6 +115,7 @@ export class UsersService {
     if (dto.name !== undefined) updates.name = dto.name;
     if (dto.currency !== undefined) updates.currency = dto.currency;
     if (dto.locale !== undefined) updates.locale = dto.locale;
+    if (dto.recurringReminderEmails !== undefined) updates.recurringReminderEmails = dto.recurringReminderEmails;
 
     const [updated] = await this.db.update(users).set(updates).where(eq(users.id, userId)).returning();
     if (!updated) {
@@ -222,6 +226,7 @@ export class UsersService {
       userPensionPlanValuations,
       userCashBalances,
       userRecurringResolutions,
+      userReconciliationDismissals,
     ] = await Promise.all([
       bankAccountIds.length
         ? this.db.query.bankAccountBalances.findMany({ where: inArray(bankAccountBalances.bankAccountId, bankAccountIds) })
@@ -245,6 +250,11 @@ export class UsersService {
       cashHoldingIds.length ? this.db.query.cashBalances.findMany({ where: inArray(cashBalances.cashHoldingId, cashHoldingIds) }) : [],
       recurringIds.length
         ? this.db.query.recurringOccurrenceResolutions.findMany({ where: inArray(recurringOccurrenceResolutions.recurringId, recurringIds) })
+        : [],
+      recurringIds.length
+        ? this.db.query.recurringReconciliationDismissals.findMany({
+            where: inArray(recurringReconciliationDismissals.recurringId, recurringIds),
+          })
         : [],
     ]);
 
@@ -280,6 +290,7 @@ export class UsersService {
         cashBalances: userCashBalances,
         recurringTransactions: userRecurringTransactions,
         recurringOccurrenceResolutions: userRecurringResolutions,
+        recurringReconciliationDismissals: userReconciliationDismissals,
       },
     };
   }
@@ -354,6 +365,7 @@ export class UsersService {
       status: user.status,
       createdAt: user.createdAt,
       hasPassword: user.passwordHash !== null,
+      recurringReminderEmails: user.recurringReminderEmails,
     };
   }
 }

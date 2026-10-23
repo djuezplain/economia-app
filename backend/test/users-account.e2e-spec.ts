@@ -15,6 +15,10 @@ import {
   categories,
   emailTokens,
   oauthAccounts,
+  recurringOccurrenceResolutions,
+  recurringReconciliationDismissals,
+  recurringRemindersSent,
+  recurringTransactions,
   sessions,
   stockDividends,
   stockPurchases,
@@ -240,6 +244,43 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
         .get('/users/me')
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(401);
+    });
+
+    it('borra también todo lo de los recibos recurrentes de la spec 049 (H8, plan 049 §1)', async () => {
+      const user = await createActiveUser('eliminar-recibos@example.com');
+      const accessToken = await login(user.email);
+      const [cat] = await db.insert(categories).values({ userId: user.id, type: 'EXPENSE', name: 'Suministros' }).returning();
+      const [tpl] = await db
+        .insert(recurringTransactions)
+        .values({
+          userId: user.id, type: 'EXPENSE', categoryId: cat.id, concept: 'Luz', amount: '50.00', frequency: 'MONTHLY',
+          startDate: '2026-01-05', variableAmount: true, reminderEnabled: true,
+        })
+        .returning();
+      const [reconciled, dismissed] = await db
+        .insert(transactions)
+        .values([
+          { userId: user.id, type: 'EXPENSE', date: '2026-03-04', categoryId: cat.id, concept: 'IBERDROLA', amount: '61.30' },
+          { userId: user.id, type: 'EXPENSE', date: '2026-04-06', categoryId: cat.id, concept: 'Otra cosa', amount: '58.00' },
+        ])
+        .returning();
+      await db.insert(recurringOccurrenceResolutions).values({
+        recurringId: tpl.id, occurrenceDate: '2026-03-05', status: 'RECONCILED', transactionId: reconciled.id, reconciledAutomatically: true,
+      });
+      await db.insert(recurringReconciliationDismissals).values({ recurringId: tpl.id, occurrenceDate: '2026-04-05', transactionId: dismissed.id });
+      await db.insert(recurringRemindersSent).values({ recurringId: tpl.id, occurrenceDate: '2026-05-05' });
+
+      await request(app.getHttpServer())
+        .delete('/users/me')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ password: PASSWORD })
+        .expect(204);
+
+      expect(await db.select().from(recurringTransactions).where(eq(recurringTransactions.userId, user.id))).toHaveLength(0);
+      expect(await db.select().from(recurringOccurrenceResolutions).where(eq(recurringOccurrenceResolutions.recurringId, tpl.id))).toHaveLength(0);
+      expect(await db.select().from(recurringReconciliationDismissals).where(eq(recurringReconciliationDismissals.recurringId, tpl.id))).toHaveLength(0);
+      expect(await db.select().from(recurringRemindersSent).where(eq(recurringRemindersSent.recurringId, tpl.id))).toHaveLength(0);
+      expect(await db.select().from(transactions).where(eq(transactions.userId, user.id))).toHaveLength(0);
     });
 
     it('en una cuenta sin contraseña (solo Google), exige y valida el email de confirmación en su lugar', async () => {

@@ -8,6 +8,7 @@ import * as usersApi from '../api/users';
 import * as dashboardApi from '../api/dashboard';
 import * as goalsProgressApi from '../api/goals-progress';
 import * as transactionsApi from '../api/transactions';
+import * as recurringApi from '../api/recurring-transactions';
 import type { MonthSummary, YearSummary } from '../api/dashboard';
 import type { MonthProgress, GoalProgress } from '../api/goals-progress';
 import type { ListTransactionsResult, Transaction } from '../api/transactions';
@@ -32,7 +33,7 @@ const PROFILE: usersApi.UserProfile = {
   locale: 'es',
   status: 'ACTIVE',
   createdAt: '2026-01-01T00:00:00.000Z',
-  hasPassword: true,
+  hasPassword: true, recurringReminderEmails: true,
 };
 
 function monthSummary(overrides: Partial<MonthSummary> = {}): MonthSummary {
@@ -113,6 +114,8 @@ describe('HomePage', () => {
     // Spec 045 (H3): la evolución anual de las tarjetas KPI es opcional — por
     // defecto falla, y los tests que la necesitan la sobrescriben.
     vi.spyOn(dashboardApi, 'getYearSummary').mockRejectedValue(new ApiError(500, 'Sin evolución anual.'));
+    // Spec 049: "Próximos recibos" no se pinta sin ocurrencias abiertas.
+    vi.spyOn(recurringApi, 'listOccurrences').mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -250,6 +253,26 @@ describe('HomePage', () => {
 
     expect(await screen.findByText('Esta página requiere conexión a internet.')).toBeInTheDocument();
     expect(monthSpy).not.toHaveBeenCalled();
+    // Spec 049: tampoco se piden los próximos recibos.
+    expect(recurringApi.listOccurrences).not.toHaveBeenCalled();
+    expect(screen.queryByRole('region', { name: 'Próximos recibos' })).not.toBeInTheDocument();
+  });
+
+  it('muestra "Próximos recibos" también en un mes sin movimientos (spec 049 H1 criterio 5)', async () => {
+    mockLoggedIn();
+    mockEmptyMonth();
+    vi.spyOn(recurringApi, 'listOccurrences').mockResolvedValue([
+      {
+        recurringId: 'rec-1', date: '2099-01-05', status: 'PENDING', transactionId: null, type: 'EXPENSE', categoryId: 'cat-1',
+        subcategoryId: null, concept: 'Seguro hogar', merchant: null, amount: '30.00', estimated: false, paymentMethod: null,
+      },
+    ]);
+
+    renderHome();
+
+    const section = await screen.findByRole('region', { name: 'Próximos recibos' });
+    expect(section).toHaveTextContent('Seguro hogar');
+    expect(screen.getByText('Sin movimientos registrados este mes.')).toBeInTheDocument();
   });
 
   it('sin conexión, el aviso de verificación pendiente se sigue mostrando (no depende de la red)', async () => {

@@ -16,7 +16,7 @@ const PROFILE: usersApi.UserProfile = {
   locale: 'es',
   status: 'ACTIVE',
   createdAt: '2026-01-01T00:00:00.000Z',
-  hasPassword: true,
+  hasPassword: true, recurringReminderEmails: true,
 };
 
 describe('ProfilePage', () => {
@@ -224,7 +224,7 @@ describe('ProfilePage', () => {
     it('en una cuenta sin contraseña (solo Google), pide el email de confirmación en vez de la contraseña', async () => {
       vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
       vi.spyOn(authApi, 'logout').mockResolvedValue({ message: 'Sesión cerrada.' });
-      vi.spyOn(usersApi, 'getProfile').mockResolvedValue({ ...PROFILE, hasPassword: false });
+      vi.spyOn(usersApi, 'getProfile').mockResolvedValue({ ...PROFILE, hasPassword: false, recurringReminderEmails: true });
       const deleteSpy = vi.spyOn(usersApi, 'deleteAccount').mockResolvedValue(undefined);
 
       renderPage();
@@ -239,6 +239,34 @@ describe('ProfilePage', () => {
 
       expect(await screen.findByText('Cuenta eliminada')).toBeInTheDocument();
       expect(deleteSpy).toHaveBeenCalledWith({ confirmEmail: 'diego@example.com' });
+    });
+  });
+
+  describe('avisos de recibos (spec 049 H1 criterio 6)', () => {
+    it('muestra el interruptor con el valor del perfil y lo guarda al cambiarlo', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+      const update = vi.spyOn(usersApi, 'updateProfile').mockResolvedValue({ ...PROFILE, recurringReminderEmails: false });
+
+      renderPage();
+      const toggle = await screen.findByLabelText('Avisos de recibos por email');
+      expect(toggle).toBeChecked();
+
+      await userEvent.click(toggle);
+      expect(update).toHaveBeenCalledWith({ recurringReminderEmails: false });
+      await waitFor(() => expect(toggle).not.toBeChecked());
+    });
+
+    it('si falla al guardar, muestra el error y el interruptor no cambia', async () => {
+      vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+      vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
+      vi.spyOn(usersApi, 'updateProfile').mockRejectedValue(new ApiError(500, 'Error de prueba.'));
+
+      renderPage();
+      const toggle = await screen.findByLabelText('Avisos de recibos por email');
+      await userEvent.click(toggle);
+      expect(await screen.findByRole('alert')).toHaveTextContent('Error de prueba.');
+      expect(toggle).toBeChecked();
     });
   });
 });

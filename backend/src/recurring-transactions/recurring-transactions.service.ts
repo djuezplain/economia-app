@@ -6,13 +6,14 @@ import { recurringOccurrenceResolutions, recurringTransactions, transactions } f
 import { TransactionsService } from '../transactions/transactions.service.js';
 import type { Transaction } from '../transactions/transactions.service.js';
 import { occurrencesBetween } from './recurring.calculations.js';
+import { loadExpectedAmounts } from './recurring-estimates.query.js';
 import type { CreateRecurringTransactionDto } from './dto/create-recurring-transaction.dto.js';
 import type { UpdateRecurringTransactionDto } from './dto/update-recurring-transaction.dto.js';
 
 export type RecurringTransaction = typeof recurringTransactions.$inferSelect;
 
 /** Estado de una ocurrencia calculada (spec 047, H2/H3). */
-export type OccurrenceStatus = 'PENDING' | 'OVERDUE' | 'CONFIRMED' | 'SKIPPED';
+export type OccurrenceStatus = 'PENDING' | 'OVERDUE' | 'CONFIRMED' | 'SKIPPED' | 'RECONCILED';
 
 export interface Occurrence {
   recurringId: string;
@@ -24,7 +25,13 @@ export interface Occurrence {
   subcategoryId: string | null;
   concept: string;
   merchant: string | null;
+  /**
+   * En una ocurrencia sin resolver de una plantilla variable, la estimación
+   * (spec 049 H2); en el resto, el importe de la plantilla.
+   */
   amount: string;
+  /** Spec 049 H2 criterio 3: `amount` es una estimación, no un importe fijo. */
+  estimated: boolean;
   paymentMethod: RecurringTransaction['paymentMethod'];
 }
 
@@ -77,6 +84,9 @@ export class RecurringTransactionsService {
         frequency: dto.frequency,
         startDate: dto.startDate,
         endDate: dto.endDate ?? null,
+        variableAmount: dto.variableAmount ?? false,
+        reminderEnabled: dto.reminderEnabled ?? false,
+        ...(dto.reminderDaysBefore !== undefined && { reminderDaysBefore: dto.reminderDaysBefore }),
       })
       .returning();
     return created;
@@ -114,6 +124,9 @@ export class RecurringTransactionsService {
         ...(dto.startDate !== undefined && { startDate: dto.startDate }),
         ...(dto.endDate !== undefined && { endDate: dto.endDate }),
         ...(dto.active !== undefined && { active: dto.active }),
+        ...(dto.variableAmount !== undefined && { variableAmount: dto.variableAmount }),
+        ...(dto.reminderEnabled !== undefined && { reminderEnabled: dto.reminderEnabled }),
+        ...(dto.reminderDaysBefore !== undefined && { reminderDaysBefore: dto.reminderDaysBefore }),
         updatedAt: new Date(),
       })
       .where(eq(recurringTransactions.id, id))
@@ -156,12 +169,14 @@ export class RecurringTransactionsService {
         ),
       );
     const resolutionByKey = new Map(resolutions.map((r) => [`${r.recurringId}|${r.occurrenceDate}`, r]));
+    const expectedAmounts = await loadExpectedAmounts(this.db, userId, templates);
 
     const today = todayIso();
     const result: Occurrence[] = [];
     for (const t of templates) {
       for (const date of occurrencesBetween(t, from, to)) {
         const resolution = resolutionByKey.get(`${t.id}|${date}`);
+        const estimated = t.variableAmount && !resolution;
         result.push({
           recurringId: t.id,
           date,
@@ -172,7 +187,8 @@ export class RecurringTransactionsService {
           subcategoryId: t.subcategoryId,
           concept: t.concept,
           merchant: t.merchant,
-          amount: t.amount,
+          amount: estimated ? expectedAmounts.get(t.id)! : t.amount,
+          estimated,
           paymentMethod: t.paymentMethod,
         });
       }
@@ -189,6 +205,11 @@ export class RecurringTransactionsService {
   async confirm(userId: string, id: string, date: string, amount?: string): Promise<Transaction> {
     const template = await this.findOwnOrThrow(userId, id);
     this.assertIsOccurrence(template, date);
+    // Spec 049 H2 criterio 4 / plan.md §3.1: en una plantilla variable no se
+    // confirma nunca una estimación sin que alguien haya mirado el importe.
+    if (template.variableAmount && amount === undefined) {
+      throw new BadRequestException('Este recurrente tiene importe variable: indica el importe real al confirmar.');
+    }
 
     const created = await this.db.transaction(async (tx) => {
       const [reserved] = await tx
@@ -246,6 +267,10 @@ export class RecurringTransactionsService {
     if (existing?.status === 'CONFIRMED') {
       throw new ConflictException('Esta ocurrencia ya estaba confirmada.');
     }
+    // Spec 049: tampoco se omite una ya conciliada con un movimiento real.
+    if (existing?.status === 'RECONCILED') {
+      throw new ConflictException('Esta ocurrencia ya estaba conciliada con un movimiento.');
+    }
   }
 
   private findResolution(recurringId: string, date: string) {
@@ -257,7 +282,8 @@ export class RecurringTransactionsService {
     });
   }
 
-  private assertIsOccurrence(template: RecurringTransaction, date: string): void {
+  /** Público para `RecurringReconciliationService` (spec 049). */
+  assertIsOccurrence(template: RecurringTransaction, date: string): void {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || occurrencesBetween(template, date, date).length !== 1) {
       throw new BadRequestException('Esa fecha no es una ocurrencia de este movimiento recurrente.');
     }
@@ -269,7 +295,8 @@ export class RecurringTransactionsService {
     }
   }
 
-  private async findOwnOrThrow(userId: string, id: string): Promise<RecurringTransaction> {
+  /** Público para `RecurringReconciliationService` (spec 049). 404 si no existe o es de otro usuario. */
+  async findOwnOrThrow(userId: string, id: string): Promise<RecurringTransaction> {
     const template = await this.db.query.recurringTransactions.findFirst({
       where: and(eq(recurringTransactions.id, id), eq(recurringTransactions.userId, userId)),
     });

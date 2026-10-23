@@ -13,6 +13,8 @@ export interface GoogleSheetsImportRunResult {
   income: { importedCount: number; invalid: { rowNumber: number; reason: string }[]; skippedDuplicateCount: number; updatedAmountCount: number };
   expense: { importedCount: number; invalid: { rowNumber: number; reason: string }[]; skippedDuplicateCount: number; updatedAmountCount: number };
   categoriesCreated: string[];
+  /** Spec 049: opcional porque los resultados guardados antes de esa spec no lo tienen. */
+  reconciledCount?: number;
 }
 
 /**

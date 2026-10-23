@@ -15,6 +15,7 @@ import { ApiError } from '../api/client';
 import { categoryName } from './movements-shared';
 import { formatCurrency, formatDate, lastDayOfMonth, monthOverMonthChange } from './home-shared';
 import { Sparkline } from '../components/Sparkline';
+import { UpcomingBills } from '../components/UpcomingBills';
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
@@ -258,6 +259,9 @@ export function HomePage() {
               />
             </div>
           )}
+
+          {/* Spec 049 H1 criterio 5: también en un mes sin movimientos. */}
+          <UpcomingBills />
 
           {monthSummary && !isEmptyMonth && (
             <>

@@ -3,11 +3,19 @@ import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useCategoriesForType } from '../hooks/useCategoriesForType';
-import { createRecurring, deleteRecurring, listOccurrences, listRecurring, updateRecurring } from '../api/recurring-transactions';
-import type { Occurrence, RecurringFrequency, RecurringTransaction } from '../api/recurring-transactions';
+import {
+  createRecurring,
+  deleteRecurring,
+  getReconciliationOverview,
+  listOccurrences,
+  listRecurring,
+  updateRecurring,
+} from '../api/recurring-transactions';
+import type { Occurrence, ReconciliationOverview, RecurringFrequency, RecurringTransaction } from '../api/recurring-transactions';
 import type { MovementType, PaymentMethod } from '../api/transactions';
 import { ApiError } from '../api/client';
 import { OccurrenceRow } from '../components/OccurrenceRow';
+import { ReconciliationPanel } from '../components/ReconciliationPanel';
 import { categoryIcon, categoryName, PAYMENT_METHOD_LABELS, todayIso } from './movements-shared';
 import { formatCurrency } from './home-shared';
 import { describeRecurrence, FREQUENCY_LABELS } from './recurring-shared';
@@ -29,6 +37,9 @@ function emptyForm() {
     frequency: 'MONTHLY' as RecurringFrequency,
     startDate: todayIso(),
     endDate: '',
+    variableAmount: false,
+    reminderEnabled: false,
+    reminderDaysBefore: 2,
   };
 }
 
@@ -49,6 +60,7 @@ export function RecurringPage() {
 
   const [templates, setTemplates] = useState<RecurringTransaction[] | null>(null);
   const [pending, setPending] = useState<Occurrence[]>([]);
+  const [reconciliation, setReconciliation] = useState<ReconciliationOverview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -71,6 +83,12 @@ export function RecurringPage() {
       setLoadError(null);
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'No se han podido cargar los movimientos recurrentes.');
+    }
+    // Spec 049 H3: aparte, para que un fallo aquí no impida ver plantillas y pendientes.
+    try {
+      setReconciliation(await getReconciliationOverview());
+    } catch {
+      setReconciliation(null);
     }
   }, []);
 
@@ -101,6 +119,9 @@ export function RecurringPage() {
       frequency: t.frequency,
       startDate: t.startDate,
       endDate: t.endDate ?? '',
+      variableAmount: t.variableAmount,
+      reminderEnabled: t.reminderEnabled,
+      reminderDaysBefore: t.reminderDaysBefore,
     });
     setFormError(null);
     setShowForm(true);
@@ -121,6 +142,9 @@ export function RecurringPage() {
         paymentMethod: isExpense && form.paymentMethod ? form.paymentMethod : undefined,
         frequency: form.frequency,
         startDate: form.startDate,
+        variableAmount: form.variableAmount,
+        reminderEnabled: form.reminderEnabled,
+        reminderDaysBefore: form.reminderDaysBefore,
       };
       if (editingId) {
         await updateRecurring(editingId, { ...common, endDate: form.endDate || null });
@@ -178,6 +202,8 @@ export function RecurringPage() {
 
       {loadError && <p role="alert">{loadError}</p>}
       {actionError && <p role="alert">{actionError}</p>}
+
+      {reconciliation && <ReconciliationPanel overview={reconciliation} onChanged={() => void reload()} />}
 
       <section aria-label="Pendientes de confirmar">
         <h2>Pendientes de confirmar</h2>
@@ -274,6 +300,23 @@ export function RecurringPage() {
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
               />
             </div>
+            <div className="field">
+              <label htmlFor="rec-variable">
+                <input
+                  id="rec-variable"
+                  type="checkbox"
+                  checked={form.variableAmount}
+                  onChange={(e) => setForm({ ...form, variableAmount: e.target.checked })}
+                />{' '}
+                Importe variable
+              </label>
+              {form.variableAmount && (
+                <p className="card-meta">
+                  Para recibos que cambian cada vez (luz, agua…). El importe indicado se usa hasta que haya recibos reales; después, la
+                  previsión es la media de los 3 últimos.
+                </p>
+              )}
+            </div>
             {type === 'EXPENSE' && (
               <div className="field">
                 <label htmlFor="rec-payment">Tipo de pago (opcional)</label>
@@ -305,6 +348,34 @@ export function RecurringPage() {
               <label htmlFor="rec-end">Hasta (opcional)</label>
               <input id="rec-end" className="input" type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
             </div>
+            <div className="field">
+              <label htmlFor="rec-reminder">
+                <input
+                  id="rec-reminder"
+                  type="checkbox"
+                  checked={form.reminderEnabled}
+                  onChange={(e) => setForm({ ...form, reminderEnabled: e.target.checked })}
+                />{' '}
+                Avisarme por email
+              </label>
+            </div>
+            {form.reminderEnabled && (
+              <div className="field">
+                <label htmlFor="rec-reminder-days">Con cuánta antelación</label>
+                <select
+                  id="rec-reminder-days"
+                  className="input"
+                  value={form.reminderDaysBefore}
+                  onChange={(e) => setForm({ ...form, reminderDaysBefore: Number(e.target.value) })}
+                >
+                  {[0, 1, 2, 3, 4, 5, 6, 7].map((days) => (
+                    <option key={days} value={days}>
+                      {days === 0 ? 'El mismo día' : days === 1 ? '1 día antes' : `${days} días antes`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {formError && <p role="alert">{formError}</p>}
             <div>
@@ -328,6 +399,8 @@ export function RecurringPage() {
                     {categoryIcon(allCategories, t.categoryId)}
                   </span>{' '}
                   <strong>{t.concept}</strong> <span className="tag tag-neutral">{categoryName(allCategories, t.categoryId)}</span>
+                  {t.variableAmount && <span className="tag tag-neutral">importe variable</span>}
+                  {t.reminderEnabled && <span className="tag tag-neutral">aviso por email</span>}
                   {!t.active && <span className="tag tag-accent">en pausa</span>}
                   <p className="card-meta">
                     {describeRecurrence(t.frequency, t.startDate)}
