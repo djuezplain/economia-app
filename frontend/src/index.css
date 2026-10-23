@@ -1815,3 +1815,20 @@ details > summary {
 .reconcile-list .card-amount {
   font-size: 17px;
 }
+
+/* — documento original de un ticket (spec 048 H1) — */
+.receipt-document-image {
+  display: block;
+  max-width: min(100%, 480px);
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+.receipt-movement-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}

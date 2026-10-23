@@ -280,4 +280,26 @@ describe('MovementsListPage', () => {
     expect(await screen.findByText('Depósito gasolina')).toBeInTheDocument();
     expect(screen.getByText('pendiente de sincronizar')).toBeInTheDocument();
   });
+
+  it('marca los movimientos con ticket enlazado y enlaza al ticket (spec 048 H3)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+    vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue({ ...EXPENSE_RESULT, items: [{ ...EXPENSE_TX, receiptId: 'r-9' }] });
+
+    renderPage();
+
+    const tag = await screen.findByRole('link', { name: 'Ver el ticket de Depósito gasolina' });
+    expect(tag).toHaveAttribute('href', '/tickets/r-9');
+  });
+
+  it('sin ticket enlazado no muestra la etiqueta', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+    vi.spyOn(transactionsApi, 'listTransactions').mockResolvedValue(EXPENSE_RESULT);
+
+    renderPage();
+
+    expect(await screen.findByText('Depósito gasolina')).toBeInTheDocument();
+    expect(screen.queryByText('🧾 ticket')).not.toBeInTheDocument();
+  });
 });

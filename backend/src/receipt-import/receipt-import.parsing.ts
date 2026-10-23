@@ -13,7 +13,20 @@ import { normalizeText } from '../common/normalize-text.util.js';
 
 const HEADER_LINE_REGEX = /descripci/i;
 const TOTAL_LINE_REGEX = /total/i;
-const DATE_REGEX = /(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+// Spec 048 (H2 criterio 1): además de `dd/mm/aaaa`, separadores `-` y `.`
+// (el mismo en las dos posiciones), años de 2 cifras y la fecha escrita
+// con el nombre del mes, habituales en facturas.
+const NUMERIC_DATE_REGEX = /(?<!\d)(\d{1,2})([/.-])(\d{1,2})\2(\d{4}|\d{2})(?!\d)/g;
+const NAMED_MONTH_DATE_REGEX =
+  /(?<!\d)(\d{1,2})\s+(?:de\s+)?(ene(?:ro)?|feb(?:rero)?|mar(?:zo)?|abr(?:il)?|may(?:o)?|jun(?:io)?|jul(?:io)?|ago(?:sto)?|sept?(?:iembre)?|oct(?:ubre)?|nov(?:iembre)?|dic(?:iembre)?)\.?\s+(?:de\s+|del\s+)?(\d{4})(?!\d)/g;
+const MONTH_BY_PREFIX: Record<string, number> = {
+  ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, oct: 10, nov: 11, dic: 12,
+};
+// Spec 048: líneas con "total" que no son el total a pagar (facturas). Una
+// línea con IVA sí cuenta si es "IVA incluido".
+const SUBTOTAL_LINE_REGEX = /sub\s*-?\s*total|base\s+imponible/i;
+const VAT_LINE_REGEX = /\biva\b|i\.v\.a/i;
+const VAT_INCLUDED_REGEX = /incl/i;
 // Un "token de dinero" en el texto OCR: dígitos, separador decimal (coma o
 // punto — la fuente térmica hace que Tesseract confunda ambos a veces), 2 o
 // 3 decimales (los precios por kg del ticket real llevan a veces 3).
@@ -151,18 +164,33 @@ export function extractProductLines(ocrText: string): ParsedReceiptLine[] {
   return result;
 }
 
+function toIsoDate(day: number, month: number, year: number): string | null {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 /**
- * plan.md §6: primera fecha `dd/mm/aaaa` encontrada en el texto, convertida
- * a ISO por posición de carácter — mismo criterio que spec 033 plan.md §5
- * (no `new Date(string)`, ambiguo entre `dd/mm` y `mm/dd` según locale).
+ * plan.md §6: primera fecha válida del texto, convertida a ISO por posición
+ * de carácter — mismo criterio que spec 033 plan.md §5 (no
+ * `new Date(string)`, ambiguo entre `dd/mm` y `mm/dd` según locale). Spec
+ * 048: más formatos (ver `NUMERIC_DATE_REGEX`/`NAMED_MONTH_DATE_REGEX`), y
+ * una coincidencia que no es una fecha real (mes 13, 31 de abril…) se
+ * descarta en vez de devolverse.
  */
 export function detectDate(ocrText: string): string | null {
-  const match = DATE_REGEX.exec(ocrText);
-  if (!match) return null;
-  const [, day, month, year] = match;
-  const isoMonth = month.padStart(2, '0');
-  const isoDay = day.padStart(2, '0');
-  return `${year}-${isoMonth}-${isoDay}`;
+  const text = normalizeText(ocrText);
+  const candidates: Array<{ index: number; iso: string | null }> = [];
+  for (const match of text.matchAll(NUMERIC_DATE_REGEX)) {
+    const [, day, , month, year] = match;
+    const fullYear = year.length === 2 ? 2000 + Number(year) : Number(year);
+    candidates.push({ index: match.index, iso: toIsoDate(Number(day), Number(month), fullYear) });
+  }
+  for (const match of text.matchAll(NAMED_MONTH_DATE_REGEX)) {
+    const [, day, monthName, year] = match;
+    candidates.push({ index: match.index, iso: toIsoDate(Number(day), MONTH_BY_PREFIX[monthName.slice(0, 3)], Number(year)) });
+  }
+  return candidates.sort((a, b) => a.index - b.index).find((c) => c.iso !== null)?.iso ?? null;
 }
 
 /**
@@ -174,6 +202,8 @@ export function detectPrintedTotal(ocrText: string): string | null {
   const lines = ocrText.split('\n');
   for (const line of lines) {
     if (!TOTAL_LINE_REGEX.test(line)) continue;
+    if (SUBTOTAL_LINE_REGEX.test(line)) continue;
+    if (VAT_LINE_REGEX.test(line) && !VAT_INCLUDED_REGEX.test(line)) continue;
     const tokens = line.match(MONEY_TOKEN_REGEX);
     if (tokens && tokens.length > 0) {
       return parseOcrDecimal(tokens[tokens.length - 1]).toFixed(2);

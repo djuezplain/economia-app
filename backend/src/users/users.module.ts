@@ -5,6 +5,7 @@ import { AuditModule } from '../audit/audit.module.js';
 import { SessionsController } from './sessions.controller.js';
 import { ProfileController } from './profile.controller.js';
 import { UsersService } from './users.service.js';
+import { AccountArchiveService } from './account-archive.service.js';
 
 /**
  * Módulo para las rutas `/users/me/*` (plan.md §2): sesiones (grupo 6),
@@ -21,10 +22,12 @@ import { UsersService } from './users.service.js';
 @Module({
   imports: [AuthModule, MailModule, AuditModule],
   controllers: [SessionsController, ProfileController],
-  providers: [UsersService],
+  providers: [UsersService, AccountArchiveService],
   // Spec 032 H4 (plan.md §9.8): GoogleDriveModule reutiliza
   // `UsersService.exportData()` para no duplicar la construcción del
   // fichero de exportación entre H1 (descarga local) y H4 (Google Drive).
-  exports: [UsersService],
+  // Spec 048: `AccountArchiveService` (el `.zip`) lo reutilizan la exportación
+  // programada y Google Drive, igual que `UsersService.exportData()`.
+  exports: [UsersService, AccountArchiveService],
 })
 export class UsersModule {}

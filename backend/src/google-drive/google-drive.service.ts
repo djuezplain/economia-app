@@ -1,5 +1,9 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createReadStream, promises as fs } from 'node:fs';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { GaxiosError } from 'gaxios';
 import { eq } from 'drizzle-orm';
@@ -8,8 +12,7 @@ import type { Database } from '../db/db.module.js';
 import { googleDriveConnections } from '../db/schema/index.js';
 import { decryptSecret, encryptSecret } from '../common/secret-encryption.util.js';
 import { DRIVE_FILE_SCOPE, DRIVE_FILES_URL, DRIVE_FOLDER_NAME, DRIVE_UPLOAD_URL } from './google-drive.constants.js';
-import { UsersService } from '../users/users.service.js';
-import type { AccountExport } from '../users/users.service.js';
+import { AccountArchiveService, archiveFilename } from '../users/account-archive.service.js';
 
 export type SaveConnectionResult = { ok: true } | { ok: false; reason: 'no_refresh_token' };
 
@@ -22,7 +25,7 @@ export type SaveConnectionResult = { ok: true } | { ok: false; reason: 'no_refre
 export class GoogleDriveService {
   constructor(
     private readonly config: ConfigService,
-    private readonly usersService: UsersService,
+    private readonly archives: AccountArchiveService,
     @Inject(DB) private readonly db: Database,
   ) {}
 
@@ -92,9 +95,9 @@ export class GoogleDriveService {
   }
 
   /**
-   * Plan.md §9.7: sube el mismo `AccountExport` que ya genera H1
-   * (`UsersService.exportData()`, sin recomponerlo) a la carpeta propia de
-   * la app en el Drive del usuario, creándola si hiciera falta.
+   * Plan.md §9.7: sube la misma copia que descarga el usuario — desde la
+   * spec 048, el `.zip` de `AccountArchiveService` (datos y documentos) — a
+   * la carpeta propia de la app en su Drive, creándola si hiciera falta.
    */
   async exportToDrive(userId: string): Promise<{ fileId: string; webViewLink: string }> {
     const connection = await this.getConnectionRow(userId);
@@ -106,9 +109,15 @@ export class GoogleDriveService {
     client.setCredentials({ refresh_token: decryptSecret(connection.refreshTokenEncrypted) });
 
     const folderId = await this.ensureFolder(client, userId, connection.folderId);
-    const file = await this.usersService.exportData(userId);
-    const filename = `economia-app-datos-${new Date().toISOString().slice(0, 10)}.json`;
-    return this.uploadJson(client, folderId, filename, file);
+    // Spec 048 plan.md §3.4: el `.zip` (datos y documentos) se escribe en un
+    // temporal y se sube desde él; el temporal se borra siempre.
+    const tempFile = path.join(tmpdir(), `economia-drive-${randomUUID()}.zip`);
+    try {
+      const { sizeBytes } = await this.archives.writeArchive(userId, tempFile);
+      return await this.uploadResumable(client, folderId, archiveFilename(), tempFile, sizeBytes);
+    } finally {
+      await fs.rm(tempFile, { force: true });
+    }
   }
 
   private async getConnectionRow(userId: string) {
@@ -179,35 +188,52 @@ export class GoogleDriveService {
   }
 
   /**
-   * `multipart` de gaxios (no una librería nueva — sigue siendo
-   * `google-auth-library`/gaxios, ya en el proyecto): una parte de
-   * metadata (`name`, `parents`) y una de contenido, mismo formato que
-   * espera `uploadType=multipart` de la API de Drive.
+   * Spec 048 plan.md §3.4: subida reanudable (`uploadType=resumable`) en vez
+   * de `multipart`, que Drive limita a 5 MB — con documentos la copia los
+   * supera enseguida. Dos pasos: abrir la sesión con los metadatos (Drive
+   * devuelve la URL de subida en `Location`) y enviar el fichero en
+   * streaming desde disco, sin cargarlo en memoria.
    */
-  private async uploadJson(
+  private async uploadResumable(
     client: OAuth2Client,
     folderId: string,
     filename: string,
-    file: AccountExport,
+    filePath: string,
+    sizeBytes: number,
   ): Promise<{ fileId: string; webViewLink: string }> {
     try {
-      const res = await client.request<{ id: string; webViewLink: string }>({
+      const session = await client.request({
         url: DRIVE_UPLOAD_URL,
         method: 'POST',
-        params: { uploadType: 'multipart', fields: 'id,webViewLink' },
-        multipart: [
-          {
-            headers: new Headers({ 'Content-Type': 'application/json; charset=UTF-8' }),
-            content: JSON.stringify({ name: filename, parents: [folderId] }),
-          },
-          { headers: new Headers({ 'Content-Type': 'application/json' }), content: JSON.stringify(file) },
-        ],
+        params: { uploadType: 'resumable', fields: 'id,webViewLink' },
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'X-Upload-Content-Type': 'application/zip',
+          'X-Upload-Content-Length': String(sizeBytes),
+        },
+        data: { name: filename, parents: [folderId], mimeType: 'application/zip' },
+      });
+      const location = headerValue(session.headers, 'location');
+      if (!location) throw new Error('Google Drive no ha devuelto la URL de subida.');
+
+      const res = await client.request<{ id: string; webViewLink: string }>({
+        url: location,
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/zip', 'Content-Length': String(sizeBytes) },
+        data: createReadStream(filePath),
       });
       return { fileId: res.data.id, webViewLink: res.data.webViewLink };
     } catch (err) {
       throw wrapDriveError(err);
     }
   }
+}
+
+/** Las cabeceras de gaxios llegan como `Headers` (gaxios 7) o como objeto plano. */
+function headerValue(headers: unknown, name: string): string | undefined {
+  if (headers instanceof Headers) return headers.get(name) ?? undefined;
+  const value = (headers as Record<string, unknown> | undefined)?.[name];
+  return typeof value === 'string' ? value : undefined;
 }
 
 function isNotFoundError(err: unknown): boolean {

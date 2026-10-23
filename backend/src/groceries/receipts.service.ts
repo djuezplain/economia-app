@@ -1,12 +1,18 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
-import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
-import { products, receiptLines, receipts, supermarkets } from '../db/schema/index.js';
+import { products, receiptLines, receipts, supermarkets, transactions } from '../db/schema/index.js';
+import { isUniqueViolation } from '../common/db-errors.util.js';
+import { LINK_DAYS_AFTER, LINK_DAYS_BEFORE, rankLinkCandidates } from './receipt-link.js';
 import type { ConfirmReceiptDto } from '../receipt-import/dto/confirm-receipt.dto.js';
 import { resolveEntityRef } from '../receipt-import/resolve-entity-ref.util.js';
+import { assertReceiptHasAmount, resolveLineProduct } from '../receipt-import/receipt-rules.js';
+import { receiptTotal } from './receipt-total.js';
 import type { ListReceiptsQueryDto } from './dto/list-receipts-query.dto.js';
+import { ReceiptDocumentsService } from './receipt-documents.service.js';
+import type { DocumentInfo } from './receipt-documents.service.js';
 
 export interface ReceiptSummary {
   id: string;
@@ -16,6 +22,15 @@ export interface ReceiptSummary {
   printedTotal: string | null;
   /** Spec 040, plan.md §2: suma real de las líneas — el importe usado para filtrar (H1 criterio 4), no `printedTotal` (puede ser `null`). */
   linesTotal: string;
+  /**
+   * Spec 048 plan.md §0 decisión 6: el importe del ticket (suma de líneas o,
+   * sin líneas, el total impreso). Es el que usa el filtro por importe.
+   */
+  total: string | null;
+  /** Spec 048 H3: el movimiento enlazado, o `null`. */
+  transactionId: string | null;
+  /** Spec 048 H1: metadatos del documento original (sin el contenido), o `null` si no tiene. */
+  document: DocumentInfo | null;
 }
 
 export interface ReceiptLineDetail {
@@ -25,8 +40,9 @@ export interface ReceiptLineDetail {
   unit: string;
   pricePerUnit: string;
   amount: string;
-  productId: string;
-  productName: string;
+  /** Spec 048 H2 criterio 4: `null` = línea sin emparejar con ningún producto. */
+  productId: string | null;
+  productName: string | null;
 }
 
 export interface ReceiptDetail extends ReceiptSummary {
@@ -36,7 +52,10 @@ export interface ReceiptDetail extends ReceiptSummary {
 /** Spec 034, plan.md §3 (H5). Mismo criterio "sin joins SQL" que `ProductsService`. */
 @Injectable()
 export class ReceiptsService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly documents: ReceiptDocumentsService,
+  ) {}
 
   /**
    * Spec 040, plan.md §2 (H1): filtros de `query`, todos opcionales y
@@ -79,6 +98,10 @@ export class ReceiptsService {
           receiptRows.map((r) => r.id),
         ),
       );
+    const documentByReceipt = await this.documents.infoByReceipt(
+      userId,
+      receiptRows.map((r) => r.id),
+    );
     const linesByReceipt = new Map<string, (typeof lineRows)[number][]>();
     for (const line of lineRows) {
       const lines = linesByReceipt.get(line.receiptId) ?? [];
@@ -96,6 +119,9 @@ export class ReceiptsService {
         supermarketName: supermarketById.get(receipt.supermarketId)!.name,
         printedTotal: receipt.printedTotal,
         linesTotal,
+        total: receiptTotal(lines, receipt.printedTotal),
+        transactionId: receipt.transactionId,
+        document: documentByReceipt.get(receipt.id) ?? null,
         // Presencia del producto filtrado, para el filtro de `productId` (T1.3) — se calcula
         // aquí porque `lines` ya está disponible, se descarta abajo si no se necesita.
         hasFilteredProduct: query.productId ? lines.some((line) => line.productId === query.productId) : true,
@@ -104,8 +130,9 @@ export class ReceiptsService {
 
     return summaries
       .filter((summary) => summary.hasFilteredProduct)
-      .filter((summary) => !query.amountMin || new Decimal(summary.linesTotal).greaterThanOrEqualTo(query.amountMin))
-      .filter((summary) => !query.amountMax || new Decimal(summary.linesTotal).lessThanOrEqualTo(query.amountMax))
+      // Spec 048: sobre `total`; para un ticket con líneas es su suma, igual que en la spec 040.
+      .filter((summary) => !query.amountMin || (summary.total !== null && new Decimal(summary.total).greaterThanOrEqualTo(query.amountMin)))
+      .filter((summary) => !query.amountMax || (summary.total !== null && new Decimal(summary.total).lessThanOrEqualTo(query.amountMax)))
       .map(({ hasFilteredProduct: _hasFilteredProduct, ...summary }) => summary);
   }
 
@@ -116,9 +143,10 @@ export class ReceiptsService {
     const [supermarket] = await this.db.select().from(supermarkets).where(eq(supermarkets.id, receipt.supermarketId));
 
     const lineRows = await this.db.select().from(receiptLines).where(eq(receiptLines.receiptId, receiptId));
-    const productIds = [...new Set(lineRows.map((line) => line.productId))];
+    const productIds = [...new Set(lineRows.map((line) => line.productId).filter((id): id is string => id !== null))];
     const productRows = productIds.length > 0 ? await this.db.select().from(products).where(inArray(products.id, productIds)) : [];
     const productById = new Map(productRows.map((p) => [p.id, p]));
+    const documentByReceipt = await this.documents.infoByReceipt(userId, [receipt.id]);
 
     return {
       id: receipt.id,
@@ -127,6 +155,9 @@ export class ReceiptsService {
       supermarketName: supermarket.name,
       printedTotal: receipt.printedTotal,
       linesTotal: lineRows.reduce((sum, line) => sum.plus(line.amount), new Decimal(0)).toFixed(2),
+      total: receiptTotal(lineRows, receipt.printedTotal),
+      transactionId: receipt.transactionId,
+      document: documentByReceipt.get(receipt.id) ?? null,
       lines: lineRows.map((line) => ({
         id: line.id,
         description: line.description,
@@ -135,7 +166,7 @@ export class ReceiptsService {
         pricePerUnit: line.pricePerUnit,
         amount: line.amount,
         productId: line.productId,
-        productName: productById.get(line.productId)!.name,
+        productName: line.productId === null ? null : productById.get(line.productId)!.name,
       })),
     };
   }
@@ -148,6 +179,7 @@ export class ReceiptsService {
    * borrar+reinsertar.
    */
   async update(userId: string, receiptId: string, dto: ConfirmReceiptDto): Promise<ReceiptDetail> {
+    assertReceiptHasAmount(dto);
     try {
       await this.db.transaction(async (tx) => {
         const [existing] = await tx.select({ id: receipts.id }).from(receipts).where(and(eq(receipts.id, receiptId), eq(receipts.userId, userId)));
@@ -161,7 +193,7 @@ export class ReceiptsService {
 
         await tx.delete(receiptLines).where(eq(receiptLines.receiptId, receiptId));
         for (const line of dto.lines) {
-          const productId = await resolveEntityRef(tx, products, userId, line.product, 'El producto indicado no existe.');
+          const productId = await resolveLineProduct(tx, userId, line.product);
           await tx.insert(receiptLines).values({
             receiptId,
             productId,
@@ -189,4 +221,77 @@ export class ReceiptsService {
     if (!existing) throw new NotFoundException('El ticket indicado no existe.');
     await this.db.delete(receipts).where(eq(receipts.id, receiptId));
   }
+
+  // --- Spec 048 H3: enlace con el movimiento ------------------------------
+  // Ninguno de estos métodos crea ni modifica un movimiento (H3 criterio 6,
+  // decisión de Diego): solo escriben `receipts.transaction_id`.
+
+  /** H3 criterio 1: gastos sin ticket enlazado que pueden corresponder a este ticket, ordenados. */
+  async linkCandidates(userId: string, receiptId: string): Promise<Array<typeof transactions.$inferSelect>> {
+    const receipt = await this.findOwnReceiptOrThrow(userId, receiptId);
+    const [shop] = await this.db.select({ name: supermarkets.name }).from(supermarkets).where(eq(supermarkets.id, receipt.supermarketId));
+    const lines = await this.db.select({ amount: receiptLines.amount }).from(receiptLines).where(eq(receiptLines.receiptId, receiptId));
+
+    const from = shiftDays(receipt.date, -LINK_DAYS_BEFORE);
+    const to = shiftDays(receipt.date, LINK_DAYS_AFTER);
+    const rows = await this.db
+      .select({ transaction: transactions })
+      .from(transactions)
+      .leftJoin(receipts, eq(receipts.transactionId, transactions.id))
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.type, 'EXPENSE'),
+          gte(transactions.date, from),
+          lte(transactions.date, to),
+          isNull(receipts.id),
+        ),
+      );
+
+    return rankLinkCandidates(
+      {
+        date: receipt.date,
+        printedTotal: receipt.printedTotal,
+        linesTotal: lines.length > 0 ? receiptTotal(lines, null) : null,
+        merchantName: shop.name,
+      },
+      rows.map((r) => r.transaction),
+    );
+  }
+
+  /** H3 criterios 1 y 2: enlaza el ticket con un gasto del usuario, o cambia el enlace. */
+  async linkTransaction(userId: string, receiptId: string, transactionId: string): Promise<ReceiptDetail> {
+    await this.findOwnReceiptOrThrow(userId, receiptId);
+    const [movement] = await this.db
+      .select({ id: transactions.id, type: transactions.type })
+      .from(transactions)
+      .where(and(eq(transactions.id, transactionId), eq(transactions.userId, userId)));
+    if (!movement) throw new NotFoundException('El movimiento indicado no existe.');
+    if (movement.type !== 'EXPENSE') throw new BadRequestException('Un ticket solo se puede enlazar con un gasto.');
+
+    try {
+      await this.db.update(receipts).set({ transactionId }).where(and(eq(receipts.id, receiptId), eq(receipts.userId, userId)));
+    } catch (err) {
+      // H3 criterio 3: un movimiento, como mucho un ticket (índice único).
+      if (isUniqueViolation(err)) throw new ConflictException('Ese movimiento ya está enlazado a otro ticket.');
+      throw err;
+    }
+    return this.getById(userId, receiptId);
+  }
+
+  /** H3: quita el enlace. Ni el ticket ni el movimiento se borran. */
+  async unlinkTransaction(userId: string, receiptId: string): Promise<void> {
+    await this.findOwnReceiptOrThrow(userId, receiptId);
+    await this.db.update(receipts).set({ transactionId: null }).where(and(eq(receipts.id, receiptId), eq(receipts.userId, userId)));
+  }
+
+  private async findOwnReceiptOrThrow(userId: string, receiptId: string) {
+    const [receipt] = await this.db.select().from(receipts).where(and(eq(receipts.id, receiptId), eq(receipts.userId, userId)));
+    if (!receipt) throw new NotFoundException('El ticket indicado no existe.');
+    return receipt;
+  }
+}
+
+function shiftDays(iso: string, days: number): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }

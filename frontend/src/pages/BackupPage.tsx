@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
-import { exportAccountData } from '../api/users';
+import { exportAccountArchive } from '../api/users';
 import { confirmDataImport, previewDataImport, DATA_TABLE_LABELS } from '../api/data-import';
 import type { DataImportSummary } from '../api/data-import';
 import { disconnectDrive, driveConnectUrl, exportToDrive, getDriveConnectionStatus } from '../api/google-drive';
@@ -78,15 +78,13 @@ export function BackupPage() {
     setExportError(null);
     setIsExporting(true);
     try {
-      const data = await exportAccountData();
-      // Mismo criterio que el export original de `ProfilePage` (H8, spec
-      // 001): se genera en el cliente a partir de la respuesta, sin
-      // endpoint aparte para "descargar como fichero".
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      // Spec 048: el `.zip` (datos y documentos) lo genera el backend; aquí
+      // solo se descarga.
+      const blob = await exportAccountArchive();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `economia-app-datos-${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `economia-app-datos-${new Date().toISOString().slice(0, 10)}.zip`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -300,15 +298,15 @@ export function BackupPage() {
   return (
     <main>
       <h1>Copia de seguridad</h1>
-      <p>Exporta todos tus datos a un único fichero JSON, o importa uno exportado antes para recuperar datos en tu cuenta.</p>
+      <p>Exporta todos tus datos a un único fichero .zip, o importa uno exportado antes para recuperar datos en tu cuenta.</p>
 
       <section>
         <h2>Exportar todos tus datos</h2>
         <div className="card elev-sm">
           <p className="card-body">
             Descarga un fichero con absolutamente todo: categorías, movimientos, patrimonio (cuentas bancarias,
-            acciones, fondos, cripto, vehículos, plan de pensiones, efectivo, con todo su historial) y objetivos y
-            presupuestos.
+            acciones, fondos, cripto, vehículos, plan de pensiones, efectivo, con todo su historial), objetivos y
+            presupuestos, tickets y facturas (con sus fotos y PDF) y listas de la compra.
           </p>
           {exportError && <p role="alert">{exportError}</p>}
           <div>
@@ -521,8 +519,9 @@ export function BackupPage() {
         </p>
 
         <div id="import-dropzone">
-          <label htmlFor="backup-import-file">Fichero .json</label>
-          <input id="backup-import-file" type="file" accept=".json" className="input" onChange={handleFileChange} />
+          <label htmlFor="backup-import-file">Fichero .zip o .json</label>
+          <input id="backup-import-file" type="file" accept=".zip,.json" className="input" onChange={handleFileChange} />
+          <p className="card-meta">Las copias antiguas en .json se siguen pudiendo importar; solo el .zip trae los documentos de los tickets.</p>
         </div>
 
         {isPreviewing && <p role="status">Validando…</p>}
@@ -561,25 +560,36 @@ function DataImportSummaryTable({ summary }: { summary: DataImportSummary }) {
   if (rows.length === 0) {
     return <p>El fichero no trae ningún dato.</p>;
   }
+  const hasOmitted = rows.some(([, tableSummary]) => (tableSummary.omitted ?? 0) > 0);
   return (
-    <table className="table">
-      <caption className="sr-only">Resumen de la importación</caption>
-      <thead>
-        <tr>
-          <th scope="col">Tipo de dato</th>
-          <th scope="col">Nuevos</th>
-          <th scope="col">Ya existentes</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(([key, tableSummary]) => (
-          <tr key={key}>
-            <td>{DATA_TABLE_LABELS[key] ?? key}</td>
-            <td>{tableSummary.toImport}</td>
-            <td>{tableSummary.alreadyExisting}</td>
+    <>
+      <table className="table">
+        <caption className="sr-only">Resumen de la importación</caption>
+        <thead>
+          <tr>
+            <th scope="col">Tipo de dato</th>
+            <th scope="col">Nuevos</th>
+            <th scope="col">Ya existentes</th>
+            {hasOmitted && <th scope="col">Omitidos</th>}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map(([key, tableSummary]) => (
+            <tr key={key}>
+              <td>{DATA_TABLE_LABELS[key] ?? key}</td>
+              <td>{tableSummary.toImport}</td>
+              <td>{tableSummary.alreadyExisting}</td>
+              {hasOmitted && <td>{tableSummary.omitted ?? 0}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {hasOmitted && (
+        <p className="card-meta">
+          Los documentos omitidos no vienen en el fichero (por ejemplo, una copia .json) o su contenido no coincide con
+          el que se exportó; sus tickets se importan igualmente, sin documento.
+        </p>
+      )}
+    </>
   );
 }

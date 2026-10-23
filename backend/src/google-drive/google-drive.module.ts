@@ -14,7 +14,7 @@ import { GoogleDriveService } from './google-drive.service.js';
  * controladores); se importa también `AuthGuardModule` de forma explícita
  * para dejar claro que `JwtService` es una dependencia real de este módulo,
  * no un efecto colateral de importar `AuthModule`. `UsersModule` aporta
- * `UsersService.exportData()`, que reutiliza `GoogleDriveService.exportToDrive()`
+ * `AccountArchiveService` (la copia `.zip`, spec 048), que reutiliza `GoogleDriveService.exportToDrive()`
  * (plan.md §9.7, grupo 7) — sin duplicar la construcción del fichero de
  * exportación entre H1 y H4.
  */

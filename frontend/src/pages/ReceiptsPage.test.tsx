@@ -28,6 +28,9 @@ const RECEIPTS: ReceiptSummary[] = [
     supermarketName: 'Mercadona',
     printedTotal: '20.00',
     linesTotal: '20.00',
+    total: '20.00',
+    transactionId: null,
+    document: null,
   },
   {
     id: 'r1',
@@ -36,6 +39,9 @@ const RECEIPTS: ReceiptSummary[] = [
     supermarketName: 'Mercadona',
     printedTotal: '10.00',
     linesTotal: '10.00',
+    total: '10.00',
+    transactionId: null,
+    document: null,
   },
 ];
 
@@ -83,7 +89,8 @@ describe('ReceiptsPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('Mercadona · Suma de líneas: 20.00 €')).toBeInTheDocument();
+    expect(await screen.findByText('20.00 €')).toBeInTheDocument();
+    expect(screen.getAllByText('Mercadona').length).toBeGreaterThan(0);
   });
 
   describe('spec 040, H1: filtros', () => {
@@ -93,7 +100,7 @@ describe('ReceiptsPage', () => {
       renderPage();
       await screen.findAllByRole('listitem');
 
-      await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 's1');
+      await userEvent.selectOptions(screen.getByLabelText('Comercio'), 's1');
 
       expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ supermarketId: 's1' }));
     });
@@ -119,7 +126,7 @@ describe('ReceiptsPage', () => {
       renderPage();
       await screen.findAllByRole('listitem');
 
-      await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 's1');
+      await userEvent.selectOptions(screen.getByLabelText('Comercio'), 's1');
 
       expect(await screen.findByText('No hay tickets con estos filtros.')).toBeInTheDocument();
       expect(screen.queryByText('Todavía no has importado ningún ticket.')).not.toBeInTheDocument();
@@ -131,7 +138,7 @@ describe('ReceiptsPage', () => {
       renderPage();
       await screen.findAllByRole('listitem');
 
-      await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 's1');
+      await userEvent.selectOptions(screen.getByLabelText('Comercio'), 's1');
       expect(await screen.findByRole('button', { name: 'Limpiar filtros' })).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
@@ -146,5 +153,15 @@ describe('ReceiptsPage', () => {
       });
       expect(screen.queryByRole('button', { name: 'Limpiar filtros' })).not.toBeInTheDocument();
     });
+  });
+
+  it('marca los tickets que tienen documento (spec 048)', async () => {
+    vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue([
+      { ...RECEIPTS[0], document: { id: 'd1', mimeType: 'application/pdf', sizeBytes: 1000, pageCount: 1, originalFilename: 'f.pdf' } },
+      RECEIPTS[1],
+    ]);
+    renderPage();
+    expect(await screen.findByLabelText('con PDF')).toBeInTheDocument();
+    expect(screen.getAllByText('📎')).toHaveLength(1);
   });
 });

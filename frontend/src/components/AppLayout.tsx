@@ -70,7 +70,7 @@ const NAV_ITEMS = [
   {
     to: '/tickets',
     end: false,
-    label: 'Tickets de supermercado',
+    label: 'Tickets y facturas',
     icon: '🧾',
     children: [
       { to: '/tickets/importar', end: true, label: 'Importar ticket', icon: '📷' },

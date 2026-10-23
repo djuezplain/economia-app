@@ -91,7 +91,7 @@ export function ShoppingListsPage() {
   return (
     <main>
       <h1>Cesta de la compra</h1>
-      <p>Crea una lista con productos de tu catálogo y genera una simulación de en qué supermercado te sale más barato comprarla.</p>
+      <p>Crea una lista con productos de tu catálogo y genera una simulación de en qué comercio te sale más barato comprarla.</p>
 
       <form onSubmit={(event) => void handleCreate(event)}>
         <label htmlFor="new-list-name">Nueva lista</label>{' '}

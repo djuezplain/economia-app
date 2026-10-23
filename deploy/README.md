@@ -165,6 +165,15 @@ Para copiar las copias de seguridad a tu Mac de vez en cuando (recomendado — l
 scp <tu-usuario>@raspberrypi.local:~/economia-app/backups/*.sql.gz .
 ```
 
+**Crecimiento con los documentos de los tickets (spec 048).** Las fotos y los PDF de tickets y facturas se guardan dentro de la base de datos, así que entran en estas copias sin hacer nada más. A cambio, la base de datos y cada copia crecen: con la reducción que hace el navegador, una foto ocupa unos 0,4–0,8 MB y una factura en PDF unos 0,1–0,5 MB. Con unos 40 documentos al mes son unos 25 MB al mes y unos 300 MB al año, y `gzip` apenas reduce JPEG ni PDF. Como se guardan 14 copias diarias, tras un año `backups/` ocupará unos 4 GB. Es asumible en la Pi, pero vigílalo de vez en cuando:
+
+```bash
+du -sh backups/ scheduled-exports/
+docker compose exec postgres psql -U economia_app -d economia_dev -c "SELECT pg_size_pretty(pg_total_relation_size('receipt_documents'));"
+```
+
+Si algún día ocupa demasiado, se puede reducir la retención en `deploy/backup.sh` o pasar a copias incrementales (no incluido todavía).
+
 ## 7. Comandos útiles
 
 ```bash
@@ -281,3 +290,5 @@ ls scheduled-exports/          # una subcarpeta por usuario (su id)
 ```
 
 No hace falta ningún paso adicional en el `.env` — `SCHEDULED_EXPORT_LOCAL_DIR` ya tiene un valor por defecto que coincide con ese volumen. Los ficheros de más de 14 días se purgan solos en cada ejecución (misma retención que `backup.sh`, §6).
+
+Desde la spec 048, cada exportación (descarga, programada o a Drive) es un fichero `economia-app-datos-AAAA-MM-DD.zip` con `datos.json` y los documentos de los tickets en `documentos/`. La purga borra tanto los `.zip` como los `.json` de antes del cambio, y **Importar datos** acepta los dos formatos (solo el `.zip` trae los documentos).

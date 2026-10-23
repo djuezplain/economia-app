@@ -35,7 +35,12 @@ export function registerRefreshHandler(handler: () => Promise<string | null>): v
   refreshHandler = handler;
 }
 
-async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
+/**
+ * Envía la petición con el token y, tras un 401, refresca la sesión y la
+ * repite una vez. Devuelve la respuesta ya comprobada (2xx); cada llamador
+ * decide cómo leer el cuerpo (JSON en `request`, binario en `getBlob`).
+ */
+async function send(path: string, init: RequestOptions = {}): Promise<Response> {
   const { skipAuthRetry, ...fetchInit } = init;
   const token = getToken();
 
@@ -61,7 +66,7 @@ async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
   if (res.status === 401 && !skipAuthRetry && refreshHandler) {
     const newToken = await refreshHandler();
     if (newToken) {
-      return request<T>(path, { ...init, skipAuthRetry: true });
+      return send(path, { ...init, skipAuthRetry: true });
     }
   }
 
@@ -69,7 +74,11 @@ async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
     const body = await res.json().catch(() => ({ message: res.statusText }));
     throw new ApiError(res.status, body.message ?? 'Error de red', body);
   }
+  return res;
+}
 
+async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
+  const res = await send(path, init);
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
@@ -87,4 +96,13 @@ export const api = {
   /** spec 003 (T3.1): sube un fichero (`multipart/form-data`), sin serializar el cuerpo a JSON. */
   postForm: <T>(path: string, formData: FormData, init?: RequestOptions) =>
     request<T>(path, { ...init, method: 'POST', body: formData }),
+  /** Spec 048: igual que `postForm`, con `PUT` (adjuntar o sustituir el documento de un ticket). */
+  putForm: <T>(path: string, formData: FormData, init?: RequestOptions) =>
+    request<T>(path, { ...init, method: 'PUT', body: formData }),
+  /**
+   * Spec 048: descarga un binario (documento de un ticket, `.zip` de la
+   * copia de seguridad) con la misma autenticación que el resto. Un
+   * `<img src>` o un enlace directo no llevarían el token, que vive en memoria.
+   */
+  getBlob: async (path: string, init?: RequestOptions): Promise<Blob> => (await send(path, init)).blob(),
 };

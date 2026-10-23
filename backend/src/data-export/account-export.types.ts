@@ -17,6 +17,13 @@ import type {
   pensionPlans,
   recurringOccurrenceResolutions,
   recurringReconciliationDismissals,
+  supermarkets,
+  products,
+  receipts,
+  receiptLines,
+  shoppingLists,
+  shoppingListItems,
+  receiptDocuments,
   recurringTransactions,
   savingsGoals,
   stockDividends,
@@ -64,6 +71,18 @@ export type CashBalanceRow = typeof cashBalances.$inferSelect;
 export type RecurringTransactionRow = typeof recurringTransactions.$inferSelect;
 export type RecurringOccurrenceResolutionRow = typeof recurringOccurrenceResolutions.$inferSelect;
 export type RecurringReconciliationDismissalRow = typeof recurringReconciliationDismissals.$inferSelect;
+export type SupermarketRow = typeof supermarkets.$inferSelect;
+export type ProductRow = typeof products.$inferSelect;
+export type ReceiptRow = typeof receipts.$inferSelect;
+export type ReceiptLineRow = typeof receiptLines.$inferSelect;
+export type ShoppingListRow = typeof shoppingLists.$inferSelect;
+export type ShoppingListItemRow = typeof shoppingListItems.$inferSelect;
+/**
+ * Spec 048 H1 criterio 6 (plan.md §3.4): metadatos de un documento, nunca el
+ * contenido. El binario va en el `.zip`, en la ruta `file`; en una
+ * exportación solo `.json` no hay forma de restaurarlo y se omite al importar.
+ */
+export type ReceiptDocumentMeta = Omit<typeof receiptDocuments.$inferSelect, 'content'> & { file: string };
 
 /**
  * Spec 032, plan.md §1. Todo el dato económico del usuario, en 24 arrays
@@ -109,6 +128,16 @@ export interface EconomicData {
   // el import, igual que las dos anteriores. `recurring_reminders_sent` no se
   // exporta: es un registro de operación, no un dato económico (plan.md §3.6).
   recurringReconciliationDismissals: RecurringReconciliationDismissalRow[];
+  // Spec 048 (plan.md §0 decisión 2): tickets, comercios, productos y listas
+  // de la compra no se exportaban (hueco de la spec 032). Opcionales en el
+  // import, como las anteriores.
+  supermarkets: SupermarketRow[];
+  products: ProductRow[];
+  receipts: ReceiptRow[];
+  receiptLines: ReceiptLineRow[];
+  receiptDocuments: ReceiptDocumentMeta[];
+  shoppingLists: ShoppingListRow[];
+  shoppingListItems: ShoppingListItemRow[];
 }
 
 /**
@@ -154,6 +183,13 @@ export const ECONOMIC_DATA_TABLE_ORDER: (keyof EconomicData)[] = [
   'recurringTransactions',
   'recurringOccurrenceResolutions',
   'recurringReconciliationDismissals',
+  'supermarkets',
+  'products',
+  'receipts',
+  'receiptLines',
+  'receiptDocuments',
+  'shoppingLists',
+  'shoppingListItems',
 ];
 
 /** Spec 047: claves añadidas después de la versión 1 original del formato; un fichero antiguo puede no traerlas. */
@@ -161,4 +197,11 @@ export const OPTIONAL_ECONOMIC_DATA_KEYS: (keyof EconomicData)[] = [
   'recurringTransactions',
   'recurringOccurrenceResolutions',
   'recurringReconciliationDismissals',
+  'supermarkets',
+  'products',
+  'receipts',
+  'receiptLines',
+  'receiptDocuments',
+  'shoppingLists',
+  'shoppingListItems',
 ];

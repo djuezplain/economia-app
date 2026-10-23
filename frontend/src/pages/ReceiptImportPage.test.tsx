@@ -32,6 +32,7 @@ function getDescriptionInput(value: string): HTMLElement {
 }
 
 const PREVIEW_DOS_LINEAS: ReceiptPreview = {
+  document: { id: 'doc-1', mimeType: 'image/jpeg', sizeBytes: 600000, pageCount: null },
   supermarket: { matchedId: null, suggestedName: 'MERCADONA, S.A.' },
   date: '2026-04-01',
   printedTotal: '3.10',
@@ -89,7 +90,7 @@ describe('ReceiptImportPage', () => {
     vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue(PREVIEW_DOS_LINEAS);
 
     renderPage();
-    await userEvent.upload(await screen.findByLabelText('Foto del ticket'), buildImageFile());
+    await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
     await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
 
     expect(await screen.findByRole('heading', { name: '2. Revisar y corregir' })).toBeInTheDocument();
@@ -103,7 +104,7 @@ describe('ReceiptImportPage', () => {
     const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
 
     renderPage();
-    await userEvent.upload(await screen.findByLabelText('Foto del ticket'), buildImageFile());
+    await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
     await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
     await screen.findByRole('heading', { name: '2. Revisar y corregir' });
 
@@ -125,7 +126,7 @@ describe('ReceiptImportPage', () => {
     const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
 
     renderPage();
-    await userEvent.upload(await screen.findByLabelText('Foto del ticket'), buildImageFile());
+    await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
     await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
     await screen.findByRole('heading', { name: '2. Revisar y corregir' });
 
@@ -145,7 +146,7 @@ describe('ReceiptImportPage', () => {
     const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
 
     renderPage();
-    await userEvent.upload(await screen.findByLabelText('Foto del ticket'), buildImageFile());
+    await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
     await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
     await screen.findByRole('heading', { name: '2. Revisar y corregir' });
 
@@ -166,7 +167,7 @@ describe('ReceiptImportPage', () => {
     vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
 
     renderPage();
-    await userEvent.upload(await screen.findByLabelText('Foto del ticket'), buildImageFile());
+    await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
     await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
     await screen.findByRole('heading', { name: '2. Revisar y corregir' });
 
@@ -178,7 +179,7 @@ describe('ReceiptImportPage', () => {
     vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue(PREVIEW_DOS_LINEAS);
 
     renderPage();
-    await userEvent.upload(await screen.findByLabelText('Foto del ticket'), buildImageFile());
+    await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
     await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
     await screen.findByRole('heading', { name: '2. Revisar y corregir' });
 
@@ -190,7 +191,7 @@ describe('ReceiptImportPage', () => {
     vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
 
     renderPage();
-    await userEvent.upload(await screen.findByLabelText('Foto del ticket'), buildImageFile());
+    await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
     await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
     await screen.findByRole('heading', { name: '2. Revisar y corregir' });
     await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
@@ -205,11 +206,11 @@ describe('ReceiptImportPage', () => {
     const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
 
     renderPage();
-    await userEvent.upload(await screen.findByLabelText('Foto del ticket'), buildImageFile());
+    await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
     await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
     await screen.findByRole('heading', { name: '2. Revisar y corregir' });
 
-    await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 'Carrefour');
+    await userEvent.selectOptions(screen.getByLabelText('Comercio'), 'Carrefour');
     const chocolateRow = getDescriptionInput('CHOCOLATE CLASSIC').closest('tr')!;
     await userEvent.selectOptions(within(chocolateRow).getByLabelText('Producto'), 'Chocolate Classic');
 
@@ -227,10 +228,96 @@ describe('ReceiptImportPage', () => {
     vi.spyOn(receiptImportApi, 'previewReceiptImport').mockRejectedValue(new ApiError(400, 'Solo se admiten imágenes JPEG o PNG.'));
 
     renderPage();
-    await userEvent.upload(await screen.findByLabelText('Foto del ticket'), buildImageFile());
+    await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
     await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('JPEG o PNG');
     expect(screen.queryByRole('button', { name: 'Confirmar' })).not.toBeInTheDocument();
+  });
+
+  describe('documento original (spec 048 H1)', () => {
+    it('muestra que el documento se guardará con el ticket y manda su id al confirmar', async () => {
+      vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue(PREVIEW_DOS_LINEAS);
+      const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
+
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
+      await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
+
+      expect(await screen.findByText(/Se guardará con el ticket: Foto · 586 KB/)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+      expect(confirmSpy).toHaveBeenCalledWith(expect.objectContaining({ documentId: 'doc-1' }));
+    });
+
+    it('describe un PDF con su número de páginas', async () => {
+      vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue({
+        ...PREVIEW_DOS_LINEAS,
+        document: { id: 'doc-2', mimeType: 'application/pdf', sizeBytes: 2 * 1024 * 1024, pageCount: 3 },
+      });
+
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), new File(['%PDF-1.7'], 'factura.pdf', { type: 'application/pdf' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
+
+      expect(await screen.findByText(/PDF, 3 páginas · 2,0 MB/)).toBeInTheDocument();
+    });
+
+    it('un documento de más de 10 MB se avisa sin subir nada', async () => {
+      const previewSpy = vi.spyOn(receiptImportApi, 'previewReceiptImport');
+
+      renderPage();
+      const huge = new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'factura.pdf', { type: 'application/pdf' });
+      await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), huge);
+      await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('El documento ocupa más de 10 MB');
+      expect(previewSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cualquier comercio (spec 048 H2)', () => {
+    async function reachPreview() {
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
+      await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
+      await screen.findByRole('heading', { name: '2. Revisar y corregir' });
+    }
+
+    it('"Guardar sin desglose" quita las líneas y exige el total; se guarda sin líneas', async () => {
+      vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue({ ...PREVIEW_DOS_LINEAS, printedTotal: null });
+      const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
+      await reachPreview();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Guardar sin desglose' }));
+      expect(screen.queryAllByLabelText('Descripción')).toHaveLength(0);
+      expect(screen.getByText('Sin desglose: se guardará solo con la fecha, el comercio y el total.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+
+      await userEvent.type(screen.getByLabelText('Total (obligatorio sin desglose)'), '64.20');
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+      expect(confirmSpy).toHaveBeenCalledWith(expect.objectContaining({ lines: [], printedTotal: '64.20' }));
+    });
+
+    it('una línea con "— Sin producto —" se envía con product: null', async () => {
+      vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue(PREVIEW_DOS_LINEAS);
+      const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
+      await reachPreview();
+
+      const [firstProduct] = screen.getAllByLabelText('Producto');
+      await userEvent.selectOptions(firstProduct, '— Sin producto —');
+      expect(screen.getAllByLabelText('Nombre del nuevo producto')).toHaveLength(1);
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+      const sent = confirmSpy.mock.calls[0][0].lines;
+      expect(sent[0]).toMatchObject({ description: 'CHOCOLATE CLASSIC', product: null });
+      expect(sent[1]).toMatchObject({ description: 'NACHOS', product: { name: 'NACHOS' } });
+    });
+
+    it('habla de comercio, no de supermercado', async () => {
+      vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue(PREVIEW_DOS_LINEAS);
+      await reachPreview();
+      expect(screen.getByLabelText('Comercio')).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: '+ Nuevo comercio' })).toBeInTheDocument();
+    });
   });
 });

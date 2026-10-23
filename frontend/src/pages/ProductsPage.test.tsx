@@ -161,7 +161,7 @@ describe('ProductsPage', () => {
       await screen.findByRole('link', { name: 'Chocolate Classic' });
 
       await userEvent.type(screen.getByLabelText('Nombre'), 'Arroz');
-      await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 's1');
+      await userEvent.selectOptions(screen.getByLabelText('Comercio'), 's1');
       await userEvent.type(screen.getByLabelText('Fecha'), '2026-01-15');
       await userEvent.selectOptions(screen.getByLabelText('Unidad'), 'kg');
       await userEvent.type(screen.getByLabelText('Precio por unidad'), '2.50');
@@ -199,7 +199,7 @@ describe('ProductsPage', () => {
       await screen.findByRole('link', { name: 'Chocolate Classic' });
 
       await userEvent.type(screen.getByLabelText('Nombre'), 'Arroz');
-      await userEvent.selectOptions(screen.getByLabelText('Supermercado'), 's1');
+      await userEvent.selectOptions(screen.getByLabelText('Comercio'), 's1');
       await userEvent.type(screen.getByLabelText('Fecha'), '2026-01-15');
       await userEvent.type(screen.getByLabelText('Precio por unidad'), '2.50');
       await userEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
@@ -220,7 +220,7 @@ describe('ProductsPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
 
       expect(
-        await screen.findByText('Para añadir un precio inicial, completa el supermercado, la fecha y el precio — o déjalos los tres vacíos.'),
+        await screen.findByText('Para añadir un precio inicial, completa el comercio, la fecha y el precio — o déjalos los tres vacíos.'),
       ).toBeInTheDocument();
       expect(createSpy).not.toHaveBeenCalled();
     });

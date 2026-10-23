@@ -148,9 +148,9 @@ describe('ShoppingListDetailPage', () => {
 
       expect(await screen.findByRole('heading', { name: 'Más barato (cesta única): Mercadona — 1.80 €' })).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Más caro (cesta única): Carrefour — 2.20 €' })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: 'Opción mixta más barata: 1.70 € en 2 supermercados' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Opción mixta más barata: 1.70 € en 2 comercios' })).toBeInTheDocument();
       expect(screen.getByText('Ahorras 0.10 € (5.6%) frente a la cesta única más barata.')).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: 'Opción mixta con menos súpers: 1.80 € en 1 supermercado' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Opción mixta con menos comercios: 1.80 € en 1 comercio' })).toBeInTheDocument();
       expect(screen.getByText('Cuesta 0.10 € más que la opción mixta más barata.')).toBeInTheDocument();
     });
 

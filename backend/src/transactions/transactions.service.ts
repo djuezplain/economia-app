@@ -1,15 +1,17 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, gte, ilike, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, lte } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { isUniqueViolation } from '../common/db-errors.util.js';
-import { categories, transactions } from '../db/schema/index.js';
+import { categories, receipts, transactions } from '../db/schema/index.js';
 import { average, distinctMonthsCount, groupByCategory, groupBySubcategory, sumAmounts } from './transactions.calculations.js';
 import type { CreateTransactionDto } from './dto/create-transaction.dto.js';
 import type { UpdateTransactionDto } from './dto/update-transaction.dto.js';
 import type { ListTransactionsQueryDto } from './dto/list-transactions-query.dto.js';
 
 export type Transaction = typeof transactions.$inferSelect;
+/** Spec 048 H3 criterio 4: el movimiento con el ticket enlazado, si lo tiene. */
+export type TransactionWithReceipt = Transaction & { receiptId: string | null };
 type MovementType = Transaction['type'];
 
 export interface TransactionsSummary {
@@ -21,7 +23,7 @@ export interface TransactionsSummary {
 }
 
 export interface ListTransactionsResult {
-  items: Transaction[];
+  items: TransactionWithReceipt[];
   page: number;
   limit: number;
   totalItems: number;
@@ -112,7 +114,7 @@ export class TransactionsService {
 
     const page = query.page ?? 1;
     const limit = query.limit ?? DEFAULT_PAGE_SIZE;
-    const items = allMatching.slice((page - 1) * limit, (page - 1) * limit + limit);
+    const items = await this.withReceiptIds(userId, allMatching.slice((page - 1) * limit, (page - 1) * limit + limit));
 
     const total = sumAmounts(allMatching);
     const months = distinctMonthsCount(allMatching.map((t) => t.date));
@@ -137,8 +139,23 @@ export class TransactionsService {
    * `:id` de la URL (antes no hacía falta, `MovementsPage` ya tenía el
    * objeto completo en memoria desde el listado).
    */
-  async findOne(userId: string, id: string): Promise<Transaction> {
-    return this.findOwnOrThrow(userId, id);
+  async findOne(userId: string, id: string): Promise<TransactionWithReceipt> {
+    const [withReceipt] = await this.withReceiptIds(userId, [await this.findOwnOrThrow(userId, id)]);
+    return withReceipt;
+  }
+
+  /**
+   * Spec 048 H3 criterio 4 / plan.md §3.3: añade el ticket enlazado a cada
+   * movimiento, con una sola consulta a `receipts` por página.
+   */
+  private async withReceiptIds(userId: string, rows: Transaction[]): Promise<TransactionWithReceipt[]> {
+    if (rows.length === 0) return [];
+    const links = await this.db
+      .select({ id: receipts.id, transactionId: receipts.transactionId })
+      .from(receipts)
+      .where(and(eq(receipts.userId, userId), inArray(receipts.transactionId, rows.map((t) => t.id))));
+    const receiptByTransaction = new Map(links.map((l) => [l.transactionId!, l.id]));
+    return rows.map((t) => ({ ...t, receiptId: receiptByTransaction.get(t.id) ?? null }));
   }
 
   /**

@@ -2,13 +2,22 @@ import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 const VISION_ANNOTATE_URL = 'https://vision.googleapis.com/v1/images:annotate';
+// Spec 048 plan.md §3.2: PDF en línea, síncrono, sin Cloud Storage. Sin
+// `pages`, Vision lee las 5 primeras páginas (su máximo en este modo).
+const VISION_FILES_ANNOTATE_URL = 'https://vision.googleapis.com/v1/files:annotate';
+/**
+ * Spec 048: en un PDF Vision da las posiciones normalizadas (0..1) en vez
+ * de en píxeles; se escalan a esta "resolución" para reutilizar la misma
+ * reconstrucción por filas que las fotos.
+ */
+const NORMALIZED_SCALE = 10_000;
 
 interface VisionVertex {
   x?: number;
   y?: number;
 }
 interface VisionWord {
-  boundingBox?: { vertices?: VisionVertex[] };
+  boundingBox?: { vertices?: VisionVertex[]; normalizedVertices?: VisionVertex[] };
   symbols?: Array<{ text: string }>;
 }
 interface VisionFullTextAnnotation {
@@ -21,11 +30,16 @@ interface VisionFullTextAnnotation {
     }>;
   }>;
 }
+interface VisionImageResponse {
+  fullTextAnnotation?: VisionFullTextAnnotation;
+  error?: { message: string };
+}
 interface VisionAnnotateResponse {
-  responses?: Array<{
-    fullTextAnnotation?: VisionFullTextAnnotation;
-    error?: { message: string };
-  }>;
+  responses?: VisionImageResponse[];
+}
+/** `files:annotate`: una respuesta por fichero, con una respuesta por página dentro. */
+interface VisionFilesAnnotateResponse {
+  responses?: Array<{ responses?: VisionImageResponse[]; totalPages?: number; error?: { message: string } }>;
 }
 
 interface PositionedWord {
@@ -56,7 +70,11 @@ export function extractPositionedWords(fullTextAnnotation: VisionFullTextAnnotat
     for (const block of page.blocks ?? []) {
       for (const paragraph of block.paragraphs ?? []) {
         for (const word of paragraph.words ?? []) {
-          const vertices = word.boundingBox?.vertices ?? [];
+          const pixelVertices = word.boundingBox?.vertices ?? [];
+          const vertices =
+            pixelVertices.length > 0
+              ? pixelVertices
+              : (word.boundingBox?.normalizedVertices ?? []).map((v) => ({ x: (v.x ?? 0) * NORMALIZED_SCALE, y: (v.y ?? 0) * NORMALIZED_SCALE }));
           const xs = vertices.map((v) => v.x ?? 0);
           const ys = vertices.map((v) => v.y ?? 0);
           if (xs.length === 0 || ys.length === 0) continue;
@@ -122,11 +140,32 @@ export function reconstructRowText(words: PositionedWord[]): string {
  * Vision es robusto contra fondo, rotación e iluminación variable sin
  * ayuda adicional — la ventaja real de pasar a un motor en la nube.
  */
+/** Texto de una página de Vision, reconstruido por geometría (o el plano si no hay posiciones). */
+function pageText(result: VisionImageResponse | undefined): string {
+  if (result?.error) {
+    throw new Error(`Google Cloud Vision: ${result.error.message}`);
+  }
+  const fullTextAnnotation = result?.fullTextAnnotation;
+  if (!fullTextAnnotation) return '';
+
+  // Reconstruido por geometría (ver comentario de `reconstructRowText`);
+  // si por lo que sea no hay palabras posicionadas (respuesta atípica),
+  // se cae al texto plano de Vision en vez de devolver una cadena vacía.
+  const positionedWords = extractPositionedWords(fullTextAnnotation);
+  return positionedWords.length > 0 ? reconstructRowText(positionedWords) : fullTextAnnotation.text;
+}
+
 @Injectable()
 export class ReceiptOcrService {
   constructor(private readonly config: ConfigService) {}
 
-  async extractText(imageBuffer: Buffer): Promise<string> {
+  /**
+   * Spec 048: `mimeType` es el tipo ya detectado del documento. Las fotos
+   * van por `images:annotate`; los PDF por `files:annotate`, que lee hasta
+   * 5 páginas (el aviso de páginas sin leer lo da quien llama, con el
+   * recuento de páginas del documento).
+   */
+  async extractText(fileBuffer: Buffer, mimeType = 'image/jpeg'): Promise<string> {
     const apiKey = this.config.get<string>('GOOGLE_CLOUD_VISION_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -134,41 +173,40 @@ export class ReceiptOcrService {
       );
     }
 
-    const response = await fetch(`${VISION_ANNOTATE_URL}?key=${apiKey}`, {
+    // DOCUMENT_TEXT_DETECTION, no TEXT_DETECTION: pensado para bloques
+    // densos de texto (documentos, recibos), no para texto disperso en una
+    // foto general.
+    const common = { features: [{ type: 'DOCUMENT_TEXT_DETECTION' }], imageContext: { languageHints: ['es'] } };
+    const content = fileBuffer.toString('base64');
+
+    if (mimeType === 'application/pdf') {
+      const json = await this.post<VisionFilesAnnotateResponse>(VISION_FILES_ANNOTATE_URL, apiKey, {
+        requests: [{ inputConfig: { content, mimeType: 'application/pdf' }, ...common }],
+      });
+      const file = json.responses?.[0];
+      if (file?.error) throw new Error(`Google Cloud Vision: ${file.error.message}`);
+      return (file?.responses ?? [])
+        .map(pageText)
+        .filter((text) => text !== '')
+        .join('\n');
+    }
+
+    const json = await this.post<VisionAnnotateResponse>(VISION_ANNOTATE_URL, apiKey, {
+      requests: [{ image: { content }, ...common }],
+    });
+    return pageText(json.responses?.[0]);
+  }
+
+  private async post<T>(url: string, apiKey: string, body: unknown): Promise<T> {
+    const response = await fetch(`${url}?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [
-          {
-            image: { content: imageBuffer.toString('base64') },
-            // DOCUMENT_TEXT_DETECTION, no TEXT_DETECTION: pensado para
-            // bloques densos de texto (documentos, recibos), no para texto
-            // disperso en una foto general.
-            features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-            imageContext: { languageHints: ['es'] },
-          },
-        ],
-      }),
+      body: JSON.stringify(body),
     });
-
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Google Cloud Vision respondió ${response.status}: ${body}`);
+      const text = await response.text();
+      throw new Error(`Google Cloud Vision respondió ${response.status}: ${text}`);
     }
-
-    const json = (await response.json()) as VisionAnnotateResponse;
-    const result = json.responses?.[0];
-    if (result?.error) {
-      throw new Error(`Google Cloud Vision: ${result.error.message}`);
-    }
-
-    const fullTextAnnotation = result?.fullTextAnnotation;
-    if (!fullTextAnnotation) return '';
-
-    // Reconstruido por geometría (ver comentario de `reconstructRowText`);
-    // si por lo que sea no hay palabras posicionadas (respuesta atípica),
-    // se cae al texto plano de Vision en vez de devolver una cadena vacía.
-    const positionedWords = extractPositionedWords(fullTextAnnotation);
-    return positionedWords.length > 0 ? reconstructRowText(positionedWords) : fullTextAnnotation.text;
+    return (await response.json()) as T;
   }
 }

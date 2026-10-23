@@ -1,6 +1,6 @@
 # Spec 048 — Tickets y facturas: documento original, cualquier comercio y enlace con el movimiento
 
-**Estado:** Pendiente de aprobación
+**Estado:** Aprobada
 **Fase:** 1 de 4 (Spec → Plan → Tasks → Implementación)
 **Basado en:** petición directa de Diego ("gestión de recibos"). Lo básico de los tickets ya existe (specs 034, 035 y 040); esta spec cubre los huecos que la 034 dejó explícitamente fuera de alcance. La parte de recibos recurrentes se separó a la **spec 049**, que se implementa primero (decisión de Diego).
 
@@ -46,7 +46,7 @@ Como usuario quiero enlazar un ticket con el movimiento (gasto) que le correspon
 - Criterio 3: un ticket se enlaza como mucho con un movimiento, y un movimiento como mucho con un ticket.
 - Criterio 4: en el listado de movimientos y en su edición se ve que el movimiento tiene un ticket enlazado, y se puede abrir desde ahí.
 - Criterio 5: borrar el ticket o el movimiento deshace el enlace, pero no borra el otro.
-- Criterio 6: enlazar no crea ni modifica ningún movimiento (ver §3, decisión pendiente).
+- Criterio 6: enlazar no crea ni modifica ningún movimiento. Si un ticket no tiene ningún movimiento con el que enlazarse, se queda sin enlazar: no se ofrece crear un movimiento a partir de él (§3).
 
 ## 2. Fuera de alcance
 
@@ -54,9 +54,10 @@ Como usuario quiero enlazar un ticket con el movimiento (gasto) que le correspon
 - **Adjuntar documentos a un movimiento directamente**, sin pasar por un ticket — un justificante siempre es un ticket (H2 permite tickets sin líneas), que luego se enlaza (H3).
 - **Enlazar automáticamente** un ticket con su movimiento — siempre lo elige Diego (H3 criterio 1).
 
-## 3. Decisión pendiente con Diego (antes de aprobar)
+## 3. Decisiones tomadas con Diego
 
-1. **¿Crear un movimiento desde un ticket cuando no hay candidato (H3)?** *Propuesta:* no, por el mismo motivo que spec 034 §3: el gasto acabará llegando por la importación y se duplicaría.
+1. **No se crean movimientos a partir de un ticket**, tampoco cuando no hay ningún movimiento con el que enlazarlo (H3 criterio 6). Mismo motivo que spec 034 §3: el gasto acabará llegando por la importación y se duplicaría.
+2. **Orden:** se implementa después de la spec 049 (ya cerrada).
 
 ---
-**Siguiente paso:** cerrar la decisión de §3 y aprobar la spec. Se implementa después de la spec 049.
+**Siguiente paso:** `plan.md`.

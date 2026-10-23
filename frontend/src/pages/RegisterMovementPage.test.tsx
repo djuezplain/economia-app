@@ -295,4 +295,14 @@ describe('RegisterMovementPage', () => {
 
     expect(await screen.findByText('Página de movimientos (destino de la navegación)')).toBeInTheDocument();
   });
+
+  it('al editar un movimiento con ticket enlazado, enlaza al ticket (spec 048 H3)', async () => {
+    vi.spyOn(authApi, 'refresh').mockResolvedValue({ accessToken: 'access-token-de-prueba' });
+    mockCategoriesApi();
+    vi.spyOn(transactionsApi, 'getTransaction').mockResolvedValue({ ...EXPENSE_TX, receiptId: 'r-9' });
+
+    renderPage('/movements/register/tx-1');
+
+    expect(await screen.findByRole('link', { name: 'ver' })).toHaveAttribute('href', '/tickets/r-9');
+  });
 });

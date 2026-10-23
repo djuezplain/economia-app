@@ -238,7 +238,7 @@ export function ShoppingListDetailPage() {
                 <p role="status">No hay suficiente información para simular: ningún producto de la lista tiene precio en ningún ticket.</p>
               )}
               {simulation.cheapestMixed !== null && !simulation.cheapestSingle && (
-                <p role="status">Ningún supermercado tiene precio de todos los productos con datos.</p>
+                <p role="status">Ningún comercio tiene precio de todos los productos con datos.</p>
               )}
 
               {simulation.cheapestSingle && <SingleOptionSection title="Más barato (cesta única)" option={simulation.cheapestSingle} />}
@@ -253,7 +253,7 @@ export function ShoppingListDetailPage() {
               )}
               {simulation.fewestStoresMixed && (
                 <MixedOptionSection
-                  title="Opción mixta con menos súpers"
+                  title="Opción mixta con menos comercios"
                   option={simulation.fewestStoresMixed}
                   diffVsTotal={simulation.cheapestMixed?.total}
                   diffVsLabel="la opción mixta más barata"
@@ -280,7 +280,7 @@ function SingleOptionSection({ title, option }: { title: string; option: SingleS
 
 /**
  * H2 criterios 3-4: la mixta más barata muestra el ahorro (importe y %) frente al total pasado
- * en `savingsVsTotal` (la cesta única más barata); la mixta con menos súpers muestra la
+ * en `savingsVsTotal` (la cesta única más barata); la mixta con menos comercios muestra la
  * diferencia frente a `diffVsTotal` (la mixta más barata) — nunca las dos a la vez.
  */
 function MixedOptionSection({
@@ -304,7 +304,7 @@ function MixedOptionSection({
   return (
     <>
       <h3>
-        {title}: {option.total} € en {option.storeCount} supermercado{option.storeCount === 1 ? '' : 's'}
+        {title}: {option.total} € en {option.storeCount} comercio{option.storeCount === 1 ? '' : 's'}
       </h3>
       {savings !== null && savingsVsLabel && (
         <p>
@@ -326,7 +326,7 @@ function BasketLinesTable({ lines, showSupermarket }: { lines: { productId: stri
       <thead>
         <tr>
           <th scope="col">Producto</th>
-          {showSupermarket && <th scope="col">Supermercado</th>}
+          {showSupermarket && <th scope="col">Comercio</th>}
           <th scope="col">Precio/unidad</th>
         </tr>
       </thead>

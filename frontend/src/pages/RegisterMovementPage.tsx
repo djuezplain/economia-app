@@ -30,6 +30,8 @@ export function RegisterMovementPage() {
 
   const [isLoadingTransaction, setIsLoadingTransaction] = useState(Boolean(id));
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Spec 048 H3 criterio 4: el ticket enlazado al movimiento que se edita.
+  const [receiptId, setReceiptId] = useState<string | null>(null);
 
   // Carga el movimiento a editar (H3 criterio 1). Al resolver, `type` se
   // actualiza con el real del movimiento — `useCategoriesForType` vuelve a
@@ -44,6 +46,7 @@ export function RegisterMovementPage() {
         const transaction = await getTransaction(id);
         if (cancelled) return;
         setType(transaction.type);
+        setReceiptId(transaction.receiptId ?? null);
         setForm({
           date: transaction.date,
           categoryId: transaction.categoryId,
@@ -139,6 +142,12 @@ export function RegisterMovementPage() {
       {/* H3 criterio 3: modo edición y modo alta se distinguen por el
           título — igual que ya hacía `MovementsPage` (spec 002). */}
       <h1>{id ? 'Editar movimiento' : `Registrar ${type === 'EXPENSE' ? 'gasto' : 'ingreso'}`}</h1>
+
+      {id && receiptId && (
+        <p className="card-meta">
+          🧾 Ticket enlazado: <Link to={`/tickets/${receiptId}`}>ver</Link>
+        </p>
+      )}
 
       {/* El tipo no es editable una vez creado el movimiento (mismo
           criterio que el backend, `UpdateTransactionInput` no admite

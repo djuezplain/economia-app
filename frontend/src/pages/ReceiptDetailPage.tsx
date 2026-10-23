@@ -4,10 +4,12 @@ import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { deleteReceipt, getReceipt, listSupermarkets, searchProducts, updateReceipt } from '../api/groceries';
 import type { Product, ReceiptDetail, Supermarket } from '../api/groceries';
-import type { ConfirmReceiptLine, ConfirmReceiptPayload } from '../api/receipt-import';
+import type { ConfirmReceiptPayload } from '../api/receipt-import';
 import { ApiError } from '../api/client';
 import { ReceiptFieldsEditor } from '../components/ReceiptFieldsEditor';
-import { NEW_OPTION_VALUE, newLineKey } from '../components/receipt-line.types';
+import { ReceiptDocumentSection } from '../components/ReceiptDocumentSection';
+import { ReceiptMovementSection } from '../components/ReceiptMovementSection';
+import { canSaveReceipt, NEW_OPTION_VALUE, newLineKey, NO_PRODUCT_VALUE, toConfirmLines } from '../components/receipt-line.types';
 import type { EditableLine } from '../components/receipt-line.types';
 
 function toEditableLines(receipt: ReceiptDetail): EditableLine[] {
@@ -18,8 +20,9 @@ function toEditableLines(receipt: ReceiptDetail): EditableLine[] {
     unit: line.unit as EditableLine['unit'],
     pricePerUnit: line.pricePerUnit,
     amount: line.amount,
-    productId: line.productId,
-    productName: line.productName,
+    // Spec 048 H2 criterio 4: una línea guardada sin producto se edita como tal.
+    productId: line.productId ?? NO_PRODUCT_VALUE,
+    productName: line.productName ?? line.description,
   }));
 }
 
@@ -106,16 +109,7 @@ export function ReceiptDetailPage() {
         supermarket: supermarketId ? { id: supermarketId } : { name: supermarketName },
         date,
         printedTotal: printedTotal || undefined,
-        lines: lines.map(
-          (line): ConfirmReceiptLine => ({
-            description: line.description,
-            quantity: line.quantity,
-            unit: line.unit,
-            pricePerUnit: line.pricePerUnit,
-            amount: line.amount,
-            product: line.productId ? { id: line.productId } : { name: line.productName },
-          }),
-        ),
+        lines: toConfirmLines(lines),
       };
       const updated = await updateReceipt(id, payload);
       setReceipt(updated);
@@ -182,7 +176,10 @@ export function ReceiptDetailPage() {
           <h1>
             {receipt.supermarketName} — {receipt.date}
           </h1>
-          <p>Total impreso: {receipt.printedTotal ? `${receipt.printedTotal} €` : 'No se pudo leer'}</p>
+          <p>
+            Total: {receipt.total !== null ? `${receipt.total} €` : '—'}
+            {receipt.lines.length > 0 && <> · Total impreso: {receipt.printedTotal ? `${receipt.printedTotal} €` : 'No se pudo leer'}</>}
+          </p>
 
           <p>
             <button type="button" className="btn btn-secondary" onClick={startEditing}>
@@ -206,6 +203,8 @@ export function ReceiptDetailPage() {
           )}
           {deleteError && <p role="alert">{deleteError}</p>}
 
+          {receipt.lines.length === 0 && <p className="card-meta">Sin desglose por líneas.</p>}
+          {receipt.lines.length > 0 && (
           <table className="table">
             <caption>Líneas del ticket</caption>
             <thead>
@@ -221,7 +220,7 @@ export function ReceiptDetailPage() {
             <tbody>
               {receipt.lines.map((line) => (
                 <tr key={line.id}>
-                  <td>{line.productName}</td>
+                  <td>{line.productName ?? <span className="card-meta">Sin producto</span>}</td>
                   <td>{line.description}</td>
                   <td>{line.quantity}</td>
                   <td>{line.unit}</td>
@@ -232,6 +231,20 @@ export function ReceiptDetailPage() {
               ))}
             </tbody>
           </table>
+          )}
+
+          <ReceiptDocumentSection
+            receiptId={receipt.id}
+            document={receipt.document}
+            onChanged={(document) => setReceipt((current) => (current ? { ...current, document } : current))}
+          />
+
+          <ReceiptMovementSection
+            receiptId={receipt.id}
+            receiptDate={receipt.date}
+            transactionId={receipt.transactionId}
+            onChanged={(transactionId) => setReceipt((current) => (current ? { ...current, transactionId } : current))}
+          />
         </>
       )}
 
@@ -254,11 +267,12 @@ export function ReceiptDetailPage() {
             onUpdateLine={updateLine}
             onRemoveLine={removeLine}
             onAddLine={addLine}
+            onClearLines={() => setLines([])}
           />
 
           {saveError && <p role="alert">{saveError}</p>}
 
-          <button type="button" className="btn btn-primary" disabled={isSaving || lines.length === 0} onClick={() => void handleSave()}>
+          <button type="button" className="btn btn-primary" disabled={isSaving || !canSaveReceipt(lines, printedTotal)} onClick={() => void handleSave()}>
             {isSaving ? 'Guardando…' : 'Guardar cambios'}
           </button>{' '}
           <button type="button" className="btn btn-ghost" disabled={isSaving} onClick={cancelEditing}>

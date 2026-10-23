@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
+import { readZip } from './support/zip.js';
 import type { App } from 'supertest/types';
 import { eq } from 'drizzle-orm';
 import * as argon2 from 'argon2';
@@ -261,9 +262,11 @@ describe('Exportación programada (e2e) — spec 032 H5', () => {
       const dir = path.join(localDir, user.id);
       const files = await fs.readdir(dir);
       expect(files).toHaveLength(1);
-      expect(files[0]).toMatch(/^economia-app-datos-\d{4}-\d{2}-\d{2}\.json$/);
+      expect(files[0]).toMatch(/^economia-app-datos-\d{4}-\d{2}-\d{2}\.zip$/);
 
-      const content = JSON.parse(await fs.readFile(path.join(dir, files[0]), 'utf-8'));
+      // Spec 048: la misma copia .zip que la descarga manual.
+      const entries = await readZip(await fs.readFile(path.join(dir, files[0])));
+      const content = JSON.parse(entries.get('datos.json')!.toString());
       expect(content.profile.id).toBe(user.id);
 
       const [updated] = await db.select().from(scheduledExports).where(eq(scheduledExports.id, row.id));
@@ -288,16 +291,22 @@ describe('Exportación programada (e2e) — spec 032 H5', () => {
 
       // Fichero "antiguo" fabricado a mano (con el mismo patrón de nombre que
       // escribe el propio servicio) para no depender de manipular el reloj.
-      const oldFile = 'economia-app-datos-2026-01-01.json';
-      await fs.writeFile(path.join(dir, oldFile), '{}', 'utf-8');
+      // Spec 048: se purgan tanto los .zip como los .json de antes del cambio;
+      // un fichero ajeno al patrón no se toca.
+      const oldFiles = ['economia-app-datos-2026-01-01.json', 'economia-app-datos-2026-01-02.zip'];
       const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000);
-      await fs.utimes(path.join(dir, oldFile), fifteenDaysAgo, fifteenDaysAgo);
+      for (const oldFile of [...oldFiles, 'notas.txt']) {
+        await fs.writeFile(path.join(dir, oldFile), '{}', 'utf-8');
+        await fs.utimes(path.join(dir, oldFile), fifteenDaysAgo, fifteenDaysAgo);
+      }
 
       await scheduledExportsService.run(row);
 
       const filesAfter = await fs.readdir(dir);
-      expect(filesAfter).not.toContain(oldFile);
-      expect(filesAfter).toHaveLength(1); // solo el fichero recién escrito por run().
+      for (const oldFile of oldFiles) expect(filesAfter).not.toContain(oldFile);
+      expect(filesAfter).toHaveLength(2); // el recién escrito por run() y notas.txt.
+      expect(filesAfter).toContain('notas.txt');
+      expect(filesAfter.some((f) => f.endsWith('.partial'))).toBe(false);
     });
 
     it('destino DRIVE sin conexión real deja lastRunError y relanza (para que el scheduler lo loguee)', async () => {

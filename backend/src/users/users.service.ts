@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and, isNotNull } from 'drizzle-orm';
 import * as argon2 from 'argon2';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
@@ -10,6 +10,13 @@ import {
   cashHoldings,
   recurringOccurrenceResolutions,
   recurringReconciliationDismissals,
+  supermarkets,
+  products,
+  receipts,
+  receiptLines,
+  shoppingLists,
+  shoppingListItems,
+  receiptDocuments,
   recurringTransactions,
   categories,
   cryptoPurchases,
@@ -37,6 +44,7 @@ import {
 import { SessionsService } from '../auth/sessions.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { accountDeletedEmail } from '../mail/templates.js';
+import { archivePathFor } from '../receipt-import/document-type.js';
 import { AuditLogService } from '../audit/audit-log.service.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
@@ -291,6 +299,7 @@ export class UsersService {
         recurringTransactions: userRecurringTransactions,
         recurringOccurrenceResolutions: userRecurringResolutions,
         recurringReconciliationDismissals: userReconciliationDismissals,
+        ...(await this.exportGroceries(userId)),
       },
     };
   }
@@ -353,6 +362,53 @@ export class UsersService {
       throw new UnauthorizedException('El usuario ya no existe.');
     }
     return user;
+  }
+
+  /**
+   * Spec 048 (plan.md §3.4): tickets, comercios, productos y listas de la
+   * compra. Las tablas hijas (`receiptLines`, `shoppingListItems`) no tienen
+   * `userId`: se filtran por las filas padre del usuario.
+   */
+  private async exportGroceries(
+    userId: string,
+  ): Promise<Pick<EconomicData, 'supermarkets' | 'products' | 'receipts' | 'receiptLines' | 'receiptDocuments' | 'shoppingLists' | 'shoppingListItems'>> {
+    const [userSupermarkets, userProducts, userReceipts, userShoppingLists] = await Promise.all([
+      this.db.query.supermarkets.findMany({ where: eq(supermarkets.userId, userId) }),
+      this.db.query.products.findMany({ where: eq(products.userId, userId) }),
+      this.db.query.receipts.findMany({ where: eq(receipts.userId, userId) }),
+      this.db.query.shoppingLists.findMany({ where: eq(shoppingLists.userId, userId) }),
+    ]);
+    const receiptIds = userReceipts.map((r) => r.id);
+    const listIds = userShoppingLists.map((l) => l.id);
+    const [userReceiptLines, userShoppingListItems, userDocuments] = await Promise.all([
+      receiptIds.length ? this.db.query.receiptLines.findMany({ where: inArray(receiptLines.receiptId, receiptIds) }) : [],
+      listIds.length ? this.db.query.shoppingListItems.findMany({ where: inArray(shoppingListItems.shoppingListId, listIds) }) : [],
+      // Spec 048: solo metadatos (sin `content`), y solo de documentos ya
+      // asociados a un ticket — los pendientes de una vista previa no son datos.
+      this.db
+        .select({
+          id: receiptDocuments.id,
+          userId: receiptDocuments.userId,
+          receiptId: receiptDocuments.receiptId,
+          mimeType: receiptDocuments.mimeType,
+          sizeBytes: receiptDocuments.sizeBytes,
+          sha256: receiptDocuments.sha256,
+          originalFilename: receiptDocuments.originalFilename,
+          pageCount: receiptDocuments.pageCount,
+          createdAt: receiptDocuments.createdAt,
+        })
+        .from(receiptDocuments)
+        .where(and(eq(receiptDocuments.userId, userId), isNotNull(receiptDocuments.receiptId))),
+    ]);
+    return {
+      supermarkets: userSupermarkets,
+      products: userProducts,
+      receipts: userReceipts,
+      receiptLines: userReceiptLines,
+      receiptDocuments: userDocuments.map((d) => ({ ...d, file: archivePathFor(d.id, d.mimeType) })),
+      shoppingLists: userShoppingLists,
+      shoppingListItems: userShoppingListItems,
+    };
   }
 
   private toProfile(user: UserRow): UserProfile {

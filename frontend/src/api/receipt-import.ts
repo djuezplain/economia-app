@@ -25,6 +25,8 @@ export interface ReceiptPreview {
   linesTotal: string;
   lines: ReceiptPreviewLine[];
   warnings: string[];
+  /** Spec 048 H1: el documento ya guardado como pendiente; su `id` se manda al confirmar. */
+  document: { id: string; mimeType: string; sizeBytes: number; pageCount: number | null };
 }
 
 /** `{ id }` (existente) o `{ name }` (nuevo) — plan.md §3/§7. */
@@ -39,7 +41,8 @@ export interface ConfirmReceiptLine {
   unit: ReceiptUnit;
   pricePerUnit: string;
   amount: string;
-  product: EntityRef;
+  /** Spec 048 H2 criterio 4: `null` = sin producto (no entra en la comparativa). */
+  product: EntityRef | null;
 }
 
 export interface ConfirmReceiptPayload {
@@ -47,6 +50,11 @@ export interface ConfirmReceiptPayload {
   date: string;
   printedTotal?: string;
   lines: ConfirmReceiptLine[];
+}
+
+/** Spec 048 H1 criterio 1: solo al confirmar una importación (no al editar un ticket guardado). */
+export interface ConfirmImportPayload extends ConfirmReceiptPayload {
+  documentId?: string;
 }
 
 function fileFormData(file: File): FormData {
@@ -61,6 +69,6 @@ export function previewReceiptImport(file: File): Promise<ReceiptPreview> {
 }
 
 /** plan.md §7: a diferencia de `confirmStockImport`, no se vuelve a subir la imagen — es JSON ya corregido. */
-export function confirmReceiptImport(payload: ConfirmReceiptPayload): Promise<{ receiptId: string }> {
+export function confirmReceiptImport(payload: ConfirmImportPayload): Promise<{ receiptId: string }> {
   return api.post<{ receiptId: string }>('/receipt-import/confirm', payload);
 }

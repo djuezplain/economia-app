@@ -6,6 +6,8 @@ export interface TableImportSummary {
   total: number;
   toImport: number;
   alreadyExisting: number;
+  /** Spec 048: documentos de tickets que no se pueden importar (falta su fichero o no coincide su SHA-256). */
+  omitted?: number;
 }
 
 export type DataImportSummary = Record<string, TableImportSummary>;
@@ -40,6 +42,13 @@ export const DATA_TABLE_LABELS: Record<string, string> = {
   recurringTransactions: 'Movimientos recurrentes',
   recurringOccurrenceResolutions: 'Ocurrencias recurrentes resueltas',
   recurringReconciliationDismissals: 'Descartes de conciliación de recibos',
+  supermarkets: 'Comercios',
+  products: 'Productos',
+  receipts: 'Tickets y facturas',
+  receiptLines: 'Líneas de tickets',
+  receiptDocuments: 'Documentos de tickets',
+  shoppingLists: 'Listas de la compra',
+  shoppingListItems: 'Elementos de listas de la compra',
 };
 
 function fileFormData(file: File): FormData {

@@ -1,11 +1,33 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Put, Query, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Put,
+  Query,
+  Req,
+  Res,
+  UploadedFile,
+  UseFilters,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Request, Response } from 'express';
 import { AuthGuard } from '../auth/guards/auth.guard.js';
 import { RequireActiveUserGuard } from '../auth/guards/require-active-user.guard.js';
 import type { RequestUser } from '../auth/guards/require-active-user.guard.js';
 import { ConfirmReceiptDto } from '../receipt-import/dto/confirm-receipt.dto.js';
 import { ListReceiptsQueryDto } from './dto/list-receipts-query.dto.js';
+import { LinkTransactionDto } from './dto/link-transaction.dto.js';
 import { ReceiptsService } from './receipts.service.js';
+import { MAX_DOCUMENT_SIZE_BYTES, ReceiptDocumentsService } from './receipt-documents.service.js';
+import { DocumentTooLargeFilter } from './document-too-large.filter.js';
 
 /**
  * Spec 034, plan.md §3 (H5, lectura) + spec 035, plan.md §1 (H1-H3,
@@ -18,7 +40,10 @@ import { ReceiptsService } from './receipts.service.js';
 @Controller('receipts')
 @UseGuards(AuthGuard, RequireActiveUserGuard)
 export class ReceiptsController {
-  constructor(private readonly receiptsService: ReceiptsService) {}
+  constructor(
+    private readonly receiptsService: ReceiptsService,
+    private readonly documents: ReceiptDocumentsService,
+  ) {}
 
   @Get()
   list(@Query() query: ListReceiptsQueryDto, @Req() req: Request & { user: RequestUser }) {
@@ -39,5 +64,73 @@ export class ReceiptsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }): Promise<void> {
     await this.receiptsService.remove(req.user.id, id);
+  }
+
+  // --- Spec 048 H1: documento original -----------------------------------
+
+  /**
+   * El binario con el tipo detectado al guardarlo, nunca uno declarado por el
+   * cliente; `nosniff` para que el navegador no lo reinterprete. `no-store`:
+   * es un dato financiero personal, no debe quedar en cachés intermedias.
+   */
+  @Get(':id/document')
+  async getDocument(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('download') download: string | undefined,
+    @Req() req: Request & { user: RequestUser },
+    @Res() res: Response,
+  ): Promise<void> {
+    const document = await this.documents.getContent(req.user.id, id);
+    const disposition = download === '1' ? 'attachment' : 'inline';
+    res.set({
+      'Content-Type': document.mimeType,
+      'Content-Length': String(document.content.length),
+      'Content-Disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(document.originalFilename)}`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.end(document.content);
+  }
+
+  /** H1 criterio 3: adjunta un documento a un ticket guardado o sustituye el que tenga. */
+  @Put(':id/document')
+  @UseFilters(DocumentTooLargeFilter)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_DOCUMENT_SIZE_BYTES } }))
+  async putDocument(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Req() req: Request & { user: RequestUser },
+  ) {
+    if (!file) throw new BadRequestException('Falta el documento (campo "file").');
+    const prepared = await this.documents.prepare(file.buffer, file.originalname);
+    return this.documents.replace(req.user.id, id, prepared);
+  }
+
+  @Delete(':id/document')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteDocument(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }): Promise<void> {
+    await this.documents.remove(req.user.id, id);
+  }
+
+  // --- Spec 048 H3: enlace con el movimiento -------------------------------
+
+  @Get(':id/transaction-candidates')
+  linkCandidates(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }) {
+    return this.receiptsService.linkCandidates(req.user.id, id);
+  }
+
+  @Put(':id/transaction')
+  linkTransaction(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: LinkTransactionDto,
+    @Req() req: Request & { user: RequestUser },
+  ) {
+    return this.receiptsService.linkTransaction(req.user.id, id, dto.transactionId);
+  }
+
+  @Delete(':id/transaction')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async unlinkTransaction(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }): Promise<void> {
+    await this.receiptsService.unlinkTransaction(req.user.id, id);
   }
 }
