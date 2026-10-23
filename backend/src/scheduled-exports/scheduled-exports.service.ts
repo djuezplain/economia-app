@@ -6,15 +6,15 @@ import { eq } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { scheduledExports } from '../db/schema/index.js';
-import { UsersService } from '../users/users.service.js';
-import type { AccountExport } from '../users/users.service.js';
+import { AccountArchiveService, archiveFilename } from '../users/account-archive.service.js';
 import { GoogleDriveService } from '../google-drive/google-drive.service.js';
 import { sanitizeSubfolder } from './local-export-path.util.js';
 import { SaveScheduledExportDto } from './dto/save-scheduled-export.dto.js';
 
 export type ScheduledExportRow = typeof scheduledExports.$inferSelect;
 
-const FILE_NAME_PATTERN = /^economia-app-datos-\d{4}-\d{2}-\d{2}\.json$/;
+// Spec 048: la exportación es un `.zip`; la purga reconoce también los `.json` anteriores.
+const FILE_NAME_PATTERN = /^economia-app-datos-\d{4}-\d{2}-\d{2}\.(zip|json)$/;
 const RETENTION_DAYS = 14; // plan.md §11.5 — mismo criterio que deploy/backup.sh.
 
 /**
@@ -29,7 +29,7 @@ export class ScheduledExportsService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly config: ConfigService,
-    private readonly usersService: UsersService,
+    private readonly archives: AccountArchiveService,
     private readonly googleDriveService: GoogleDriveService,
   ) {}
 
@@ -98,8 +98,7 @@ export class ScheduledExportsService {
   async run(config: ScheduledExportRow): Promise<void> {
     try {
       if (config.destination === 'LOCAL') {
-        const file = await this.usersService.exportData(config.userId);
-        await this.writeLocal(config, file);
+        await this.writeLocal(config);
       } else {
         // Mismo método que ya usa H4 manual — sin recomponer nada
         // (plan.md §11.7 decisión 7). Si no hay conexión, lanza sola.
@@ -121,11 +120,11 @@ export class ScheduledExportsService {
     return this.config.get<string>('SCHEDULED_EXPORT_LOCAL_DIR', './scheduled-exports');
   }
 
-  private async writeLocal(config: ScheduledExportRow, file: AccountExport): Promise<void> {
+  /** Spec 048 plan.md §3.4: la misma copia `.zip` que la descarga manual (datos y documentos). */
+  private async writeLocal(config: ScheduledExportRow): Promise<void> {
     const dir = path.join(this.localDir(), config.userId, sanitizeSubfolder(config.localSubfolder));
     await fs.mkdir(dir, { recursive: true });
-    const filename = `economia-app-datos-${new Date().toISOString().slice(0, 10)}.json`;
-    await fs.writeFile(path.join(dir, filename), JSON.stringify(file, null, 2), 'utf-8');
+    await this.archives.writeArchive(config.userId, path.join(dir, archiveFilename()));
     await this.purgeOldFiles(dir);
   }
 

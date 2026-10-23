@@ -15,6 +15,10 @@ import { GoogleDriveService } from '../src/google-drive/google-drive.service.js'
 import { DRIVE_FILES_URL, DRIVE_UPLOAD_URL } from '../src/google-drive/google-drive.constants.js';
 import { UsersService } from '../src/users/users.service.js';
 import { decryptSecret } from '../src/common/secret-encryption.util.js';
+import { readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import type { Readable } from 'node:stream';
+import { readZip } from './support/zip.js';
 
 /**
  * Spec 032 H4, plan.md §9.5-§9.6 (T6.5). GOOGLE_CLIENT_ID/SECRET siguen
@@ -106,15 +110,20 @@ describe('Conexión con Google Drive (e2e) — spec 032 H4', () => {
    * simulando la API real de Drive (plan.md §9.7) sin red. `calls` recoge
    * cada llamada para poder comprobar cuántas veces (y con qué) se llamó.
    */
+  const SESSION_URL = 'https://www.googleapis.com/upload/drive/v3/files?upload_id=sesion-1';
+
   function mockDriveApiClient(handlers: {
     getFolder?: (folderId: string) => { trashed?: boolean } | GaxiosError;
     findFolder?: () => { files: { id: string }[] } | GaxiosError;
     createFolder?: () => { id: string } | GaxiosError;
-    upload?: (content: string) => { id: string; webViewLink: string } | GaxiosError;
+    /** Apertura de la sesión reanudable (spec 048): por defecto devuelve `SESSION_URL` en `Location`. */
+    session?: () => { location?: string } | GaxiosError;
+    /** Subida del fichero a la URL de la sesión: recibe el `.zip` entero. */
+    upload?: (content: Buffer) => { id: string; webViewLink: string } | GaxiosError;
   }) {
-    const calls: { url: string; method?: string }[] = [];
-    const requestFn = vi.fn(async (opts: { url: string; method?: string; params?: { q?: string }; multipart?: { content: string }[] }) => {
-      calls.push({ url: opts.url, method: opts.method });
+    const calls: { url: string; method?: string; params?: Record<string, string>; headers?: Record<string, string>; data?: unknown }[] = [];
+    const requestFn = vi.fn(async (opts: { url: string; method?: string; params?: Record<string, string>; headers?: Record<string, string>; data?: unknown }) => {
+      calls.push({ url: opts.url, method: opts.method, params: opts.params, headers: opts.headers, data: opts.data });
 
       if (opts.url.startsWith(`${DRIVE_FILES_URL}/`)) {
         const folderId = opts.url.slice(`${DRIVE_FILES_URL}/`.length);
@@ -132,9 +141,15 @@ describe('Conexión con Google Drive (e2e) — spec 032 H4', () => {
         if (result instanceof GaxiosError) throw result;
         return { data: result };
       }
-      if (opts.url === DRIVE_UPLOAD_URL) {
-        const content = opts.multipart?.[1]?.content ?? '';
-        const result = handlers.upload?.(content) ?? { id: 'uploaded-file-id', webViewLink: 'https://drive.google.com/file/d/uploaded-file-id/view' };
+      if (opts.url === DRIVE_UPLOAD_URL && opts.method === 'POST') {
+        const result = handlers.session?.() ?? { location: SESSION_URL };
+        if (result instanceof GaxiosError) throw result;
+        return { data: '', headers: new Headers(result.location ? { location: result.location } : {}) };
+      }
+      if (opts.url === SESSION_URL && opts.method === 'PUT') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of opts.data as Readable) chunks.push(chunk as Buffer);
+        const result = handlers.upload?.(Buffer.concat(chunks)) ?? { id: 'uploaded-file-id', webViewLink: 'https://drive.google.com/file/d/uploaded-file-id/view' };
         if (result instanceof GaxiosError) throw result;
         return { data: result };
       }
@@ -274,6 +289,7 @@ describe('Conexión con Google Drive (e2e) — spec 032 H4', () => {
         `GET ${DRIVE_FILES_URL}`,
         `POST ${DRIVE_FILES_URL}`,
         `POST ${DRIVE_UPLOAD_URL}`,
+        `PUT ${SESSION_URL}`,
       ]);
 
       const [row] = await db.select().from(googleDriveConnections).where(eq(googleDriveConnections.userId, user.id));
@@ -289,6 +305,7 @@ describe('Conexión con Google Drive (e2e) — spec 032 H4', () => {
       expect(second.calls.map((c) => `${c.method ?? 'GET'} ${c.url}`)).toEqual([
         `GET ${DRIVE_FILES_URL}/folder-nueva`,
         `POST ${DRIVE_UPLOAD_URL}`,
+        `PUT ${SESSION_URL}`,
       ]);
     });
 
@@ -307,6 +324,7 @@ describe('Conexión con Google Drive (e2e) — spec 032 H4', () => {
         DRIVE_FILES_URL,
         DRIVE_FILES_URL,
         DRIVE_UPLOAD_URL,
+        SESSION_URL,
       ]);
 
       const [row] = await db.select().from(googleDriveConnections).where(eq(googleDriveConnections.userId, user.id));
@@ -318,7 +336,7 @@ describe('Conexión con Google Drive (e2e) — spec 032 H4', () => {
         findFolder: () => ({ files: [{ id: 'folder-recreada' }] }),
       });
       await googleDrive.exportToDrive(user.id);
-      expect(trashed.calls.map((c) => c.url)).toEqual([`${DRIVE_FILES_URL}/folder-recreada`, DRIVE_FILES_URL, DRIVE_UPLOAD_URL]);
+      expect(trashed.calls.map((c) => c.url)).toEqual([`${DRIVE_FILES_URL}/folder-recreada`, DRIVE_FILES_URL, DRIVE_UPLOAD_URL, SESSION_URL]);
     });
 
     it('con el token revocado (401), da un error claro pidiendo reconectar y no borra la conexión', async () => {
@@ -337,9 +355,9 @@ describe('Conexión con Google Drive (e2e) — spec 032 H4', () => {
       await expect(googleDrive.exportToDrive(user.id)).rejects.toThrow('No se ha podido guardar el fichero en Google Drive. Inténtalo de nuevo más tarde.');
     });
 
-    it('el fichero subido es exactamente el mismo AccountExport que expondría GET /users/me/export', async () => {
+    it('el fichero subido es el .zip de la copia: datos.json con el mismo AccountExport que GET /users/me/export', async () => {
       const user = await connectUser('drive-export-contenido@example.com');
-      let uploadedContent = '';
+      let uploadedContent = Buffer.alloc(0);
       mockDriveApiClient({
         findFolder: () => ({ files: [{ id: 'folder-x' }] }),
         upload: (content) => {
@@ -349,12 +367,61 @@ describe('Conexión con Google Drive (e2e) — spec 032 H4', () => {
       });
 
       await googleDrive.exportToDrive(user.id);
-      const uploaded = JSON.parse(uploadedContent) as Record<string, unknown>;
+      const uploaded = JSON.parse((await readZip(uploadedContent)).get('datos.json')!.toString()) as Record<string, unknown>;
       const expected = await usersService.exportData(user.id);
 
       expect(uploaded.formatVersion).toBe(expected.formatVersion);
       expect(uploaded.profile).toEqual(JSON.parse(JSON.stringify(expected.profile)));
       expect(uploaded.economicData).toEqual(JSON.parse(JSON.stringify(expected.economicData)));
+    });
+  });
+
+  describe('subida reanudable del .zip (spec 048 T6.4)', () => {
+    const tempFiles = () => readdirSync(tmpdir()).filter((f) => f.startsWith('economia-drive-'));
+
+    it('abre la sesión con los metadatos y el tamaño, y sube el fichero entero a la URL que devuelve Drive', async () => {
+      const user = await connectUser('drive-reanudable@example.com');
+      let uploadedSize = 0;
+      const { calls } = mockDriveApiClient({
+        findFolder: () => ({ files: [{ id: 'folder-x' }] }),
+        upload: (content) => {
+          uploadedSize = content.length;
+          return { id: 'file-z', webViewLink: 'https://drive.google.com/file/d/file-z/view' };
+        },
+      });
+
+      expect(await googleDrive.exportToDrive(user.id)).toEqual({ fileId: 'file-z', webViewLink: 'https://drive.google.com/file/d/file-z/view' });
+
+      const session = calls.find((c) => c.url === DRIVE_UPLOAD_URL)!;
+      expect(session.params).toMatchObject({ uploadType: 'resumable' });
+      expect(session.data).toEqual({ name: expect.stringMatching(/^economia-app-datos-\d{4}-\d{2}-\d{2}\.zip$/), parents: ['folder-x'], mimeType: 'application/zip' });
+      expect(session.headers).toMatchObject({ 'X-Upload-Content-Type': 'application/zip', 'X-Upload-Content-Length': String(uploadedSize) });
+      const put = calls.find((c) => c.url === SESSION_URL)!;
+      expect(put.headers).toMatchObject({ 'Content-Type': 'application/zip', 'Content-Length': String(uploadedSize) });
+      expect(tempFiles()).toEqual([]);
+    });
+
+    it('un error al abrir la sesión o a mitad de la subida da el error de Drive y borra el temporal', async () => {
+      const user = await connectUser('drive-reanudable-falla@example.com');
+      mockDriveApiClient({ findFolder: () => ({ files: [{ id: 'folder-x' }] }), session: () => fakeGaxiosError(500) });
+      await expect(googleDrive.exportToDrive(user.id)).rejects.toThrow('No se ha podido guardar el fichero en Google Drive. Inténtalo de nuevo más tarde.');
+      expect(tempFiles()).toEqual([]);
+
+      mockDriveApiClient({ findFolder: () => ({ files: [{ id: 'folder-x' }] }), upload: () => fakeGaxiosError(503) });
+      await expect(googleDrive.exportToDrive(user.id)).rejects.toThrow('No se ha podido guardar el fichero en Google Drive. Inténtalo de nuevo más tarde.');
+      expect(tempFiles()).toEqual([]);
+
+      mockDriveApiClient({ findFolder: () => ({ files: [{ id: 'folder-x' }] }), upload: () => fakeGaxiosError(401, JSON.stringify({ error: 'invalid_grant' })) });
+      await expect(googleDrive.exportToDrive(user.id)).rejects.toThrow(/Desconecta y vuelve a conectar/);
+      expect(tempFiles()).toEqual([]);
+    });
+
+    it('si Drive no devuelve la URL de subida, falla con el error genérico sin subir nada', async () => {
+      const user = await connectUser('drive-reanudable-sin-location@example.com');
+      const { calls } = mockDriveApiClient({ findFolder: () => ({ files: [{ id: 'folder-x' }] }), session: () => ({}) });
+      await expect(googleDrive.exportToDrive(user.id)).rejects.toThrow('No se ha podido guardar el fichero en Google Drive. Inténtalo de nuevo más tarde.');
+      expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+      expect(tempFiles()).toEqual([]);
     });
   });
 });

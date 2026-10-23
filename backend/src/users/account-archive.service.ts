@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { createWriteStream, promises as fs } from 'node:fs';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { and, eq } from 'drizzle-orm';
 import yazl from 'yazl';
 import { DB } from '../db/db.module.js';
@@ -46,6 +48,24 @@ export class AccountArchiveService {
     }
     zip.end();
     return { stream: zip.outputStream as Readable, data };
+  }
+
+  /**
+   * Escribe el `.zip` en `filePath` (exportación programada y subida a
+   * Drive). Se escribe primero en `<filePath>.partial` y se renombra al
+   * terminar, para que nunca quede un `.zip` a medias con el nombre bueno.
+   */
+  async writeArchive(userId: string, filePath: string): Promise<{ data: AccountExport; sizeBytes: number }> {
+    const partial = `${filePath}.partial`;
+    try {
+      const { stream, data } = await this.createArchive(userId);
+      await pipeline(stream, createWriteStream(partial));
+      await fs.rename(partial, filePath);
+      return { data, sizeBytes: (await fs.stat(filePath)).size };
+    } catch (err) {
+      await fs.rm(partial, { force: true });
+      throw err;
+    }
   }
 
   private async loadContent(userId: string, documentId: string): Promise<Buffer> {
