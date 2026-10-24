@@ -184,7 +184,7 @@ describe('ReceiptsPage', () => {
 
   it('marca los tickets que tienen documento (spec 048)', async () => {
     vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue([
-      { ...RECEIPTS[0], document: { id: 'd1', mimeType: 'application/pdf', sizeBytes: 1000, pageCount: 1, originalFilename: 'f.pdf' } },
+      { ...RECEIPTS[0], document: { id: 'd1', mimeType: 'application/pdf', sizeBytes: 1000, pageCount: 1, originalFilename: 'f.pdf', hasText: false, textReadAt: null } },
       RECEIPTS[1],
     ]);
     renderPage();

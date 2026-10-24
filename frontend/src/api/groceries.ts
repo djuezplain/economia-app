@@ -63,6 +63,20 @@ export interface ReceiptDocumentInfo {
   sizeBytes: number;
   pageCount: number | null;
   originalFilename: string;
+  /** Spec 051 H3: hay texto reconocido guardado. */
+  hasText: boolean;
+  /** Spec 051 H3: cuándo se leyó el texto; `null` = nunca. */
+  textReadAt: string | null;
+}
+
+/** Spec 051 H3 criterio 4: el documento se guardó, pero no se pudo leer su texto. */
+export interface StoredReceiptDocument extends ReceiptDocumentInfo {
+  ocrWarning?: string;
+}
+
+export interface ReceiptDocumentText {
+  text: string | null;
+  readAt: string | null;
 }
 
 /** Spec 040, plan.md §1 (H1): filtros de `GET /receipts`, todos opcionales y combinables. */
@@ -147,12 +161,12 @@ export function updateReceipt(id: string, payload: ConfirmReceiptPayload): Promi
   return api.put<ReceiptDetail>(`/receipts/${id}`, payload);
 }
 
-/** Spec 035, plan.md §4 (H1). */
 /** Spec 051 H4 y H5: lo que no viene no cambia; `null` lo quita. */
 export function updateReceiptDetails(id: string, changes: { note?: string | null; warrantyUntil?: string | null }): Promise<ReceiptDetail> {
   return api.patch<ReceiptDetail>(`/receipts/${id}/details`, changes);
 }
 
+/** Spec 035, plan.md §4 (H1). */
 export function deleteReceipt(id: string): Promise<void> {
   return api.delete<void>(`/receipts/${id}`);
 }
@@ -164,10 +178,20 @@ export function getReceiptDocument(receiptId: string): Promise<Blob> {
 }
 
 /** Adjunta un documento a un ticket guardado, o sustituye el que tenga. */
-export function uploadReceiptDocument(receiptId: string, file: File): Promise<ReceiptDocumentInfo> {
+export function uploadReceiptDocument(receiptId: string, file: File): Promise<StoredReceiptDocument> {
   const formData = new FormData();
   formData.append('file', file);
-  return api.putForm<ReceiptDocumentInfo>(`/receipts/${receiptId}/document`, formData);
+  return api.putForm<StoredReceiptDocument>(`/receipts/${receiptId}/document`, formData);
+}
+
+/** Spec 051 H3 criterio 5. */
+export function getReceiptDocumentText(receiptId: string): Promise<ReceiptDocumentText> {
+  return api.get<ReceiptDocumentText>(`/receipts/${receiptId}/document/text`);
+}
+
+/** Spec 051 H3 criterio 3: vuelve a leer el texto (una llamada de pago a Vision). */
+export function readReceiptDocumentText(receiptId: string): Promise<ReceiptDocumentText> {
+  return api.post<ReceiptDocumentText>(`/receipts/${receiptId}/document/text`);
 }
 
 export function deleteReceiptDocument(receiptId: string): Promise<void> {

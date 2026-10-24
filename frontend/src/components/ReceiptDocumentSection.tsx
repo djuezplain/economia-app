@@ -4,6 +4,7 @@ import { deleteReceiptDocument, getReceiptDocument, uploadReceiptDocument } from
 import type { ReceiptDocumentInfo } from '../api/groceries';
 import { ApiError } from '../api/client';
 import { ACCEPTED_DOCUMENTS, prepareUpload } from '../pages/receipt-upload';
+import { ReceiptDocumentText } from './ReceiptDocumentText';
 
 function formatSize(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -35,6 +36,8 @@ export function ReceiptDocumentSection({
 }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Spec 051 H3 criterio 4: el documento se guardó, pero sin texto.
+  const [ocrWarning, setOcrWarning] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const isPdf = document?.mimeType === 'application/pdf';
@@ -79,8 +82,11 @@ export function ReceiptDocumentSection({
       return;
     }
     setIsBusy(true);
+    setOcrWarning(null);
     try {
-      onChanged(await uploadReceiptDocument(receiptId, file));
+      const { ocrWarning: warning, ...stored } = await uploadReceiptDocument(receiptId, file);
+      setOcrWarning(warning ?? null);
+      onChanged(stored);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se ha podido guardar el documento.');
     } finally {
@@ -128,6 +134,7 @@ export function ReceiptDocumentSection({
                 Quitar
               </button>
             </div>
+            <ReceiptDocumentText key={document.id} receiptId={receiptId} document={document} onRead={onChanged} />
           </>
         ) : (
           <>
@@ -148,6 +155,7 @@ export function ReceiptDocumentSection({
           onChange={(e) => void handleFile(e)}
         />
         {isBusy && <p role="status">Guardando…</p>}
+        {ocrWarning && <p className="card-meta" role="note">{ocrWarning}</p>}
         {error && <p role="alert">{error}</p>}
       </div>
     </section>
