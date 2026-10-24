@@ -20,6 +20,8 @@ import {
   products,
   receiptDocuments,
   receiptLines,
+  receiptTagLinks,
+  receiptTags,
   receipts,
   recurringOccurrenceResolutions,
   recurringReconciliationDismissals,
@@ -36,6 +38,7 @@ import {
   supermarkets,
   transactions,
   users,
+  warrantyRemindersSent,
 } from '../src/db/schema/index.js';
 import { ECONOMIC_DATA_TABLE_ORDER } from '../src/data-export/account-export.types.js';
 import { AuthService } from '../src/auth/auth.service.js';
@@ -365,6 +368,29 @@ describe('Exportar y eliminar cuenta (e2e) — spec 001 H8', () => {
       await request(app.getHttpServer()).delete('/users/me').set('Authorization', `Bearer ${accessToken}`).send({ password: PASSWORD }).expect(204);
 
       expect(await db.select().from(fundSales).where(eq(fundSales.fundId, fund.id))).toHaveLength(0);
+    });
+
+    it('borra también etiquetas, enlaces y avisos de garantía de la spec 051, sin tocar los de otra cuenta', async () => {
+      const user = await createActiveUser('eliminar-gestor@example.com');
+      const other = await createActiveUser('otro-gestor@example.com');
+      const accessToken = await login(user.email);
+      const [shop] = await db.insert(supermarkets).values({ userId: user.id, name: 'Media Markt' }).returning();
+      const [receipt] = await db
+        .insert(receipts)
+        .values({ userId: user.id, supermarketId: shop.id, date: '2026-10-15', printedTotal: '549.00', note: 'Serie', warrantyUntil: '2026-11-01' })
+        .returning();
+      const [tag] = await db.insert(receiptTags).values({ userId: user.id, name: 'Garantía' }).returning();
+      await db.insert(receiptTagLinks).values({ receiptId: receipt.id, tagId: tag.id });
+      await db.insert(warrantyRemindersSent).values({ receiptId: receipt.id, warrantyUntil: '2026-11-01' });
+      await db.insert(receiptTags).values({ userId: other.id, name: 'Garantía' });
+
+      await request(app.getHttpServer()).delete('/users/me').set('Authorization', `Bearer ${accessToken}`).send({ password: PASSWORD }).expect(204);
+
+      expect(await db.select().from(receiptTags).where(eq(receiptTags.userId, user.id))).toHaveLength(0);
+      expect(await db.select().from(receiptTagLinks).where(eq(receiptTagLinks.tagId, tag.id))).toHaveLength(0);
+      expect(await db.select().from(warrantyRemindersSent).where(eq(warrantyRemindersSent.receiptId, receipt.id))).toHaveLength(0);
+      expect(await db.select().from(receipts).where(eq(receipts.id, receipt.id))).toHaveLength(0);
+      expect(await db.select().from(receiptTags).where(eq(receiptTags.userId, other.id))).toHaveLength(1);
     });
 
     it('en una cuenta sin contraseña (solo Google), exige y valida el email de confirmación en su lugar', async () => {
