@@ -70,6 +70,8 @@ export interface UserProfile {
   hasPassword: boolean;
   /** Spec 049 H1 criterio 6. */
   recurringReminderEmails: boolean;
+  /** Spec 051 H5 criterio 4. */
+  warrantyReminderEmails: boolean;
 }
 
 /**
@@ -125,6 +127,7 @@ export class UsersService {
     if (dto.currency !== undefined) updates.currency = dto.currency;
     if (dto.locale !== undefined) updates.locale = dto.locale;
     if (dto.recurringReminderEmails !== undefined) updates.recurringReminderEmails = dto.recurringReminderEmails;
+    if (dto.warrantyReminderEmails !== undefined) updates.warrantyReminderEmails = dto.warrantyReminderEmails;
 
     const [updated] = await this.db.update(users).set(updates).where(eq(users.id, userId)).returning();
     if (!updated) {
@@ -426,6 +429,7 @@ export class UsersService {
       createdAt: user.createdAt,
       hasPassword: user.passwordHash !== null,
       recurringReminderEmails: user.recurringReminderEmails,
+      warrantyReminderEmails: user.warrantyReminderEmails,
     };
   }
 }
