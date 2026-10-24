@@ -1,6 +1,6 @@
 # Spec 051 — Gestor de tickets: etiquetas, buscador, notas, garantías y galería
 
-**Estado:** Pendiente de aprobación
+**Estado:** Aprobada
 **Fase:** 1 de 4 (Spec → Plan → Tasks → Implementación)
 **Basado en:** petición directa de Diego ("un gestor de tickets: poder poner etiquetas, un buscador…"). Construye sobre las specs 034, 035, 040 y 048 (tickets y facturas con su documento original).
 
@@ -83,11 +83,9 @@ Como usuario quiero saber hasta cuándo tengo garantía de una compra y que la a
 1. Etiquetas libres, varias por ticket, creadas al vuelo (respuesta a la pregunta de etiquetas).
 2. El buscador mira también el texto del documento; los tickets antiguos solo si se vuelve a leer su texto (respuesta a la pregunta del buscador).
 3. Se incluyen notas, garantías con aviso y galería; archivar, no.
+4. Aviso de garantía: un solo email, 30 días antes (propuesta aceptada al aprobar la spec).
+5. Adjuntar o sustituir un documento lee su texto automáticamente (propuesta aceptada al aprobar la spec).
 
-## 4. Propuestas pendientes de confirmar
-
-- **Aviso de garantía:** 30 días antes, un solo aviso (H5 criterio 3). ¿Te vale, o prefieres elegir los días o recibir también un aviso el último día?
-- **Adjuntar o sustituir un documento lee su texto automáticamente** (H3 criterio 2), con su llamada a Vision. ¿Te parece bien, o prefieres que sea a petición, como en los tickets antiguos?
 
 ---
-**Siguiente paso:** revisión de Diego y, si la aprueba, `plan.md`.
+**Siguiente paso:** `plan.md`.
