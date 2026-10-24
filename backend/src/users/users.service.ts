@@ -17,6 +17,8 @@ import {
   shoppingLists,
   shoppingListItems,
   receiptDocuments,
+  receiptTags,
+  receiptTagLinks,
   recurringTransactions,
   categories,
   cryptoPurchases,
@@ -378,16 +380,19 @@ export class UsersService {
    */
   private async exportGroceries(
     userId: string,
-  ): Promise<Pick<EconomicData, 'supermarkets' | 'products' | 'receipts' | 'receiptLines' | 'receiptDocuments' | 'shoppingLists' | 'shoppingListItems'>> {
-    const [userSupermarkets, userProducts, userReceipts, userShoppingLists] = await Promise.all([
+  ): Promise<
+    Pick<EconomicData, 'supermarkets' | 'products' | 'receipts' | 'receiptTags' | 'receiptTagLinks' | 'receiptLines' | 'receiptDocuments' | 'shoppingLists' | 'shoppingListItems'>
+  > {
+    const [userSupermarkets, userProducts, userReceipts, userShoppingLists, userReceiptTags] = await Promise.all([
       this.db.query.supermarkets.findMany({ where: eq(supermarkets.userId, userId) }),
       this.db.query.products.findMany({ where: eq(products.userId, userId) }),
       this.db.query.receipts.findMany({ where: eq(receipts.userId, userId) }),
       this.db.query.shoppingLists.findMany({ where: eq(shoppingLists.userId, userId) }),
+      this.db.query.receiptTags.findMany({ where: eq(receiptTags.userId, userId) }),
     ]);
     const receiptIds = userReceipts.map((r) => r.id);
     const listIds = userShoppingLists.map((l) => l.id);
-    const [userReceiptLines, userShoppingListItems, userDocuments] = await Promise.all([
+    const [userReceiptLines, userShoppingListItems, userDocuments, userTagLinks] = await Promise.all([
       receiptIds.length ? this.db.query.receiptLines.findMany({ where: inArray(receiptLines.receiptId, receiptIds) }) : [],
       listIds.length ? this.db.query.shoppingListItems.findMany({ where: inArray(shoppingListItems.shoppingListId, listIds) }) : [],
       // Spec 048: solo metadatos (sin `content`), y solo de documentos ya
@@ -402,15 +407,21 @@ export class UsersService {
           sha256: receiptDocuments.sha256,
           originalFilename: receiptDocuments.originalFilename,
           pageCount: receiptDocuments.pageCount,
+          // Spec 051 H7: el texto reconocido viaja con el documento; la miniatura no (se regenera).
+          ocrText: receiptDocuments.ocrText,
+          ocrReadAt: receiptDocuments.ocrReadAt,
           createdAt: receiptDocuments.createdAt,
         })
         .from(receiptDocuments)
         .where(and(eq(receiptDocuments.userId, userId), isNotNull(receiptDocuments.receiptId))),
+      receiptIds.length ? this.db.query.receiptTagLinks.findMany({ where: inArray(receiptTagLinks.receiptId, receiptIds) }) : [],
     ]);
     return {
       supermarkets: userSupermarkets,
       products: userProducts,
       receipts: userReceipts,
+      receiptTags: userReceiptTags,
+      receiptTagLinks: userTagLinks,
       receiptLines: userReceiptLines,
       receiptDocuments: userDocuments.map((d) => ({ ...d, file: archivePathFor(d.id, d.mimeType) })),
       shoppingLists: userShoppingLists,

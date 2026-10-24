@@ -31,6 +31,9 @@ import {
   recurringTransactions,
   products,
   receiptDocuments,
+  receiptTags,
+  receiptTagLinks,
+  RECEIPT_TAG_COLORS,
   receiptLines,
   receipts,
   savingsGoals,
@@ -47,6 +50,7 @@ import {
   vehicles,
 } from '../db/schema/index.js';
 import { isDataError } from '../common/db-errors.util.js';
+import { normalizeSearch } from '../groceries/receipt-search.js';
 import { ECONOMIC_DATA_TABLE_ORDER, EXPORT_FORMAT_VERSION, OPTIONAL_ECONOMIC_DATA_KEYS } from '../data-export/account-export.types.js';
 import type { AccountExportFile, EconomicData } from '../data-export/account-export.types.js';
 import type { DataImportSummary, TableImportSummary } from './data-import.types.js';
@@ -92,6 +96,21 @@ class ImportContext {
   has(key: keyof EconomicData, id: string): boolean {
     return this.imported.get(key)?.has(id) ?? false;
   }
+
+  /**
+   * Spec 051: una fila del fichero que no se importa porque ya existe otra
+   * equivalente del usuario (una etiqueta con el mismo nombre). Las filas
+   * que apuntaban a ella apuntan a la existente.
+   */
+  private readonly aliases = new Map<string, string>();
+
+  alias(key: keyof EconomicData, fileId: string, existingId: string): void {
+    this.aliases.set(`${key}|${fileId}`, existingId);
+  }
+
+  resolve(key: keyof EconomicData, id: string): string {
+    return this.aliases.get(`${key}|${id}`) ?? id;
+  }
 }
 
 const omitIfNotOwned = (column: string, target: RefTarget): TableRef => ({ column, target, onInvalid: 'omit' });
@@ -104,6 +123,8 @@ type CustomMergeKey =
   | 'receipts'
   | 'receiptLines'
   | 'receiptDocuments'
+  | 'receiptTags'
+  | 'receiptTagLinks'
   | 'shoppingListItems';
 
 const TABLES: Record<Exclude<keyof EconomicData, CustomMergeKey>, TableEntry> = {
@@ -154,7 +175,7 @@ const TABLES: Record<Exclude<keyof EconomicData, CustomMergeKey>, TableEntry> = 
  * fichero — las de `TableRef` y las que usan las fusiones propias de las
  * specs 047, 048 y 049.
  */
-type OwnedKey = RefTarget | 'transactions' | 'recurringTransactions' | 'supermarkets' | 'products' | 'shoppingLists' | 'receipts';
+type OwnedKey = RefTarget | 'transactions' | 'recurringTransactions' | 'supermarkets' | 'products' | 'shoppingLists' | 'receipts' | 'receiptTags';
 type OwnedTable = PgTable & { id: AnyPgColumn; userId: AnyPgColumn };
 const OWNED_TABLES: Record<OwnedKey, OwnedTable> = {
   categories,
@@ -171,6 +192,7 @@ const OWNED_TABLES: Record<OwnedKey, OwnedTable> = {
   products,
   shoppingLists,
   receipts,
+  receiptTags,
 } as unknown as Record<OwnedKey, OwnedTable>;
 
 /** `db.transaction(async (tx) => ...)` sin anotar el tipo del callback (mismo criterio que `ImportService.importWorkbook`) infiere el tipo de `tx` — se reutiliza aquí para poder compartir la misma lógica entre `preview` (solo lectura, sin transacción) y `confirm`. */
@@ -232,7 +254,25 @@ function isValidDocumentRow(row: unknown): row is Row {
 
 const STORED_DOCUMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
+/** Spec 051: los enlaces de etiquetas no tienen `id` propio, su clave es (`receiptId`, `tagId`). */
+function isValidTagLinkRow(row: unknown): row is Row {
+  return isPlainObject(row) && typeof row.receiptId === 'string' && isUUID(row.receiptId) && typeof row.tagId === 'string' && isUUID(row.tagId);
+}
+
+/** Spec 051: nombre de 1 a 40 caracteres y color de la paleta (o ninguno). */
+function isValidTagRow(row: unknown): row is Row {
+  return (
+    isValidRow(row) &&
+    typeof row.name === 'string' &&
+    row.name.trim().length >= 1 &&
+    row.name.length <= 40 &&
+    (row.color === null || row.color === undefined || (typeof row.color === 'string' && (RECEIPT_TAG_COLORS as readonly string[]).includes(row.color)))
+  );
+}
+
 const ROW_VALIDATORS: Partial<Record<keyof EconomicData, (row: unknown) => row is Row>> = {
+  receiptTags: isValidTagRow,
+  receiptTagLinks: isValidTagLinkRow,
   recurringOccurrenceResolutions: isValidResolutionRow,
   recurringReconciliationDismissals: isValidDismissalRow,
   receiptDocuments: isValidDocumentRow,
@@ -426,6 +466,14 @@ export class DataImportService {
       }
       if (key === 'receipts') {
         summary[key] = await this.mergeReceipts(executor, file, userId, write, context);
+        continue;
+      }
+      if (key === 'receiptTags') {
+        summary[key] = await this.mergeReceiptTags(executor, file, userId, write, context);
+        continue;
+      }
+      if (key === 'receiptTagLinks') {
+        summary[key] = await this.mergeReceiptTagLinks(executor, file, userId, write, context);
         continue;
       }
       if (key === 'receiptLines') {
@@ -702,6 +750,87 @@ export class DataImportService {
     return { total: rows.length, toImport: toInsert.length, alreadyExisting: existingIds.size };
   }
 
+  /**
+   * Spec 051 H7 (plan.md §3.6): si el usuario ya tiene una etiqueta con el
+   * mismo nombre (sin mayúsculas ni tildes), se reutiliza en vez de chocar
+   * con el índice único: cuenta como ya existente y sus enlaces apuntan a la
+   * existente. Una etiqueta cuyo `id` ya es de otra cuenta no se importa.
+   */
+  private async mergeReceiptTags(
+    executor: Executor,
+    file: AccountExportFile,
+    userId: string,
+    write: boolean,
+    context: ImportContext,
+  ): Promise<TableImportSummary> {
+    const rows = file.economicData.receiptTags as unknown as Row[];
+    if (rows.length === 0) return { total: 0, toImport: 0, alreadyExisting: 0 };
+
+    const byId = await executor
+      .select({ id: receiptTags.id, userId: receiptTags.userId })
+      .from(receiptTags)
+      .where(inArray(receiptTags.id, rows.map((r) => r.id as string)));
+    const ownerById = new Map(byId.map((r) => [r.id, r.userId]));
+    const own = await executor.select({ id: receiptTags.id, name: receiptTags.name }).from(receiptTags).where(eq(receiptTags.userId, userId));
+    const ownByName = new Map(own.map((t) => [normalizeSearch(t.name.trim()), t.id]));
+
+    let alreadyExisting = 0;
+    const toInsert: Row[] = [];
+    for (const row of rows) {
+      const id = row.id as string;
+      if (ownerById.has(id)) {
+        alreadyExisting += 1;
+        if (ownerById.get(id) === userId) context.add('receiptTags', [id]);
+        continue;
+      }
+      const key = normalizeSearch((row.name as string).trim());
+      const existingId = ownByName.get(key);
+      if (existingId) {
+        alreadyExisting += 1;
+        context.alias('receiptTags', id, existingId);
+        continue;
+      }
+      ownByName.set(key, id);
+      toInsert.push({ id, userId, name: (row.name as string).trim(), color: row.color ?? null, ...(typeof row.createdAt === 'string' && { createdAt: new Date(row.createdAt) }) });
+    }
+    if (write && toInsert.length > 0) await executor.insert(receiptTags).values(toInsert as never[]);
+    context.add('receiptTags', toInsert.map((r) => r.id as string));
+    return { total: rows.length, toImport: toInsert.length, alreadyExisting };
+  }
+
+  /** Spec 051 H7: un enlace se importa si su ticket y su etiqueta (o la equivalente existente) son utilizables. */
+  private async mergeReceiptTagLinks(
+    executor: Executor,
+    file: AccountExportFile,
+    userId: string,
+    write: boolean,
+    context: ImportContext,
+  ): Promise<TableImportSummary> {
+    const rows = file.economicData.receiptTagLinks as unknown as Row[];
+    if (rows.length === 0) return { total: 0, toImport: 0, alreadyExisting: 0, omitted: 0 };
+
+    const resolved = rows.map((r) => ({ receiptId: r.receiptId as string, tagId: context.resolve('receiptTags', r.tagId as string) }));
+    const receiptOk = await this.usableIds(executor, 'receipts', resolved.map((r) => r.receiptId), userId, context);
+    const tagOk = await this.usableIds(executor, 'receiptTags', resolved.map((r) => r.tagId), userId, context);
+    const existing = await executor
+      .select({ receiptId: receiptTagLinks.receiptId, tagId: receiptTagLinks.tagId })
+      .from(receiptTagLinks)
+      .where(inArray(receiptTagLinks.receiptId, [...new Set(resolved.map((r) => r.receiptId))]));
+    const existingKeys = new Set(existing.map((r) => `${r.receiptId}|${r.tagId}`));
+
+    const usable = resolved.filter((r) => receiptOk(r.receiptId) && tagOk(r.tagId));
+    const seen = new Set<string>();
+    const toInsert = usable.filter((r) => {
+      const key = `${r.receiptId}|${r.tagId}`;
+      if (existingKeys.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (write && toInsert.length > 0) await executor.insert(receiptTagLinks).values(toInsert).onConflictDoNothing();
+    const alreadyExisting = usable.length - toInsert.length;
+    return { total: rows.length, toImport: toInsert.length, alreadyExisting, omitted: rows.length - usable.length };
+  }
+
   private async mergeShoppingListItems(
     executor: Executor,
     file: AccountExportFile,
@@ -782,6 +911,9 @@ export class DataImportService {
           originalFilename: row.originalFilename as string,
           pageCount: typeof row.pageCount === 'number' ? row.pageCount : null,
           content,
+          // Spec 051 H7: el texto reconocido viaja con el documento; la miniatura se regenera al pedirla.
+          ocrText: typeof row.ocrText === 'string' ? row.ocrText : null,
+          ocrReadAt: typeof row.ocrReadAt === 'string' && !Number.isNaN(Date.parse(row.ocrReadAt)) ? new Date(row.ocrReadAt) : null,
           ...(typeof row.createdAt === 'string' && { createdAt: new Date(row.createdAt) }),
         });
       }

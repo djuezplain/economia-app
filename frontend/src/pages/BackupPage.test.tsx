@@ -167,6 +167,21 @@ describe('BackupPage', () => {
       expect(screen.getByText(/apuntan a datos que no son de tu cuenta/)).toBeInTheDocument();
     });
 
+    it('muestra las etiquetas de tickets en español (spec 051 H7)', async () => {
+      vi.spyOn(dataImportApi, 'previewDataImport').mockResolvedValue({
+        ...emptySummary(),
+        receiptTags: { total: 2, toImport: 1, alreadyExisting: 1 },
+        receiptTagLinks: { total: 3, toImport: 3, alreadyExisting: 0, omitted: 0 },
+      });
+
+      renderPage();
+      await userEvent.upload(await screen.findByLabelText('Fichero .zip o .json'), new File(['{}'], 'copia.json'));
+
+      const table = await screen.findByRole('table');
+      expect(within(table).getByRole('row', { name: /Etiquetas de tickets/ })).toBeInTheDocument();
+      expect(within(table).getByRole('row', { name: /Etiquetas puestas en tickets/ })).toBeInTheDocument();
+    });
+
     it('sin documentos omitidos no muestra la columna "Omitidos"', async () => {
       vi.spyOn(dataImportApi, 'previewDataImport').mockResolvedValue({
         ...emptySummary(),
