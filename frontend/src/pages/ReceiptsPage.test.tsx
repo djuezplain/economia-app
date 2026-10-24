@@ -7,6 +7,7 @@ import { AuthProvider } from '../auth/AuthContext';
 import * as authApi from '../api/auth';
 import * as usersApi from '../api/users';
 import * as groceriesApi from '../api/groceries';
+import * as tagsApi from '../api/receipt-tags';
 import type { ReceiptSummary } from '../api/groceries';
 
 const PROFILE: usersApi.UserProfile = {
@@ -58,6 +59,10 @@ describe('ReceiptsPage', () => {
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue(PROFILE);
     vi.spyOn(groceriesApi, 'listSupermarkets').mockResolvedValue([{ id: 's1', name: 'Mercadona' }]);
     vi.spyOn(groceriesApi, 'searchProducts').mockResolvedValue([{ id: 'p1', name: 'Leche' }]);
+    vi.spyOn(tagsApi, 'listReceiptTags').mockResolvedValue([
+      { id: 't1', name: 'Garantía', color: 'blue', receiptCount: 2 },
+      { id: 't2', name: 'Hogar', color: null, receiptCount: 1 },
+    ]);
   });
 
   function renderPage() {
@@ -190,5 +195,55 @@ describe('ReceiptsPage', () => {
     renderPage();
     expect(await screen.findByLabelText('con PDF')).toBeInTheDocument();
     expect(screen.getAllByText('📎')).toHaveLength(1);
+  });
+
+  describe('buscador y filtros de la spec 051', () => {
+    it('busca lo escrito tras una pequeña espera, con una sola petición por búsqueda', async () => {
+      const listSpy = vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue(RECEIPTS);
+      renderPage();
+      await screen.findAllByRole('listitem');
+      listSpy.mockClear();
+
+      await userEvent.type(screen.getByLabelText('Buscar tickets'), 'lavadora');
+      await vi.waitFor(() => expect(listSpy).toHaveBeenCalledWith(expect.objectContaining({ q: 'lavadora' })));
+      expect(listSpy.mock.calls.filter(([filters]) => filters?.q !== undefined)).toHaveLength(1);
+    });
+
+    it('cada resultado indica dónde ha coincidido, con el fragmento', async () => {
+      vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue([
+        { ...RECEIPTS[0], match: { field: 'document', snippet: '…LAVADORA BOSCH SERIE 6…' } },
+        { ...RECEIPTS[1], match: { field: 'merchant', snippet: null } },
+      ]);
+      renderPage();
+      const items = await screen.findAllByRole('listitem');
+      expect(items[0]).toHaveTextContent('Coincide en el documento: «…LAVADORA BOSCH SERIE 6…»');
+      expect(items[1]).not.toHaveTextContent('Coincide en');
+    });
+
+    it('filtra por etiquetas (todas las marcadas) y por garantía; "Limpiar filtros" lo quita todo', async () => {
+      const listSpy = vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue(RECEIPTS);
+      renderPage();
+      const group = await screen.findByRole('group', { name: 'Filtrar por etiquetas' });
+      const garantia = within(group).getAllByRole('button')[0];
+
+      await userEvent.click(garantia);
+      expect(garantia).toHaveAttribute('aria-pressed', 'true');
+      await userEvent.click(within(group).getAllByRole('button')[1]);
+      expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ tagIds: ['t1', 't2'] }));
+
+      await userEvent.selectOptions(screen.getByLabelText('Garantía'), 'Caduca en los próximos 30 días');
+      expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ tagIds: ['t1', 't2'], warranty: 'expiring' }));
+
+      await userEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }));
+      expect(listSpy).toHaveBeenLastCalledWith(expect.objectContaining({ tagIds: undefined, warranty: undefined, q: undefined }));
+      expect(garantia).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('con una búsqueda sin resultados, lo dice', async () => {
+      vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue([]);
+      renderPage();
+      await userEvent.type(await screen.findByLabelText('Buscar tickets'), 'secadora');
+      expect(await screen.findByText('No hay tickets con estos filtros.')).toBeInTheDocument();
+    });
   });
 });

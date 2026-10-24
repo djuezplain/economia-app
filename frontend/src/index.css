@@ -1964,3 +1964,37 @@ details > summary {
   font-family: var(--mono);
   font-size: 12px;
 }
+
+/* Spec 051 H2: buscador y filtro de etiquetas del historial. */
+.receipt-search {
+  margin: 12px 0 4px;
+}
+.receipt-search .input {
+  width: 100%;
+  font-size: 16px;
+}
+.receipt-tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+.tag-filter-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.tag-filter-button[aria-pressed='true'] {
+  opacity: 1;
+}
+.tag-filter-button[aria-pressed='true'] .receipt-tag {
+  outline: 2px solid color-mix(in srgb, var(--tag-color) 70%, transparent);
+  outline-offset: 1px;
+}
+.receipt-match {
+  margin-top: 4px;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}

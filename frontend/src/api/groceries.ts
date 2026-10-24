@@ -54,6 +54,15 @@ export interface ReceiptSummary {
   hasNote: boolean;
   /** Spec 051 H5: fin de la garantía (`AAAA-MM-DD`), o `null`. */
   warrantyUntil: string | null;
+  /** Spec 051 H2 criterio 4: solo con búsqueda; dónde ha coincidido. */
+  match?: ReceiptSearchMatch;
+}
+
+export type ReceiptMatchField = 'merchant' | 'tag' | 'note' | 'line' | 'product' | 'document';
+
+export interface ReceiptSearchMatch {
+  field: ReceiptMatchField;
+  snippet: string | null;
 }
 
 /** Spec 048 H1: metadatos del documento de un ticket (el contenido se pide aparte). */
@@ -87,12 +96,19 @@ export interface ListReceiptsFilters {
   dateTo?: string;
   amountMin?: string;
   amountMax?: string;
+  /** Spec 051 H2. */
+  q?: string;
+  /** Spec 051 H1 criterio 4: tickets con todas estas etiquetas. */
+  tagIds?: string[];
+  /** Spec 051 H5 criterio 2. */
+  warranty?: 'active' | 'expiring';
 }
 
 function buildReceiptsQuery(filters: ListReceiptsFilters): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
-    if (value !== undefined && value !== '') params.set(key, value);
+    if (Array.isArray(value)) value.forEach((item: string) => params.append(key, item));
+    else if (value !== undefined && value !== '') params.set(key, value);
   }
   const query = params.toString();
   return query ? `?${query}` : '';
