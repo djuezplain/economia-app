@@ -28,6 +28,8 @@ import { LinkTransactionDto } from './dto/link-transaction.dto.js';
 import { ReceiptsService } from './receipts.service.js';
 import { MAX_DOCUMENT_SIZE_BYTES, ReceiptDocumentsService } from './receipt-documents.service.js';
 import { DocumentTooLargeFilter } from './document-too-large.filter.js';
+import { ReceiptTagsSelectionDto } from './dto/receipt-tag.dto.js';
+import { ReceiptTagsService } from './receipt-tags.service.js';
 
 /**
  * Spec 034, plan.md §3 (H5, lectura) + spec 035, plan.md §1 (H1-H3,
@@ -43,6 +45,7 @@ export class ReceiptsController {
   constructor(
     private readonly receiptsService: ReceiptsService,
     private readonly documents: ReceiptDocumentsService,
+    private readonly tags: ReceiptTagsService,
   ) {}
 
   @Get()
@@ -58,6 +61,12 @@ export class ReceiptsController {
   @Put(':id')
   update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: ConfirmReceiptDto, @Req() req: Request & { user: RequestUser }) {
     return this.receiptsService.update(req.user.id, id, dto);
+  }
+
+  /** Spec 051 H1 criterio 1: sustituye las etiquetas del ticket, creando al vuelo las nuevas. */
+  @Put(':id/tags')
+  setTags(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: ReceiptTagsSelectionDto, @Req() req: Request & { user: RequestUser }) {
+    return this.tags.setForReceipt(req.user.id, id, dto);
   }
 
   @Delete(':id')

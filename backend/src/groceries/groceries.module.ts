@@ -5,6 +5,8 @@ import { ProductsService } from './products.service.js';
 import { ReceiptsController } from './receipts.controller.js';
 import { ReceiptsService } from './receipts.service.js';
 import { ReceiptDocumentsModule } from './receipt-documents.module.js';
+import { ReceiptTagsModule } from './receipt-tags.module.js';
+import { ReceiptTagsController } from './receipt-tags.controller.js';
 import { SupermarketsController } from './supermarkets.controller.js';
 import { SupermarketsService } from './supermarkets.service.js';
 
@@ -14,8 +16,8 @@ import { SupermarketsService } from './supermarkets.service.js';
  * `StockImportModule` en spec 033.
  */
 @Module({
-  imports: [AuthGuardModule, ReceiptDocumentsModule],
-  controllers: [SupermarketsController, ProductsController, ReceiptsController],
+  imports: [AuthGuardModule, ReceiptDocumentsModule, ReceiptTagsModule],
+  controllers: [SupermarketsController, ProductsController, ReceiptsController, ReceiptTagsController],
   providers: [SupermarketsService, ProductsService, ReceiptsService],
 })
 export class GroceriesModule {}

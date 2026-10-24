@@ -13,6 +13,8 @@ import { receiptTotal } from './receipt-total.js';
 import type { ListReceiptsQueryDto } from './dto/list-receipts-query.dto.js';
 import { ReceiptDocumentsService } from './receipt-documents.service.js';
 import type { DocumentInfo } from './receipt-documents.service.js';
+import { ReceiptTagsService } from './receipt-tags.service.js';
+import type { ReceiptTag } from './receipt-tags.service.js';
 
 export interface ReceiptSummary {
   id: string;
@@ -31,6 +33,8 @@ export interface ReceiptSummary {
   transactionId: string | null;
   /** Spec 048 H1: metadatos del documento original (sin el contenido), o `null` si no tiene. */
   document: DocumentInfo | null;
+  /** Spec 051 H1: sus etiquetas, por nombre. */
+  tags: ReceiptTag[];
 }
 
 export interface ReceiptLineDetail {
@@ -55,6 +59,7 @@ export class ReceiptsService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly documents: ReceiptDocumentsService,
+    private readonly tags: ReceiptTagsService,
   ) {}
 
   /**
@@ -102,6 +107,10 @@ export class ReceiptsService {
       userId,
       receiptRows.map((r) => r.id),
     );
+    const tagsByReceipt = await this.tags.byReceipt(
+      this.db,
+      receiptRows.map((r) => r.id),
+    );
     const linesByReceipt = new Map<string, (typeof lineRows)[number][]>();
     for (const line of lineRows) {
       const lines = linesByReceipt.get(line.receiptId) ?? [];
@@ -122,6 +131,7 @@ export class ReceiptsService {
         total: receiptTotal(lines, receipt.printedTotal),
         transactionId: receipt.transactionId,
         document: documentByReceipt.get(receipt.id) ?? null,
+        tags: tagsByReceipt.get(receipt.id) ?? [],
         // Presencia del producto filtrado, para el filtro de `productId` (T1.3) — se calcula
         // aquí porque `lines` ya está disponible, se descarta abajo si no se necesita.
         hasFilteredProduct: query.productId ? lines.some((line) => line.productId === query.productId) : true,
@@ -147,6 +157,7 @@ export class ReceiptsService {
     const productRows = productIds.length > 0 ? await this.db.select().from(products).where(inArray(products.id, productIds)) : [];
     const productById = new Map(productRows.map((p) => [p.id, p]));
     const documentByReceipt = await this.documents.infoByReceipt(userId, [receipt.id]);
+    const tagsByReceipt = await this.tags.byReceipt(this.db, [receipt.id]);
 
     return {
       id: receipt.id,
@@ -158,6 +169,7 @@ export class ReceiptsService {
       total: receiptTotal(lineRows, receipt.printedTotal),
       transactionId: receipt.transactionId,
       document: documentByReceipt.get(receipt.id) ?? null,
+      tags: tagsByReceipt.get(receipt.id) ?? [],
       lines: lineRows.map((line) => ({
         id: line.id,
         description: line.description,

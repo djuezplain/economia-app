@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ReceiptTagsModule } from '../groceries/receipt-tags.module.js';
 import { AuthGuardModule } from '../auth/guards/auth-guard.module.js';
 import { ReceiptImportController } from './receipt-import.controller.js';
 import { ReceiptImportService } from './receipt-import.service.js';
@@ -12,7 +13,7 @@ import { ReceiptDocumentsModule } from '../groceries/receipt-documents.module.js
  * un futuro `GroceriesModule` de lectura (grupo 5).
  */
 @Module({
-  imports: [AuthGuardModule, ReceiptDocumentsModule],
+  imports: [AuthGuardModule, ReceiptDocumentsModule, ReceiptTagsModule],
   controllers: [ReceiptImportController],
   providers: [ReceiptImportService, ReceiptOcrService],
 })

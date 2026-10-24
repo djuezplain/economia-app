@@ -5,6 +5,7 @@ import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { products, receiptLines, receipts, supermarkets } from '../db/schema/index.js';
 import type { ConfirmImportReceiptDto } from './dto/confirm-receipt.dto.js';
+import { ReceiptTagsService } from '../groceries/receipt-tags.service.js';
 import { ReceiptDocumentsService } from '../groceries/receipt-documents.service.js';
 import { detectDate, detectPrintedTotal, extractProductLines, guessSupermarketName, matchByNormalizedName } from './receipt-import.parsing.js';
 import type { NamedEntity } from './receipt-import.parsing.js';
@@ -29,6 +30,7 @@ export class ReceiptImportService {
     @Inject(DB) private readonly db: Database,
     private readonly ocrService: ReceiptOcrService,
     private readonly documents: ReceiptDocumentsService,
+    private readonly tags: ReceiptTagsService,
   ) {}
 
   /**
@@ -122,6 +124,8 @@ export class ReceiptImportService {
         // Spec 048 H1 criterio 1: en la misma transacción — o se guardan
         // ticket y documento, o ninguno.
         if (dto.documentId) await this.documents.attachPending(tx, userId, dto.documentId, receipt.id);
+        // Spec 051 H1 criterio 5: también en la misma transacción.
+        if (dto.tags) await this.tags.replaceLinks(tx, userId, receipt.id, dto.tags);
 
         return { receiptId: receipt.id };
       });
