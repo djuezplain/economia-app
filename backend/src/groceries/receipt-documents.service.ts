@@ -8,6 +8,7 @@ import { detectDocumentType } from '../receipt-import/document-type.js';
 import type { DocumentMimeType } from '../receipt-import/document-type.js';
 import { heicToJpeg } from './heic-to-jpeg.js';
 import { ReceiptOcrService } from '../receipt-import/receipt-ocr.service.js';
+import { makeThumbnail } from './receipt-thumbnail.js';
 
 /** Spec 048 H1 criterio 8: mismo límite que la importación de tickets de la spec 034. */
 export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
@@ -51,6 +52,8 @@ export interface PreparedDocument {
   sha256: string;
   pageCount: number | null;
   originalFilename: string;
+  /** Spec 051 H6: miniatura de las imágenes; `null` en los PDF. */
+  thumbnail: Buffer | null;
 }
 
 const UNSUPPORTED_MESSAGE = 'Solo se admiten fotos (JPEG, PNG, WEBP o HEIC) o documentos PDF.';
@@ -110,6 +113,7 @@ export class ReceiptDocumentsService {
       sha256: createHash('sha256').update(content).digest('hex'),
       pageCount: mimeType === 'application/pdf' ? countPdfPages(content) : null,
       originalFilename: cleanFilename(filename, mimeType),
+      thumbnail: mimeType === 'application/pdf' ? null : await makeThumbnail(content),
     };
   }
 
@@ -195,6 +199,29 @@ export class ReceiptDocumentsService {
     return row;
   }
 
+  /**
+   * Spec 051 H6: la miniatura del documento de un ticket. Los documentos
+   * anteriores a la spec 051 la generan la primera vez y la guardan. `null`
+   * = no hay miniatura (PDF, o imagen que no se pudo leer).
+   */
+  async getThumbnail(userId: string, receiptId: string): Promise<Buffer | null> {
+    await this.findOwnReceiptOrThrow(userId, receiptId);
+    const [row] = await this.db
+      .select({ id: receiptDocuments.id, mimeType: receiptDocuments.mimeType, thumbnail: receiptDocuments.thumbnail })
+      .from(receiptDocuments)
+      .where(and(eq(receiptDocuments.receiptId, receiptId), eq(receiptDocuments.userId, userId)));
+    if (!row) throw new NotFoundException('Este ticket no tiene documento.');
+    if (row.mimeType === 'application/pdf') return null;
+
+    let thumbnail = row.thumbnail;
+    if (thumbnail === null) {
+      const [content] = await this.db.select({ content: receiptDocuments.content }).from(receiptDocuments).where(eq(receiptDocuments.id, row.id));
+      thumbnail = await makeThumbnail(content.content);
+      await this.db.update(receiptDocuments).set({ thumbnail }).where(eq(receiptDocuments.id, row.id));
+    }
+    return thumbnail.length > 0 ? thumbnail : null;
+  }
+
   /** Spec 051 H3 criterio 5: el texto guardado, aparte del detalle para no inflarlo. */
   async getText(userId: string, receiptId: string): Promise<DocumentText> {
     await this.findOwnReceiptOrThrow(userId, receiptId);
@@ -263,6 +290,7 @@ export class ReceiptDocumentsService {
       originalFilename: prepared.originalFilename,
       pageCount: prepared.pageCount,
       content: prepared.content,
+      thumbnail: prepared.thumbnail,
     };
   }
 

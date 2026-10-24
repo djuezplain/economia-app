@@ -6,6 +6,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -122,6 +123,24 @@ export class ReceiptsController {
     if (!file) throw new BadRequestException('Falta el documento (campo "file").');
     const prepared = await this.documents.prepare(file.buffer, file.originalname);
     return this.documents.replace(req.user.id, id, prepared);
+  }
+
+  /**
+   * Spec 051 H6: miniatura JPEG para la galería. Se puede guardar en la
+   * caché del navegador un día: el frontend pide `?v=<id del documento>`,
+   * que cambia al sustituirlo. 404 si no hay miniatura (PDF o imagen dañada).
+   */
+  @Get(':id/document/thumbnail')
+  async getThumbnail(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }, @Res() res: Response): Promise<void> {
+    const thumbnail = await this.documents.getThumbnail(req.user.id, id);
+    if (!thumbnail) throw new NotFoundException('Este documento no tiene miniatura.');
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Content-Length': String(thumbnail.length),
+      'Cache-Control': 'private, max-age=86400',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.end(thumbnail);
   }
 
   /** Spec 051 H3 criterio 5: el texto reconocido del documento. */
