@@ -1,6 +1,6 @@
 # Tasks — Spec 051 (gestor de tickets: etiquetas, buscador, notas, garantías y galería)
 
-**Fase:** 3 de 4 (pendiente de aprobación)
+**Fase:** 3 de 4 (aprobado)
 
 Orden de plan.md §9. Cada tarea es como mucho un commit (constitution §4) y no se da por hecha si rompe un test existente.
 
