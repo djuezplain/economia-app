@@ -21,6 +21,11 @@
      - `@nestjs/mau`: es la CLI opcional de despliegue en la nube de NestJS, que el proyecto no usa.
    - Propuesta: quitar `@nestjs/mau` (eso elimina además los avisos de `tmp`, `undici`, `inquirer` y `external-editor`) y anotar `drizzle-kit`: solo se ejecuta en el arranque para aplicar migraciones y en desarrollo, nunca con datos de usuarios.
 
+## 0.1 Decisiones de Diego
+
+- §0.3: **aplicar ya** las versiones corregidas, con versiones exactas y `npm audit signatures`.
+- §0.5: **quitar `@nestjs/mau`**; `drizzle-kit` se anota.
+
 ## 1. Cambios
 
 - **`backend/package.json`:** `@nestjs/common`, `core`, `platform-express`, `testing` y el resto de la familia en `^12.2.0`; `multer` en `2.5.0`; `joi` en `^18.3.0`; fuera `@nestjs/mau` (si se aprueba §0.5).
