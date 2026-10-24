@@ -1921,3 +1921,26 @@ details > summary {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Spec 051 H4 y H5: nota y garantía de un ticket. */
+.receipt-note {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+.warranty-status {
+  white-space: nowrap;
+}
+.warranty-expiring {
+  color: var(--accent-700);
+}
+.warranty-expired {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.warranty-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}

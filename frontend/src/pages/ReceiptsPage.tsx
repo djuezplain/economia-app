@@ -6,11 +6,13 @@ import { listReceipts, listSupermarkets, searchProducts } from '../api/groceries
 import type { ListReceiptsFilters, Product, ReceiptSummary, Supermarket } from '../api/groceries';
 import { ApiError } from '../api/client';
 import { TagList } from '../components/TagChip';
+import { localToday, warrantyLabel, warrantyStatus } from './receipt-warranty';
 
 const EMPTY_FILTERS = { supermarketId: '', productId: '', dateFrom: '', dateTo: '', amountMin: '', amountMax: '' };
 
 /** Spec 034 (H5 criterio 1), plan.md §11 + spec 040 (H1): filtros por supermercado, producto, fechas e importe. */
 export function ReceiptsPage() {
+  const today = localToday();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const isOnline = useConnectivity();
 
@@ -192,6 +194,20 @@ export function ReceiptsPage() {
                     <span aria-label={receipt.document.mimeType === 'application/pdf' ? 'con PDF' : 'con foto'} title="Tiene el documento original">
                       📎
                     </span>
+                  </>
+                )}
+                {receipt.hasNote && (
+                  <>
+                    {' · '}
+                    <span aria-label="con nota" title="Tiene nota">
+                      📝
+                    </span>
+                  </>
+                )}
+                {receipt.warrantyUntil && (
+                  <>
+                    {' · '}
+                    <span className={`warranty-status warranty-${warrantyStatus(receipt.warrantyUntil, today)}`}>🛡️ {warrantyLabel(receipt.warrantyUntil, today)}</span>
                   </>
                 )}
               </p>

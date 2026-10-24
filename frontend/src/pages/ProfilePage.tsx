@@ -85,11 +85,11 @@ export function ProfilePage() {
     }
   }
 
-  async function handleToggleReminders(enabled: boolean) {
+  async function handleToggleReminders(changes: { recurringReminderEmails?: boolean; warrantyReminderEmails?: boolean }) {
     setRemindersError(null);
     setIsSavingReminders(true);
     try {
-      setProfile(await updateProfile({ recurringReminderEmails: enabled }));
+      setProfile(await updateProfile(changes));
     } catch (err) {
       setRemindersError(err instanceof ApiError ? err.message : 'No se ha podido guardar la preferencia de avisos.');
     } finally {
@@ -281,7 +281,7 @@ export function ProfilePage() {
                     type="checkbox"
                     checked={profile.recurringReminderEmails}
                     disabled={isSavingReminders}
-                    onChange={(e) => void handleToggleReminders(e.target.checked)}
+                    onChange={(e) => void handleToggleReminders({ recurringReminderEmails: e.target.checked })}
                   />{' '}
                   Avisos de recibos por email
                 </label>
@@ -289,6 +289,19 @@ export function ProfilePage() {
                   Emails antes de que venzan los recibos recurrentes que tengan el aviso activado. Apagándolo aquí no se envía ninguno,
                   sin cambiar la configuración de cada recibo.
                 </p>
+              </div>
+              <div className="field">
+                <label htmlFor="warranty-reminder-emails">
+                  <input
+                    id="warranty-reminder-emails"
+                    type="checkbox"
+                    checked={profile.warrantyReminderEmails}
+                    disabled={isSavingReminders}
+                    onChange={(e) => void handleToggleReminders({ warrantyReminderEmails: e.target.checked })}
+                  />{' '}
+                  Avisos de garantía por email
+                </label>
+                <p className="card-meta">Un email 30 días antes de que caduque la garantía de un ticket.</p>
               </div>
               {remindersError && <p role="alert">{remindersError}</p>}
             </div>

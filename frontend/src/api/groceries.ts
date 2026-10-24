@@ -50,6 +50,10 @@ export interface ReceiptSummary {
   document: ReceiptDocumentInfo | null;
   /** Spec 051 H1: sus etiquetas, por nombre. */
   tags: ReceiptTag[];
+  /** Spec 051 H4: el listado solo indica si hay nota. */
+  hasNote: boolean;
+  /** Spec 051 H5: fin de la garantía (`AAAA-MM-DD`), o `null`. */
+  warrantyUntil: string | null;
 }
 
 /** Spec 048 H1: metadatos del documento de un ticket (el contenido se pide aparte). */
@@ -94,6 +98,7 @@ export interface ReceiptLineDetail {
 
 export interface ReceiptDetail extends ReceiptSummary {
   lines: ReceiptLineDetail[];
+  note: string | null;
 }
 
 export function listSupermarkets(): Promise<Supermarket[]> {
@@ -143,6 +148,11 @@ export function updateReceipt(id: string, payload: ConfirmReceiptPayload): Promi
 }
 
 /** Spec 035, plan.md §4 (H1). */
+/** Spec 051 H4 y H5: lo que no viene no cambia; `null` lo quita. */
+export function updateReceiptDetails(id: string, changes: { note?: string | null; warrantyUntil?: string | null }): Promise<ReceiptDetail> {
+  return api.patch<ReceiptDetail>(`/receipts/${id}/details`, changes);
+}
+
 export function deleteReceipt(id: string): Promise<void> {
   return api.delete<void>(`/receipts/${id}`);
 }

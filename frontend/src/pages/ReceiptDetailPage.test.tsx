@@ -17,7 +17,7 @@ const PROFILE: usersApi.UserProfile = {
   locale: 'es',
   status: 'ACTIVE',
   createdAt: '2026-01-01T00:00:00.000Z',
-  hasPassword: true, recurringReminderEmails: true,
+  hasPassword: true, recurringReminderEmails: true, warrantyReminderEmails: true,
 };
 
 const RECEIPT: ReceiptDetail = {
@@ -31,6 +31,9 @@ const RECEIPT: ReceiptDetail = {
   transactionId: null,
   document: null,
   tags: [],
+  hasNote: false,
+  warrantyUntil: null,
+  note: null,
   lines: [
     { id: 'l1', description: 'CHOCOLATE CLASSIC', quantity: '1', unit: 'unidad', pricePerUnit: '1.300', amount: '1.30', productId: 'p1', productName: 'Chocolate Classic' },
   ],

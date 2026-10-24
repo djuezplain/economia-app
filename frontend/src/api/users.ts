@@ -14,6 +14,8 @@ export interface UserProfile {
   hasPassword: boolean;
   /** Spec 049 H1 criterio 6: interruptor global de los avisos de recibos por email. */
   recurringReminderEmails: boolean;
+  /** Spec 051 H5 criterio 4. */
+  warrantyReminderEmails: boolean;
 }
 
 export interface UpdateProfileInput {
@@ -21,6 +23,7 @@ export interface UpdateProfileInput {
   currency?: string;
   locale?: string;
   recurringReminderEmails?: boolean;
+  warrantyReminderEmails?: boolean;
 }
 
 export interface ChangePasswordInput {

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,7 +17,7 @@ const PROFILE: usersApi.UserProfile = {
   locale: 'es',
   status: 'ACTIVE',
   createdAt: '2026-01-01T00:00:00.000Z',
-  hasPassword: true, recurringReminderEmails: true,
+  hasPassword: true, recurringReminderEmails: true, warrantyReminderEmails: true,
 };
 
 const RECEIPTS: ReceiptSummary[] = [
@@ -32,6 +32,8 @@ const RECEIPTS: ReceiptSummary[] = [
     transactionId: null,
     document: null,
   tags: [],
+  hasNote: false,
+  warrantyUntil: null,
   },
   {
     id: 'r1',
@@ -44,6 +46,8 @@ const RECEIPTS: ReceiptSummary[] = [
     transactionId: null,
     document: null,
   tags: [],
+  hasNote: false,
+  warrantyUntil: null,
   },
 ];
 
@@ -85,6 +89,17 @@ describe('ReceiptsPage', () => {
     const items = await screen.findAllByRole('listitem');
     expect(items[0]).toHaveTextContent('Garantía');
     expect(screen.getByRole('link', { name: 'Etiquetas' })).toHaveAttribute('href', '/tickets/etiquetas');
+  });
+
+  it('indica los tickets con nota y su garantía (spec 051 H4 y H5)', async () => {
+    vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue([{ ...RECEIPTS[0], hasNote: true, warrantyUntil: '2099-01-31' }, RECEIPTS[1]]);
+
+    renderPage();
+
+    const items = await screen.findAllByRole('listitem');
+    expect(within(items[0]).getByLabelText('con nota')).toBeInTheDocument();
+    expect(items[0]).toHaveTextContent('Garantía hasta el 31/01/2099');
+    expect(within(items[1]).queryByLabelText('con nota')).not.toBeInTheDocument();
   });
 
   it('sin tickets importados, muestra un mensaje en vez de una lista vacía', async () => {

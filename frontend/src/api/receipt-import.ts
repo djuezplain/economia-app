@@ -58,6 +58,8 @@ export interface ConfirmImportPayload extends ConfirmReceiptPayload {
   documentId?: string;
   /** Spec 051 H1 criterio 5. */
   tags?: ReceiptTagsSelection;
+  /** Spec 051 H4 criterio 1. */
+  note?: string | null;
 }
 
 function fileFormData(file: File): FormData {
