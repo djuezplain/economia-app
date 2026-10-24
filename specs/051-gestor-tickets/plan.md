@@ -1,6 +1,6 @@
 # Plan — Spec 051 (gestor de tickets: etiquetas, buscador, notas, garantías y galería)
 
-**Fase:** 2 de 4 (pendiente de aprobación)
+**Fase:** 2 de 4 (aprobado)
 **Parte de:** spec 051 aprobada. Construye sobre `groceries` (tickets y documentos, specs 034/035/040/048), `receipt-import` (OCR con Vision), los avisos por email de la spec 049 (`RecurringRemindersService`) y la exportación e importación de las specs 032, 048 y 050.
 
 ## 0. Decisiones de diseño
