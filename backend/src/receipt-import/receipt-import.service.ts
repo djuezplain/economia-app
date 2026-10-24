@@ -105,7 +105,7 @@ export class ReceiptImportService {
         const supermarketId = await resolveEntityRef(tx, supermarkets, userId, dto.supermarket, 'El supermercado indicado no existe.');
         const [receipt] = await tx
           .insert(receipts)
-          .values({ userId, supermarketId, date: dto.date, printedTotal: dto.printedTotal ?? null })
+          .values({ userId, supermarketId, date: dto.date, printedTotal: dto.printedTotal ?? null, note: dto.note ?? null })
           .returning();
 
         for (const line of dto.lines) {

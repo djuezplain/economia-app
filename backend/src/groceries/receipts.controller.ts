@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Put,
   Query,
   Req,
@@ -29,6 +30,7 @@ import { ReceiptsService } from './receipts.service.js';
 import { MAX_DOCUMENT_SIZE_BYTES, ReceiptDocumentsService } from './receipt-documents.service.js';
 import { DocumentTooLargeFilter } from './document-too-large.filter.js';
 import { ReceiptTagsSelectionDto } from './dto/receipt-tag.dto.js';
+import { UpdateReceiptDetailsDto } from './dto/receipt-details.dto.js';
 import { ReceiptTagsService } from './receipt-tags.service.js';
 
 /**
@@ -61,6 +63,12 @@ export class ReceiptsController {
   @Put(':id')
   update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: ConfirmReceiptDto, @Req() req: Request & { user: RequestUser }) {
     return this.receiptsService.update(req.user.id, id, dto);
+  }
+
+  /** Spec 051 H4 y H5: nota y fin de garantía. */
+  @Patch(':id/details')
+  updateDetails(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateReceiptDetailsDto, @Req() req: Request & { user: RequestUser }) {
+    return this.receiptsService.updateDetails(req.user.id, id, dto);
   }
 
   /** Spec 051 H1 criterio 1: sustituye las etiquetas del ticket, creando al vuelo las nuevas. */

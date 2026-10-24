@@ -11,6 +11,7 @@ import { resolveEntityRef } from '../receipt-import/resolve-entity-ref.util.js';
 import { assertReceiptHasAmount, resolveLineProduct } from '../receipt-import/receipt-rules.js';
 import { receiptTotal } from './receipt-total.js';
 import type { ListReceiptsQueryDto } from './dto/list-receipts-query.dto.js';
+import type { UpdateReceiptDetailsDto } from './dto/receipt-details.dto.js';
 import { ReceiptDocumentsService } from './receipt-documents.service.js';
 import type { DocumentInfo } from './receipt-documents.service.js';
 import { ReceiptTagsService } from './receipt-tags.service.js';
@@ -35,6 +36,10 @@ export interface ReceiptSummary {
   document: DocumentInfo | null;
   /** Spec 051 H1: sus etiquetas, por nombre. */
   tags: ReceiptTag[];
+  /** Spec 051 H4 criterio 2: el listado solo indica si hay nota; el detalle la trae entera. */
+  hasNote: boolean;
+  /** Spec 051 H5: fin de la garantía, o `null`. */
+  warrantyUntil: string | null;
 }
 
 export interface ReceiptLineDetail {
@@ -51,6 +56,7 @@ export interface ReceiptLineDetail {
 
 export interface ReceiptDetail extends ReceiptSummary {
   lines: ReceiptLineDetail[];
+  note: string | null;
 }
 
 /** Spec 034, plan.md §3 (H5). Mismo criterio "sin joins SQL" que `ProductsService`. */
@@ -132,6 +138,8 @@ export class ReceiptsService {
         transactionId: receipt.transactionId,
         document: documentByReceipt.get(receipt.id) ?? null,
         tags: tagsByReceipt.get(receipt.id) ?? [],
+        hasNote: receipt.note !== null,
+        warrantyUntil: receipt.warrantyUntil,
         // Presencia del producto filtrado, para el filtro de `productId` (T1.3) — se calcula
         // aquí porque `lines` ya está disponible, se descarta abajo si no se necesita.
         hasFilteredProduct: query.productId ? lines.some((line) => line.productId === query.productId) : true,
@@ -144,6 +152,17 @@ export class ReceiptsService {
       .filter((summary) => !query.amountMin || (summary.total !== null && new Decimal(summary.total).greaterThanOrEqualTo(query.amountMin)))
       .filter((summary) => !query.amountMax || (summary.total !== null && new Decimal(summary.total).lessThanOrEqualTo(query.amountMax)))
       .map(({ hasFilteredProduct: _hasFilteredProduct, ...summary }) => summary);
+  }
+
+  /** Spec 051 H4 y H5: nota y garantía, sin tocar el resto del ticket (plan.md §3.2). */
+  async updateDetails(userId: string, receiptId: string, dto: UpdateReceiptDetailsDto): Promise<ReceiptDetail> {
+    const changes: { note?: string | null; warrantyUntil?: string | null } = {};
+    if (dto.note !== undefined) changes.note = dto.note;
+    if (dto.warrantyUntil !== undefined) changes.warrantyUntil = dto.warrantyUntil;
+    const [owned] = await this.db.select({ id: receipts.id }).from(receipts).where(and(eq(receipts.id, receiptId), eq(receipts.userId, userId)));
+    if (!owned) throw new NotFoundException('El ticket indicado no existe.');
+    if (Object.keys(changes).length > 0) await this.db.update(receipts).set(changes).where(eq(receipts.id, receiptId));
+    return this.getById(userId, receiptId);
   }
 
   async getById(userId: string, receiptId: string): Promise<ReceiptDetail> {
@@ -170,6 +189,9 @@ export class ReceiptsService {
       transactionId: receipt.transactionId,
       document: documentByReceipt.get(receipt.id) ?? null,
       tags: tagsByReceipt.get(receipt.id) ?? [],
+      hasNote: receipt.note !== null,
+      warrantyUntil: receipt.warrantyUntil,
+      note: receipt.note,
       lines: lineRows.map((line) => ({
         id: line.id,
         description: line.description,
