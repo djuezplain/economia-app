@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, numeric, date, timestamp, index, uniqueIndex, integer, smallint, char, customType } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, numeric, date, timestamp, index, uniqueIndex, integer, smallint, char, customType, text, primaryKey, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './auth.schema.js';
 import { transactions } from './transactions.schema.js';
@@ -94,6 +94,10 @@ export const receipts = pgTable(
     // movimiento (índice único parcial). Borrar el movimiento deja el ticket
     // sin enlace (`set null`); borrar el ticket se lleva el enlace con él.
     transactionId: uuid('transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+    /** Spec 051 H4: nota libre (hasta 2000 caracteres, validado en el DTO). */
+    note: text('note'),
+    /** Spec 051 H5: fin de la garantía del ticket entero. */
+    warrantyUntil: date('warranty_until'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -101,6 +105,9 @@ export const receipts = pgTable(
     uniqueIndex('receipts_transaction_uidx')
       .on(table.transactionId)
       .where(sql`${table.transactionId} IS NOT NULL`),
+    // Spec 051 plan.md §0 decisión 1: búsqueda sin tildes ni mayúsculas, con palabras a medias.
+    index('receipts_note_trgm_idx').using('gin', sql`immutable_unaccent(lower(${table.note})) gin_trgm_ops`),
+    index('receipts_user_warranty_idx').on(table.userId, table.warrantyUntil),
   ],
 );
 
@@ -164,6 +171,15 @@ export const receiptDocuments = pgTable(
     /** Solo PDF. */
     pageCount: smallint('page_count'),
     content: bytea('content').notNull(),
+    /** Spec 051 H3: el texto que reconoció el OCR de este documento. */
+    ocrText: text('ocr_text'),
+    /** Spec 051 H3: cuándo se leyó; `null` = nunca (distinto de "leído, sin texto"). */
+    ocrReadAt: timestamp('ocr_read_at', { withTimezone: true }),
+    /**
+     * Spec 051 H6: miniatura JPEG de las imágenes (no de los PDF). `null` =
+     * todavía no generada; 0 bytes = la imagen no se pudo leer (no se reintenta).
+     */
+    thumbnail: bytea('thumbnail'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -171,5 +187,61 @@ export const receiptDocuments = pgTable(
       .on(table.receiptId)
       .where(sql`${table.receiptId} IS NOT NULL`),
     index('receipt_documents_user_receipt_idx').on(table.userId, table.receiptId),
+    index('receipt_documents_ocr_trgm_idx').using('gin', sql`immutable_unaccent(lower(${table.ocrText})) gin_trgm_ops`),
   ],
+);
+
+/** Spec 051 plan.md §0 decisión 5: paleta fija, legible en tema claro y oscuro. */
+export const RECEIPT_TAG_COLORS = ['gray', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple'] as const;
+export type ReceiptTagColor = (typeof RECEIPT_TAG_COLORS)[number];
+
+/**
+ * Spec 051 H1: etiquetas libres de tickets, catálogo propio por usuario.
+ * El nombre es único por usuario sin distinguir mayúsculas ni tildes.
+ */
+export const receiptTags = pgTable(
+  'receipt_tags',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 40 }).notNull(),
+    color: varchar('color', { length: 10 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('receipt_tags_user_name_uidx').on(table.userId, sql`immutable_unaccent(lower(${table.name}))`),
+    check('receipt_tags_color_check', sql`${table.color} IS NULL OR ${table.color} IN ('gray', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple')`),
+  ],
+);
+
+/** Spec 051 H1: etiquetas de cada ticket. Borrar el ticket o la etiqueta borra el enlace. */
+export const receiptTagLinks = pgTable(
+  'receipt_tag_links',
+  {
+    receiptId: uuid('receipt_id')
+      .notNull()
+      .references(() => receipts.id, { onDelete: 'cascade' }),
+    tagId: uuid('tag_id')
+      .notNull()
+      .references(() => receiptTags.id, { onDelete: 'cascade' }),
+  },
+  (table) => [primaryKey({ columns: [table.receiptId, table.tagId] }), index('receipt_tag_links_tag_idx').on(table.tagId)],
+);
+
+/**
+ * Spec 051 H5 criterio 3: un aviso por ticket y fecha de garantía. Si la
+ * fecha cambia, la nueva no está aquí y se vuelve a avisar.
+ */
+export const warrantyRemindersSent = pgTable(
+  'warranty_reminders_sent',
+  {
+    receiptId: uuid('receipt_id')
+      .notNull()
+      .references(() => receipts.id, { onDelete: 'cascade' }),
+    warrantyUntil: date('warranty_until').notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.receiptId, table.warrantyUntil] })],
 );

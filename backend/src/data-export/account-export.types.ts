@@ -84,7 +84,8 @@ export type ShoppingListItemRow = typeof shoppingListItems.$inferSelect;
  * contenido. El binario va en el `.zip`, en la ruta `file`; en una
  * exportación solo `.json` no hay forma de restaurarlo y se omite al importar.
  */
-export type ReceiptDocumentMeta = Omit<typeof receiptDocuments.$inferSelect, 'content'> & { file: string };
+// Spec 051: la miniatura nunca se exporta (se regenera); el texto del OCR entra en T8.1.
+export type ReceiptDocumentMeta = Omit<typeof receiptDocuments.$inferSelect, 'content' | 'thumbnail' | 'ocrText' | 'ocrReadAt'> & { file: string };
 
 /**
  * Spec 032, plan.md §1. Todo el dato económico del usuario, en 24 arrays
