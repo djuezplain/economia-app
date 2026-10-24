@@ -1,6 +1,6 @@
 # Spec 052 — Dependencias con avisos de seguridad e IP real del cliente
 
-**Estado:** Pendiente de aprobación
+**Estado:** Aprobada
 **Fase:** 1 de 4 (Spec → Plan → Tasks → Implementación)
 **Basado en:** el `npm audit` que salió al añadir `sharp` en la spec 051. Diego pidió tratarlo aparte. Parte de la rama de la spec 051 (PR #95), porque las dos tocan `package-lock.json`.
 
@@ -53,4 +53,4 @@
 2. Se incluye la IP del cliente (H3), aunque no la pidió expresamente, porque es lo que da sentido real al aviso crítico de `proxy-addr`.
 
 ---
-**Siguiente paso:** revisión de Diego y, si la aprueba, `plan.md`.
+**Siguiente paso:** `plan.md`.
