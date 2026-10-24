@@ -1998,3 +1998,81 @@ details > summary {
   font-style: italic;
   overflow-wrap: anywhere;
 }
+
+/* Spec 051 H6: galería de tickets. 2 columnas en el móvil, más en escritorio. */
+.receipts-view-toggle {
+  margin: 8px 0 12px;
+}
+.receipt-gallery {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+@media (min-width: 900px) {
+  .receipt-gallery {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
+}
+.receipt-gallery-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.receipt-gallery-item > .receipt-tag-list {
+  padding: 0 10px 10px;
+  margin: 0;
+}
+.receipt-gallery-card {
+  display: flex;
+  flex-direction: column;
+  color: inherit;
+  text-decoration: none;
+}
+.receipt-gallery-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.receipt-thumb {
+  aspect-ratio: 3 / 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.receipt-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.receipt-thumb-icon {
+  font-size: 40px;
+  opacity: 0.6;
+}
+.receipt-thumb-loading {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--surface-2), var(--neutral-200), var(--surface-2));
+}
+.receipt-gallery-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+.receipt-gallery-title {
+  color: var(--text-h);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

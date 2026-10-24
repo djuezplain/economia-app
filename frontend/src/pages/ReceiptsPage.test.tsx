@@ -246,4 +246,45 @@ describe('ReceiptsPage', () => {
       expect(await screen.findByText('No hay tickets con estos filtros.')).toBeInTheDocument();
     });
   });
+
+  describe('galería (spec 051 H6)', () => {
+    beforeEach(() => {
+      window.localStorage.clear();
+      URL.createObjectURL = vi.fn(() => 'blob:miniatura');
+      URL.revokeObjectURL = vi.fn();
+      vi.spyOn(groceriesApi, 'getReceiptThumbnail').mockResolvedValue(new Blob(['x']));
+    });
+
+    it('cambia a galería, con cada ticket enlazado a su detalle, y lo recuerda en el dispositivo', async () => {
+      vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue([{ ...RECEIPTS[0], tags: [{ id: 't1', name: 'Garantía', color: 'blue' }] }, RECEIPTS[1]]);
+      const { unmount } = renderPage();
+      await screen.findAllByRole('listitem');
+      expect(screen.getByRole('radio', { name: 'Lista' })).toBeChecked();
+
+      await userEvent.click(screen.getByRole('radio', { name: 'Galería' }));
+      const gallery = screen.getByRole('list', { name: 'Galería de tickets' });
+      const cards = within(gallery).getAllByRole('link');
+      expect(cards[0]).toHaveAttribute('href', '/tickets/r2');
+      expect(cards[0]).toHaveAccessibleName('Mercadona, 15/04/2026');
+      expect(within(gallery).getByText('Garantía')).toBeInTheDocument();
+      expect(window.localStorage.getItem('receipts-view')).toBe('gallery');
+
+      unmount();
+      renderPage();
+      expect(await screen.findByRole('list', { name: 'Galería de tickets' })).toBeInTheDocument();
+    });
+
+    it('si el almacenamiento no está disponible, la vista funciona igual', async () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('bloqueado');
+      });
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('bloqueado');
+      });
+      vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue(RECEIPTS);
+      renderPage();
+      await userEvent.click(await screen.findByRole('radio', { name: 'Galería' }));
+      expect(screen.getByRole('list', { name: 'Galería de tickets' })).toBeInTheDocument();
+    });
+  });
 });

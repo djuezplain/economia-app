@@ -200,6 +200,14 @@ export function uploadReceiptDocument(receiptId: string, file: File): Promise<St
   return api.putForm<StoredReceiptDocument>(`/receipts/${receiptId}/document`, formData);
 }
 
+/**
+ * Spec 051 H6: miniatura de la galería. `v` (el id del documento) cambia al
+ * sustituirlo, así la caché del navegador nunca sirve la de otro documento.
+ */
+export function getReceiptThumbnail(receiptId: string, documentId: string): Promise<Blob> {
+  return api.getBlob(`/receipts/${receiptId}/document/thumbnail?v=${documentId}`);
+}
+
 /** Spec 051 H3 criterio 5. */
 export function getReceiptDocumentText(receiptId: string): Promise<ReceiptDocumentText> {
   return api.get<ReceiptDocumentText>(`/receipts/${receiptId}/document/text`);

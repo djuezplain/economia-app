@@ -7,11 +7,32 @@ import type { ListReceiptsFilters, Product, ReceiptMatchField, ReceiptSummary, S
 import { listReceiptTags } from '../api/receipt-tags';
 import type { ReceiptTag } from '../api/receipt-tags';
 import { TagChip } from '../components/TagChip';
+import { ReceiptGallery } from '../components/ReceiptGallery';
 import { ApiError } from '../api/client';
 import { TagList } from '../components/TagChip';
 import { localToday, warrantyLabel, warrantyStatus } from './receipt-warranty';
 
 const EMPTY_FILTERS = { supermarketId: '', productId: '', dateFrom: '', dateTo: '', amountMin: '', amountMax: '' };
+
+/** Spec 051 H6 criterio 1: la vista elegida se recuerda en el dispositivo. */
+const VIEW_STORAGE_KEY = 'receipts-view';
+type ReceiptsView = 'list' | 'gallery';
+
+function readStoredView(): ReceiptsView {
+  try {
+    return window.localStorage.getItem(VIEW_STORAGE_KEY) === 'gallery' ? 'gallery' : 'list';
+  } catch {
+    return 'list';
+  }
+}
+
+function storeView(view: ReceiptsView): void {
+  try {
+    window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+  } catch {
+    // Sin almacenamiento (modo privado, bloqueado…): la vista vale solo para esta visita.
+  }
+}
 
 /** Spec 051 H2: espera tras la última tecla antes de buscar. */
 export const SEARCH_DEBOUNCE_MS = 300;
@@ -49,6 +70,12 @@ export function ReceiptsPage() {
   const [availableTags, setAvailableTags] = useState<ReceiptTag[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [warranty, setWarranty] = useState<'' | 'active' | 'expiring'>('');
+  const [view, setView] = useState<ReceiptsView>(readStoredView);
+
+  function changeView(next: ReceiptsView) {
+    setView(next);
+    storeView(next);
+  }
 
   const filters: ListReceiptsFilters = useMemo(
     () => ({
@@ -258,6 +285,21 @@ export function ReceiptsPage() {
           filas de Patrimonio) para heredar el aspecto de tarjeta elevada y
           radios redondeados del resto de la app. */}
       {receipts && receipts.length > 0 && (
+        <div className="seg receipts-view-toggle" role="radiogroup" aria-label="Vista">
+          <label className="seg-opt">
+            <input type="radio" name="receipts-view" value="list" checked={view === 'list'} onChange={() => changeView('list')} />
+            Lista
+          </label>
+          <label className="seg-opt">
+            <input type="radio" name="receipts-view" value="gallery" checked={view === 'gallery'} onChange={() => changeView('gallery')} />
+            Galería
+          </label>
+        </div>
+      )}
+
+      {receipts && receipts.length > 0 && view === 'gallery' && <ReceiptGallery receipts={receipts} />}
+
+      {receipts && receipts.length > 0 && view === 'list' && (
         <ul id="receipts-list">
           {receipts.map((receipt) => (
             <li className="card" key={receipt.id}>
