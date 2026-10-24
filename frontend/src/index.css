@@ -2076,3 +2076,20 @@ details > summary {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Spec 051 (revisión visual): el `padding` general de los `li` dejaba una
+   franja encima de cada miniatura; y en el móvil el formulario de crear
+   etiqueta ocupa todo el ancho. */
+.receipt-gallery-item {
+  padding: 0;
+}
+.tag-create-form {
+  flex-direction: row;
+}
+.tag-create-form .field {
+  flex: 1 1 200px;
+  margin: 0;
+}
+.tag-create-form .field .input {
+  width: 100%;
+}
