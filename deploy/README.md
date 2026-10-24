@@ -174,6 +174,12 @@ docker compose exec postgres psql -U economia_app -d economia_dev -c "SELECT pg_
 
 Si algún día ocupa demasiado, se puede reducir la retención en `deploy/backup.sh` o pasar a copias incrementales (no incluido todavía).
 
+**Gestor de tickets (spec 051).** La actualización que lo trae no necesita ningún paso a mano:
+
+- La migración `0034` activa dos extensiones que vienen con la imagen `postgres:16` (`unaccent` y `pg_trgm`, para buscar sin tildes y con palabras a medias). Se aplica sola al arrancar, como las demás.
+- El backend usa `sharp` para las miniaturas de la galería. `npm ci` instala el binario para la Raspberry Pi (`linux/arm64`), sin librerías del sistema. Cada miniatura ocupa unos 20–40 KB y se guarda junto al documento, así que el crecimiento de arriba apenas cambia.
+- Los avisos de garantía salen a las 8:00 de Madrid, como los de recibos, y se pueden desactivar desde el perfil.
+
 ## 7. Comandos útiles
 
 ```bash

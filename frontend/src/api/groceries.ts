@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ReceiptTag } from './receipt-tags';
 import type { ConfirmReceiptPayload } from './receipt-import';
 import type { Transaction } from './transactions';
 
@@ -47,6 +48,21 @@ export interface ReceiptSummary {
   transactionId: string | null;
   /** Spec 048 H1: el documento original (foto o PDF), o `null` si el ticket no tiene. */
   document: ReceiptDocumentInfo | null;
+  /** Spec 051 H1: sus etiquetas, por nombre. */
+  tags: ReceiptTag[];
+  /** Spec 051 H4: el listado solo indica si hay nota. */
+  hasNote: boolean;
+  /** Spec 051 H5: fin de la garantía (`AAAA-MM-DD`), o `null`. */
+  warrantyUntil: string | null;
+  /** Spec 051 H2 criterio 4: solo con búsqueda; dónde ha coincidido. */
+  match?: ReceiptSearchMatch;
+}
+
+export type ReceiptMatchField = 'merchant' | 'tag' | 'note' | 'line' | 'product' | 'document';
+
+export interface ReceiptSearchMatch {
+  field: ReceiptMatchField;
+  snippet: string | null;
 }
 
 /** Spec 048 H1: metadatos del documento de un ticket (el contenido se pide aparte). */
@@ -56,6 +72,20 @@ export interface ReceiptDocumentInfo {
   sizeBytes: number;
   pageCount: number | null;
   originalFilename: string;
+  /** Spec 051 H3: hay texto reconocido guardado. */
+  hasText: boolean;
+  /** Spec 051 H3: cuándo se leyó el texto; `null` = nunca. */
+  textReadAt: string | null;
+}
+
+/** Spec 051 H3 criterio 4: el documento se guardó, pero no se pudo leer su texto. */
+export interface StoredReceiptDocument extends ReceiptDocumentInfo {
+  ocrWarning?: string;
+}
+
+export interface ReceiptDocumentText {
+  text: string | null;
+  readAt: string | null;
 }
 
 /** Spec 040, plan.md §1 (H1): filtros de `GET /receipts`, todos opcionales y combinables. */
@@ -66,12 +96,19 @@ export interface ListReceiptsFilters {
   dateTo?: string;
   amountMin?: string;
   amountMax?: string;
+  /** Spec 051 H2. */
+  q?: string;
+  /** Spec 051 H1 criterio 4: tickets con todas estas etiquetas. */
+  tagIds?: string[];
+  /** Spec 051 H5 criterio 2. */
+  warranty?: 'active' | 'expiring';
 }
 
 function buildReceiptsQuery(filters: ListReceiptsFilters): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
-    if (value !== undefined && value !== '') params.set(key, value);
+    if (Array.isArray(value)) value.forEach((item: string) => params.append(key, item));
+    else if (value !== undefined && value !== '') params.set(key, value);
   }
   const query = params.toString();
   return query ? `?${query}` : '';
@@ -91,6 +128,7 @@ export interface ReceiptLineDetail {
 
 export interface ReceiptDetail extends ReceiptSummary {
   lines: ReceiptLineDetail[];
+  note: string | null;
 }
 
 export function listSupermarkets(): Promise<Supermarket[]> {
@@ -139,6 +177,11 @@ export function updateReceipt(id: string, payload: ConfirmReceiptPayload): Promi
   return api.put<ReceiptDetail>(`/receipts/${id}`, payload);
 }
 
+/** Spec 051 H4 y H5: lo que no viene no cambia; `null` lo quita. */
+export function updateReceiptDetails(id: string, changes: { note?: string | null; warrantyUntil?: string | null }): Promise<ReceiptDetail> {
+  return api.patch<ReceiptDetail>(`/receipts/${id}/details`, changes);
+}
+
 /** Spec 035, plan.md §4 (H1). */
 export function deleteReceipt(id: string): Promise<void> {
   return api.delete<void>(`/receipts/${id}`);
@@ -151,10 +194,28 @@ export function getReceiptDocument(receiptId: string): Promise<Blob> {
 }
 
 /** Adjunta un documento a un ticket guardado, o sustituye el que tenga. */
-export function uploadReceiptDocument(receiptId: string, file: File): Promise<ReceiptDocumentInfo> {
+export function uploadReceiptDocument(receiptId: string, file: File): Promise<StoredReceiptDocument> {
   const formData = new FormData();
   formData.append('file', file);
-  return api.putForm<ReceiptDocumentInfo>(`/receipts/${receiptId}/document`, formData);
+  return api.putForm<StoredReceiptDocument>(`/receipts/${receiptId}/document`, formData);
+}
+
+/**
+ * Spec 051 H6: miniatura de la galería. `v` (el id del documento) cambia al
+ * sustituirlo, así la caché del navegador nunca sirve la de otro documento.
+ */
+export function getReceiptThumbnail(receiptId: string, documentId: string): Promise<Blob> {
+  return api.getBlob(`/receipts/${receiptId}/document/thumbnail?v=${documentId}`);
+}
+
+/** Spec 051 H3 criterio 5. */
+export function getReceiptDocumentText(receiptId: string): Promise<ReceiptDocumentText> {
+  return api.get<ReceiptDocumentText>(`/receipts/${receiptId}/document/text`);
+}
+
+/** Spec 051 H3 criterio 3: vuelve a leer el texto (una llamada de pago a Vision). */
+export function readReceiptDocumentText(receiptId: string): Promise<ReceiptDocumentText> {
+  return api.post<ReceiptDocumentText>(`/receipts/${receiptId}/document/text`);
 }
 
 export function deleteReceiptDocument(receiptId: string): Promise<void> {

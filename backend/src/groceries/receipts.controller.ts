@@ -6,8 +6,11 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
+  Patch,
+  Post,
   Put,
   Query,
   Req,
@@ -28,6 +31,9 @@ import { LinkTransactionDto } from './dto/link-transaction.dto.js';
 import { ReceiptsService } from './receipts.service.js';
 import { MAX_DOCUMENT_SIZE_BYTES, ReceiptDocumentsService } from './receipt-documents.service.js';
 import { DocumentTooLargeFilter } from './document-too-large.filter.js';
+import { ReceiptTagsSelectionDto } from './dto/receipt-tag.dto.js';
+import { UpdateReceiptDetailsDto } from './dto/receipt-details.dto.js';
+import { ReceiptTagsService } from './receipt-tags.service.js';
 
 /**
  * Spec 034, plan.md §3 (H5, lectura) + spec 035, plan.md §1 (H1-H3,
@@ -43,6 +49,7 @@ export class ReceiptsController {
   constructor(
     private readonly receiptsService: ReceiptsService,
     private readonly documents: ReceiptDocumentsService,
+    private readonly tags: ReceiptTagsService,
   ) {}
 
   @Get()
@@ -58,6 +65,18 @@ export class ReceiptsController {
   @Put(':id')
   update(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: ConfirmReceiptDto, @Req() req: Request & { user: RequestUser }) {
     return this.receiptsService.update(req.user.id, id, dto);
+  }
+
+  /** Spec 051 H4 y H5: nota y fin de garantía. */
+  @Patch(':id/details')
+  updateDetails(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateReceiptDetailsDto, @Req() req: Request & { user: RequestUser }) {
+    return this.receiptsService.updateDetails(req.user.id, id, dto);
+  }
+
+  /** Spec 051 H1 criterio 1: sustituye las etiquetas del ticket, creando al vuelo las nuevas. */
+  @Put(':id/tags')
+  setTags(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: ReceiptTagsSelectionDto, @Req() req: Request & { user: RequestUser }) {
+    return this.tags.setForReceipt(req.user.id, id, dto);
   }
 
   @Delete(':id')
@@ -104,6 +123,37 @@ export class ReceiptsController {
     if (!file) throw new BadRequestException('Falta el documento (campo "file").');
     const prepared = await this.documents.prepare(file.buffer, file.originalname);
     return this.documents.replace(req.user.id, id, prepared);
+  }
+
+  /**
+   * Spec 051 H6: miniatura JPEG para la galería. Se puede guardar en la
+   * caché del navegador un día: el frontend pide `?v=<id del documento>`,
+   * que cambia al sustituirlo. 404 si no hay miniatura (PDF o imagen dañada).
+   */
+  @Get(':id/document/thumbnail')
+  async getThumbnail(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }, @Res() res: Response): Promise<void> {
+    const thumbnail = await this.documents.getThumbnail(req.user.id, id);
+    if (!thumbnail) throw new NotFoundException('Este documento no tiene miniatura.');
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Content-Length': String(thumbnail.length),
+      'Cache-Control': 'private, max-age=86400',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.end(thumbnail);
+  }
+
+  /** Spec 051 H3 criterio 5: el texto reconocido del documento. */
+  @Get(':id/document/text')
+  getDocumentText(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }) {
+    return this.documents.getText(req.user.id, id);
+  }
+
+  /** Spec 051 H3 criterio 3: vuelve a leer el texto (una llamada a Vision). */
+  @Post(':id/document/text')
+  @HttpCode(HttpStatus.OK)
+  readDocumentText(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }) {
+    return this.documents.readText(req.user.id, id);
   }
 
   @Delete(':id/document')

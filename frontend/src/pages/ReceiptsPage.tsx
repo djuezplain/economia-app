@@ -3,13 +3,52 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/auth-context';
 import { useConnectivity } from '../hooks/useConnectivity';
 import { listReceipts, listSupermarkets, searchProducts } from '../api/groceries';
-import type { ListReceiptsFilters, Product, ReceiptSummary, Supermarket } from '../api/groceries';
+import type { ListReceiptsFilters, Product, ReceiptMatchField, ReceiptSummary, Supermarket } from '../api/groceries';
+import { listReceiptTags } from '../api/receipt-tags';
+import type { ReceiptTag } from '../api/receipt-tags';
+import { TagChip } from '../components/TagChip';
+import { ReceiptGallery } from '../components/ReceiptGallery';
 import { ApiError } from '../api/client';
+import { TagList } from '../components/TagChip';
+import { localToday, warrantyLabel, warrantyStatus } from './receipt-warranty';
 
 const EMPTY_FILTERS = { supermarketId: '', productId: '', dateFrom: '', dateTo: '', amountMin: '', amountMax: '' };
 
+/** Spec 051 H6 criterio 1: la vista elegida se recuerda en el dispositivo. */
+const VIEW_STORAGE_KEY = 'receipts-view';
+type ReceiptsView = 'list' | 'gallery';
+
+function readStoredView(): ReceiptsView {
+  try {
+    return window.localStorage.getItem(VIEW_STORAGE_KEY) === 'gallery' ? 'gallery' : 'list';
+  } catch {
+    return 'list';
+  }
+}
+
+function storeView(view: ReceiptsView): void {
+  try {
+    window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+  } catch {
+    // Sin almacenamiento (modo privado, bloqueado…): la vista vale solo para esta visita.
+  }
+}
+
+/** Spec 051 H2: espera tras la última tecla antes de buscar. */
+export const SEARCH_DEBOUNCE_MS = 300;
+
+const MATCH_LABELS: Record<ReceiptMatchField, string> = {
+  merchant: 'el comercio',
+  tag: 'una etiqueta',
+  note: 'la nota',
+  line: 'una línea',
+  product: 'un producto',
+  document: 'el documento',
+};
+
 /** Spec 034 (H5 criterio 1), plan.md §11 + spec 040 (H1): filtros por supermercado, producto, fechas e importe. */
 export function ReceiptsPage() {
+  const today = localToday();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const isOnline = useConnectivity();
 
@@ -25,6 +64,18 @@ export function ReceiptsPage() {
   const [dateTo, setDateTo] = useState('');
   const [amountMin, setAmountMin] = useState('');
   const [amountMax, setAmountMax] = useState('');
+  // Spec 051: buscador (con espera), etiquetas y garantía.
+  const [searchText, setSearchText] = useState('');
+  const [query, setQuery] = useState('');
+  const [availableTags, setAvailableTags] = useState<ReceiptTag[]>([]);
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [warranty, setWarranty] = useState<'' | 'active' | 'expiring'>('');
+  const [view, setView] = useState<ReceiptsView>(readStoredView);
+
+  function changeView(next: ReceiptsView) {
+    setView(next);
+    storeView(next);
+  }
 
   const filters: ListReceiptsFilters = useMemo(
     () => ({
@@ -34,8 +85,11 @@ export function ReceiptsPage() {
       dateTo: dateTo || undefined,
       amountMin: amountMin || undefined,
       amountMax: amountMax || undefined,
+      q: query.trim() || undefined,
+      tagIds: tagIds.length > 0 ? tagIds : undefined,
+      warranty: warranty || undefined,
     }),
-    [supermarketId, productId, dateFrom, dateTo, amountMin, amountMax],
+    [supermarketId, productId, dateFrom, dateTo, amountMin, amountMax, query, tagIds, warranty],
   );
   const hasActiveFilters = Object.values(filters).some((value) => value !== undefined);
 
@@ -43,15 +97,37 @@ export function ReceiptsPage() {
     if (!isAuthenticated) return;
     void listSupermarkets().then(setSupermarkets);
     void searchProducts().then(setProducts);
+    listReceiptTags()
+      .then(setAvailableTags)
+      .catch(() => setAvailableTags([]));
   }, [isAuthenticated]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setQuery(searchText), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
     if (!isAuthenticated) return;
+    // Con la búsqueda, las respuestas pueden llegar desordenadas: solo vale la última.
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga de datos remotos al cambiar los filtros
     setError(null);
     listReceipts(filters)
-      .then(setReceipts)
-      .catch((err) => setError(err instanceof ApiError ? err.message : 'No se han podido cargar los tickets.'));
+      .then((result) => {
+        if (!cancelled) setReceipts(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : 'No se han podido cargar los tickets.');
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isAuthenticated, filters]);
+
+  function toggleTag(id: string) {
+    setTagIds((current) => (current.includes(id) ? current.filter((t) => t !== id) : [...current, id]));
+  }
 
   function handleClearFilters() {
     setSupermarketId(EMPTY_FILTERS.supermarketId);
@@ -60,6 +136,10 @@ export function ReceiptsPage() {
     setDateTo(EMPTY_FILTERS.dateTo);
     setAmountMin(EMPTY_FILTERS.amountMin);
     setAmountMax(EMPTY_FILTERS.amountMax);
+    setSearchText('');
+    setQuery('');
+    setTagIds([]);
+    setWarranty('');
   }
 
   if (isAuthLoading) {
@@ -95,8 +175,23 @@ export function ReceiptsPage() {
     <main>
       <h1>Tickets y facturas</h1>
       <p>
-        <Link to="/tickets/importar">Importar un ticket nuevo</Link>
+        <Link to="/tickets/importar">Importar un ticket nuevo</Link> · <Link to="/tickets/etiquetas">Etiquetas</Link>
       </p>
+
+      <div className="receipt-search">
+        <label htmlFor="receipt-search" className="sr-only">
+          Buscar tickets
+        </label>
+        <input
+          id="receipt-search"
+          className="input"
+          type="search"
+          maxLength={200}
+          placeholder="Buscar: lavadora, Leroy, número de serie…"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+      </div>
 
       <section>
         <h2>Filtros</h2>
@@ -155,7 +250,24 @@ export function ReceiptsPage() {
               onChange={(e) => setAmountMax(e.target.value)}
             />
           </div>
+          <div className="field">
+            <label htmlFor="filter-warranty">Garantía</label>
+            <select id="filter-warranty" className="input" value={warranty} onChange={(e) => setWarranty(e.target.value as typeof warranty)}>
+              <option value="">Todas</option>
+              <option value="active">Con garantía vigente</option>
+              <option value="expiring">Caduca en los próximos 30 días</option>
+            </select>
+          </div>
         </div>
+        {availableTags.length > 0 && (
+          <div className="receipt-tag-filter" role="group" aria-label="Filtrar por etiquetas">
+            {availableTags.map((tag) => (
+              <button key={tag.id} type="button" className="tag-filter-button" aria-pressed={tagIds.includes(tag.id)} onClick={() => toggleTag(tag.id)}>
+                <TagChip tag={tag} />
+              </button>
+            ))}
+          </div>
+        )}
         {hasActiveFilters && (
           <button type="button" className="btn btn-ghost" onClick={handleClearFilters}>
             Limpiar filtros
@@ -173,6 +285,21 @@ export function ReceiptsPage() {
           filas de Patrimonio) para heredar el aspecto de tarjeta elevada y
           radios redondeados del resto de la app. */}
       {receipts && receipts.length > 0 && (
+        <div className="seg receipts-view-toggle" role="radiogroup" aria-label="Vista">
+          <label className="seg-opt">
+            <input type="radio" name="receipts-view" value="list" checked={view === 'list'} onChange={() => changeView('list')} />
+            Lista
+          </label>
+          <label className="seg-opt">
+            <input type="radio" name="receipts-view" value="gallery" checked={view === 'gallery'} onChange={() => changeView('gallery')} />
+            Galería
+          </label>
+        </div>
+      )}
+
+      {receipts && receipts.length > 0 && view === 'gallery' && <ReceiptGallery receipts={receipts} />}
+
+      {receipts && receipts.length > 0 && view === 'list' && (
         <ul id="receipts-list">
           {receipts.map((receipt) => (
             <li className="card" key={receipt.id}>
@@ -193,7 +320,27 @@ export function ReceiptsPage() {
                     </span>
                   </>
                 )}
+                {receipt.hasNote && (
+                  <>
+                    {' · '}
+                    <span aria-label="con nota" title="Tiene nota">
+                      📝
+                    </span>
+                  </>
+                )}
+                {receipt.warrantyUntil && (
+                  <>
+                    {' · '}
+                    <span className={`warranty-status warranty-${warrantyStatus(receipt.warrantyUntil, today)}`}>🛡️ {warrantyLabel(receipt.warrantyUntil, today)}</span>
+                  </>
+                )}
               </p>
+              <TagList tags={receipt.tags} />
+              {receipt.match?.snippet && (
+                <p className="card-meta receipt-match">
+                  Coincide en {MATCH_LABELS[receipt.match.field]}: «{receipt.match.snippet}»
+                </p>
+              )}
             </li>
           ))}
         </ul>

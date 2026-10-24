@@ -6,8 +6,8 @@ import * as groceriesApi from '../api/groceries';
 import type { ReceiptDocumentInfo } from '../api/groceries';
 import { ApiError } from '../api/client';
 
-const PHOTO: ReceiptDocumentInfo = { id: 'd1', mimeType: 'image/jpeg', sizeBytes: 600_000, pageCount: null, originalFilename: 'ticket.jpg' };
-const PDF: ReceiptDocumentInfo = { id: 'd2', mimeType: 'application/pdf', sizeBytes: 120_000, pageCount: 1, originalFilename: 'factura.pdf' };
+const PHOTO: ReceiptDocumentInfo = { id: 'd1', mimeType: 'image/jpeg', sizeBytes: 600_000, pageCount: null, originalFilename: 'ticket.jpg', hasText: false, textReadAt: null };
+const PDF: ReceiptDocumentInfo = { id: 'd2', mimeType: 'application/pdf', sizeBytes: 120_000, pageCount: 1, originalFilename: 'factura.pdf', hasText: false, textReadAt: null };
 
 // Spec 048 H1 criterios 2 y 3.
 describe('ReceiptDocumentSection', () => {
@@ -56,6 +56,16 @@ describe('ReceiptDocumentSection', () => {
 
     await userEvent.upload(screen.getByLabelText('Elegir documento'), new File(['%PDF-1.7'], 'f.pdf', { type: 'application/pdf' }));
     expect(upload).toHaveBeenCalledWith('r1', expect.any(File));
+    expect(onChanged).toHaveBeenCalledWith(PHOTO);
+  });
+
+  it('si no se pudo leer el texto al adjuntar, lo avisa sin pasar el aviso al ticket (spec 051 H3 criterio 4)', async () => {
+    const warning = 'El documento se ha guardado, pero no se ha podido leer su texto. Puedes volver a intentarlo más tarde.';
+    vi.spyOn(groceriesApi, 'uploadReceiptDocument').mockResolvedValue({ ...PHOTO, ocrWarning: warning });
+    const onChanged = renderSection(null);
+
+    await userEvent.upload(screen.getByLabelText('Elegir documento'), new File(['%PDF-1.7'], 'f.pdf', { type: 'application/pdf' }));
+    expect(await screen.findByRole('note')).toHaveTextContent(warning);
     expect(onChanged).toHaveBeenCalledWith(PHOTO);
   });
 

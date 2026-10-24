@@ -47,7 +47,7 @@ describe('RecurringPage', () => {
     resetForTests(true);
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue({
       id: 'user-1', email: 'ana@example.com', name: 'Ana', currency: 'EUR', locale: 'es',
-      status: 'ACTIVE', createdAt: '2026-01-01T00:00:00.000Z', hasPassword: true, recurringReminderEmails: true,
+      status: 'ACTIVE', createdAt: '2026-01-01T00:00:00.000Z', hasPassword: true, recurringReminderEmails: true, warrantyReminderEmails: true,
     });
     vi.spyOn(categoriesApi, 'listCategories').mockImplementation(async (type) =>
       type === 'INCOME' ? [INCOME_CATEGORY] : [EXPENSE_CATEGORY],

@@ -1,12 +1,14 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { and, eq, inArray, isNull, lt } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { DB } from '../db/db.module.js';
 import type { Database } from '../db/db.module.js';
 import { receiptDocuments, receipts } from '../db/schema/index.js';
 import { detectDocumentType } from '../receipt-import/document-type.js';
 import type { DocumentMimeType } from '../receipt-import/document-type.js';
 import { heicToJpeg } from './heic-to-jpeg.js';
+import { ReceiptOcrService } from '../receipt-import/receipt-ocr.service.js';
+import { makeThumbnail } from './receipt-thumbnail.js';
 
 /** Spec 048 H1 criterio 8: mismo límite que la importación de tickets de la spec 034. */
 export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
@@ -24,6 +26,21 @@ export interface DocumentInfo {
   sizeBytes: number;
   pageCount: number | null;
   originalFilename: string;
+  /** Spec 051 H3: hay texto reconocido guardado. */
+  hasText: boolean;
+  /** Spec 051 H3: cuándo se leyó el texto; `null` = nunca (documentos anteriores a la spec 051). */
+  textReadAt: Date | null;
+}
+
+/** Spec 051 H3 criterio 4: el documento se guardó, pero no se pudo leer su texto. */
+export interface StoredDocument extends DocumentInfo {
+  ocrWarning?: string;
+}
+
+/** Spec 051 H3 criterio 5. */
+export interface DocumentText {
+  text: string | null;
+  readAt: Date | null;
 }
 
 /** Un HEIC se guarda ya convertido a JPEG. */
@@ -35,6 +52,8 @@ export interface PreparedDocument {
   sha256: string;
   pageCount: number | null;
   originalFilename: string;
+  /** Spec 051 H6: miniatura de las imágenes; `null` en los PDF. */
+  thumbnail: Buffer | null;
 }
 
 const UNSUPPORTED_MESSAGE = 'Solo se admiten fotos (JPEG, PNG, WEBP o HEIC) o documentos PDF.';
@@ -60,7 +79,12 @@ function cleanFilename(name: string | undefined, mimeType: StoredMimeType): stri
  */
 @Injectable()
 export class ReceiptDocumentsService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  private readonly logger = new Logger(ReceiptDocumentsService.name);
+
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly ocr: ReceiptOcrService,
+  ) {}
 
   /** Valida el tipo por los primeros bytes y convierte HEIC a JPEG. No escribe nada. */
   async prepare(buffer: Buffer, filename: string | undefined): Promise<PreparedDocument> {
@@ -89,16 +113,17 @@ export class ReceiptDocumentsService {
       sha256: createHash('sha256').update(content).digest('hex'),
       pageCount: mimeType === 'application/pdf' ? countPdfPages(content) : null,
       originalFilename: cleanFilename(filename, mimeType),
+      thumbnail: mimeType === 'application/pdf' ? null : await makeThumbnail(content),
     };
   }
 
   /** Vista previa de la importación: guarda el documento como pendiente (sin ticket). */
-  async storePending(userId: string, prepared: PreparedDocument): Promise<DocumentInfo> {
+  async storePending(userId: string, prepared: PreparedDocument, ocrText?: string): Promise<DocumentInfo> {
     const [row] = await this.db
       .insert(receiptDocuments)
-      .values({ userId, receiptId: null, ...this.columns(prepared) })
+      .values({ userId, receiptId: null, ...this.columns(prepared), ...(ocrText !== undefined && textColumns(ocrText)) })
       .returning(this.infoColumns());
-    return row;
+    return toInfo(row);
   }
 
   /**
@@ -117,16 +142,95 @@ export class ReceiptDocumentsService {
   }
 
   /** H1 criterio 3: adjunta un documento a un ticket guardado, o sustituye el que tenga. */
-  async replace(userId: string, receiptId: string, prepared: PreparedDocument): Promise<DocumentInfo> {
+  async replace(userId: string, receiptId: string, prepared: PreparedDocument): Promise<StoredDocument> {
     await this.findOwnReceiptOrThrow(userId, receiptId);
-    return this.db.transaction(async (tx) => {
+    const stored = await this.db.transaction(async (tx) => {
       await tx.delete(receiptDocuments).where(and(eq(receiptDocuments.receiptId, receiptId), eq(receiptDocuments.userId, userId)));
       const [row] = await tx
         .insert(receiptDocuments)
         .values({ userId, receiptId, ...this.columns(prepared) })
         .returning(this.infoColumns());
-      return row;
+      return toInfo(row);
     });
+
+    // Spec 051 H3 criterio 2 y 4: se lee el texto del documento nuevo; si el
+    // OCR falla o no está configurado, el documento se queda sin texto y se
+    // avisa, pero la subida nunca falla por eso.
+    try {
+      const text = await this.ocr.extractText(prepared.content, prepared.mimeType);
+      const [row] = await this.db
+        .update(receiptDocuments)
+        .set(textColumns(text))
+        .where(eq(receiptDocuments.id, stored.id))
+        .returning(this.infoColumns());
+      return toInfo(row);
+    } catch (err) {
+      this.logger.warn(`No se ha podido leer el texto del documento ${stored.id}: ${err instanceof Error ? err.message : String(err)}`);
+      return {
+        ...stored,
+        ocrWarning:
+          err instanceof ServiceUnavailableException
+            ? 'El documento se ha guardado, pero el reconocimiento de texto no está configurado: no se podrá buscar en su texto.'
+            : 'El documento se ha guardado, pero no se ha podido leer su texto. Puedes volver a intentarlo más tarde.',
+      };
+    }
+  }
+
+  /**
+   * Spec 051 H3 criterio 3: vuelve a leer el texto del documento de un
+   * ticket (los anteriores a la spec 051 no lo tienen). Sin Vision
+   * configurado, 503; si Vision falla, 502 con un mensaje claro.
+   */
+  async readText(userId: string, receiptId: string): Promise<DocumentText> {
+    const document = await this.getContent(userId, receiptId);
+    let text: string;
+    try {
+      text = await this.ocr.extractText(document.content, document.mimeType);
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err;
+      this.logger.warn(`No se ha podido leer el texto del documento ${document.id}: ${err instanceof Error ? err.message : String(err)}`);
+      throw new BadGatewayException('No se ha podido leer el texto del documento. Inténtalo de nuevo más tarde.');
+    }
+    const [row] = await this.db
+      .update(receiptDocuments)
+      .set(textColumns(text))
+      .where(eq(receiptDocuments.id, document.id))
+      .returning({ text: receiptDocuments.ocrText, readAt: receiptDocuments.ocrReadAt });
+    return row;
+  }
+
+  /**
+   * Spec 051 H6: la miniatura del documento de un ticket. Los documentos
+   * anteriores a la spec 051 la generan la primera vez y la guardan. `null`
+   * = no hay miniatura (PDF, o imagen que no se pudo leer).
+   */
+  async getThumbnail(userId: string, receiptId: string): Promise<Buffer | null> {
+    await this.findOwnReceiptOrThrow(userId, receiptId);
+    const [row] = await this.db
+      .select({ id: receiptDocuments.id, mimeType: receiptDocuments.mimeType, thumbnail: receiptDocuments.thumbnail })
+      .from(receiptDocuments)
+      .where(and(eq(receiptDocuments.receiptId, receiptId), eq(receiptDocuments.userId, userId)));
+    if (!row) throw new NotFoundException('Este ticket no tiene documento.');
+    if (row.mimeType === 'application/pdf') return null;
+
+    let thumbnail = row.thumbnail;
+    if (thumbnail === null) {
+      const [content] = await this.db.select({ content: receiptDocuments.content }).from(receiptDocuments).where(eq(receiptDocuments.id, row.id));
+      thumbnail = await makeThumbnail(content.content);
+      await this.db.update(receiptDocuments).set({ thumbnail }).where(eq(receiptDocuments.id, row.id));
+    }
+    return thumbnail.length > 0 ? thumbnail : null;
+  }
+
+  /** Spec 051 H3 criterio 5: el texto guardado, aparte del detalle para no inflarlo. */
+  async getText(userId: string, receiptId: string): Promise<DocumentText> {
+    await this.findOwnReceiptOrThrow(userId, receiptId);
+    const [row] = await this.db
+      .select({ text: receiptDocuments.ocrText, readAt: receiptDocuments.ocrReadAt })
+      .from(receiptDocuments)
+      .where(and(eq(receiptDocuments.receiptId, receiptId), eq(receiptDocuments.userId, userId)));
+    if (!row) throw new NotFoundException('Este ticket no tiene documento.');
+    return row;
   }
 
   /** H1 criterio 3: quita el documento de un ticket. */
@@ -147,7 +251,7 @@ export class ReceiptDocumentsService {
       .from(receiptDocuments)
       .where(and(eq(receiptDocuments.receiptId, receiptId), eq(receiptDocuments.userId, userId)));
     if (!row) throw new NotFoundException('Este ticket no tiene documento.');
-    return row;
+    return { ...toInfo(row), content: row.content };
   }
 
   /** Metadatos (sin contenido) de los documentos de varios tickets del usuario, por id de ticket. */
@@ -157,7 +261,7 @@ export class ReceiptDocumentsService {
       .select({ ...this.infoColumns(), receiptId: receiptDocuments.receiptId })
       .from(receiptDocuments)
       .where(and(eq(receiptDocuments.userId, userId), inArray(receiptDocuments.receiptId, receiptIds)));
-    return new Map(rows.map(({ receiptId, ...info }) => [receiptId!, info]));
+    return new Map(rows.map(({ receiptId, ...info }) => [receiptId!, toInfo(info)]));
   }
 
   /** Plan.md §3.1: borra los pendientes de más de 24 horas. Nunca uno ya asociado a un ticket. */
@@ -186,6 +290,7 @@ export class ReceiptDocumentsService {
       originalFilename: prepared.originalFilename,
       pageCount: prepared.pageCount,
       content: prepared.content,
+      thumbnail: prepared.thumbnail,
     };
   }
 
@@ -196,6 +301,19 @@ export class ReceiptDocumentsService {
       sizeBytes: receiptDocuments.sizeBytes,
       pageCount: receiptDocuments.pageCount,
       originalFilename: receiptDocuments.originalFilename,
+      ocrTextLength: sql<number | null>`length(${receiptDocuments.ocrText})`,
+      textReadAt: receiptDocuments.ocrReadAt,
     };
   }
+}
+
+/** Texto reconocido, sin espacios sobrantes a los lados, y cuándo se leyó. */
+function textColumns(text: string) {
+  return { ocrText: text.trim(), ocrReadAt: new Date() };
+}
+
+/** Las columnas de `infoColumns` como `DocumentInfo` (el texto nunca se trae entero aquí). */
+function toInfo(row: { id: string; mimeType: string; sizeBytes: number; pageCount: number | null; originalFilename: string; ocrTextLength: number | null; textReadAt: Date | null }): DocumentInfo {
+  const { ocrTextLength, ...info } = row;
+  return { ...info, hasText: (ocrTextLength ?? 0) > 0 };
 }

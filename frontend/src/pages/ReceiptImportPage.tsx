@@ -9,6 +9,12 @@ import { listSupermarkets, searchProducts } from '../api/groceries';
 import type { Product, Supermarket } from '../api/groceries';
 import { ApiError } from '../api/client';
 import { ReceiptFieldsEditor } from '../components/ReceiptFieldsEditor';
+import { TagPicker } from '../components/TagPicker';
+import { MAX_NOTE_LENGTH } from '../components/ReceiptNoteSection';
+import { EMPTY_TAG_PICKER_VALUE } from '../components/tag-picker.types';
+import type { TagPickerValue } from '../components/tag-picker.types';
+import { listReceiptTags } from '../api/receipt-tags';
+import type { ReceiptTag } from '../api/receipt-tags';
 import { canSaveReceipt, NEW_OPTION_VALUE, newLineKey, toConfirmLines } from '../components/receipt-line.types';
 import { describeDocument } from '../components/ReceiptDocumentSection';
 import { ACCEPTED_DOCUMENTS, prepareUpload } from './receipt-upload';
@@ -59,11 +65,19 @@ export function ReceiptImportPage() {
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmedReceiptId, setConfirmedReceiptId] = useState<string | null>(null);
+  // Spec 051 H1 criterio 5: etiquetas elegidas al revisar.
+  const [availableTags, setAvailableTags] = useState<ReceiptTag[]>([]);
+  const [tags, setTags] = useState<TagPickerValue>(EMPTY_TAG_PICKER_VALUE);
+  // Spec 051 H4 criterio 1.
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     if (!isAuthenticated) return;
     void listSupermarkets().then(setSupermarkets);
     void searchProducts().then(setProducts);
+    listReceiptTags()
+      .then(setAvailableTags)
+      .catch(() => setAvailableTags([]));
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -78,6 +92,8 @@ export function ReceiptImportPage() {
 
   function resetPreviewState() {
     setLines(null);
+    setTags(EMPTY_TAG_PICKER_VALUE);
+    setNote('');
     setDocument(null);
     setSupermarketId(NEW_OPTION_VALUE);
     setSupermarketName('');
@@ -146,6 +162,8 @@ export function ReceiptImportPage() {
         date,
         printedTotal: printedTotal || undefined,
         lines: toConfirmLines(lines),
+        tags: { tagIds: tags.existing.map((t) => t.id), newTags: tags.newNames },
+        note: note.trim() === '' ? undefined : note,
       };
       const result = await confirmReceiptImport(payload);
       setConfirmedReceiptId(result.receiptId);
@@ -245,6 +263,24 @@ export function ReceiptImportPage() {
             onAddLine={addLine}
             onClearLines={() => setLines([])}
           />
+
+          <div className="field">
+            <span className="card-meta">Etiquetas</span>
+            <TagPicker available={availableTags} value={tags} onChange={setTags} disabled={isConfirming} />
+          </div>
+
+          <div className="field">
+            <label htmlFor="receipt-import-note">Nota (opcional)</label>
+            <textarea
+              id="receipt-import-note"
+              className="input receipt-note"
+              rows={2}
+              maxLength={MAX_NOTE_LENGTH}
+              placeholder="Número de serie, para qué fue la compra…"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
 
           {confirmError && <p role="alert">{confirmError}</p>}
 

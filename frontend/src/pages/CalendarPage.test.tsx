@@ -53,7 +53,7 @@ describe('CalendarPage', () => {
     resetForTests(true);
     vi.spyOn(usersApi, 'getProfile').mockResolvedValue({
       id: 'user-1', email: 'ana@example.com', name: 'Ana', currency: 'EUR', locale: 'es',
-      status: 'ACTIVE', createdAt: '2026-01-01T00:00:00.000Z', hasPassword: true, recurringReminderEmails: true,
+      status: 'ACTIVE', createdAt: '2026-01-01T00:00:00.000Z', hasPassword: true, recurringReminderEmails: true, warrantyReminderEmails: true,
     });
     // Spec 047: por defecto, sin recurrentes (cada test que los necesita lo sobrescribe).
     vi.spyOn(recurringApi, 'listOccurrences').mockResolvedValue([]);

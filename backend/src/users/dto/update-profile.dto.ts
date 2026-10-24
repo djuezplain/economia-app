@@ -33,4 +33,9 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsBoolean()
   recurringReminderEmails?: boolean;
+
+  /** Spec 051 H5 criterio 4: interruptor de los avisos de garantía por email. */
+  @IsOptional()
+  @IsBoolean()
+  warrantyReminderEmails?: boolean;
 }

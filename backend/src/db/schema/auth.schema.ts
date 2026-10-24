@@ -64,6 +64,8 @@ export const users = pgTable('users', {
   // email. Con `false` no se envía ninguno, sin tocar la configuración de
   // cada plantilla.
   recurringReminderEmails: boolean('recurring_reminder_emails').notNull().default(true),
+  // Spec 051 H5 criterio 4: interruptor de los avisos de garantía por email.
+  warrantyReminderEmails: boolean('warranty_reminder_emails').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

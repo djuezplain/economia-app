@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountDeletedEmail, alreadyRegisteredEmail, passwordResetEmail, recurringRemindersEmail, verificationEmail } from './templates.js';
+import { accountDeletedEmail, alreadyRegisteredEmail, passwordResetEmail, recurringRemindersEmail, verificationEmail, warrantyRemindersEmail } from './templates.js';
 
 describe('mail templates', () => {
   it('verificationEmail se renderiza con datos de ejemplo sin lanzar error', () => {
@@ -93,5 +93,56 @@ describe('recurringRemindersEmail (spec 049 H1)', () => {
     });
     expect(msg.html).not.toContain('<img');
     expect(msg.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+});
+
+describe('warrantyRemindersEmail (spec 051 H5)', () => {
+  const item = {
+    merchant: 'Media Markt',
+    receiptDate: '15 de octubre de 2024',
+    warrantyUntil: '15 de noviembre de 2026',
+    daysLeft: 22,
+    note: 'Lavadora Bosch, n.º de serie 1234',
+    receiptUrl: 'http://localhost:5173/tickets/r1',
+  };
+
+  it('una garantía: comercio en el asunto; fechas, días, nota y enlaces al ticket y al perfil', () => {
+    const msg = warrantyRemindersEmail({ to: 'ana@example.com', name: 'Ana', items: [item], profileUrl: 'http://localhost:5173/profile' });
+    expect(msg.subject).toBe('La garantía de tu compra en Media Markt caduca pronto');
+    expect(msg.text).toContain('- Media Markt (ticket del 15 de octubre de 2024): garantía hasta el 15 de noviembre de 2026, quedan 22 días');
+    expect(msg.text).toContain('  Nota: Lavadora Bosch, n.º de serie 1234');
+    for (const body of [msg.text, msg.html]) {
+      expect(body).toContain('http://localhost:5173/tickets/r1');
+      expect(body).toContain('http://localhost:5173/profile');
+    }
+  });
+
+  it('varias: número en el asunto; "caduca hoy" y "queda 1 día"', () => {
+    const msg = warrantyRemindersEmail({
+      to: 'ana@example.com',
+      name: 'Ana',
+      items: [
+        { ...item, daysLeft: 0, note: null },
+        { ...item, merchant: 'Leroy Merlin', daysLeft: 1, note: null },
+      ],
+      profileUrl: 'http://localhost:5173/profile',
+    });
+    expect(msg.subject).toBe('2 garantías caducan pronto');
+    expect(msg.text).toContain('caduca hoy');
+    expect(msg.text).toContain('queda 1 día');
+    expect(msg.text).not.toContain('Nota:');
+  });
+
+  it('escapa el HTML del comercio y de la nota, y recorta las notas largas', () => {
+    const msg = warrantyRemindersEmail({
+      to: 'ana@example.com',
+      name: 'Ana',
+      items: [{ ...item, merchant: '<b>Tienda</b>', note: `<script>x</script> ${'a'.repeat(300)}` }],
+      profileUrl: 'http://localhost:5173/profile',
+    });
+    expect(msg.html).not.toContain('<script>');
+    expect(msg.html).not.toContain('<b>Tienda</b>');
+    expect(msg.html).toContain('&lt;b&gt;Tienda&lt;/b&gt;');
+    expect(msg.text).toMatch(/Nota: .{139}…\n/);
   });
 });

@@ -89,7 +89,7 @@ describe('ImportPage', () => {
       locale: 'es',
       status: 'ACTIVE',
       createdAt: '2026-01-01T00:00:00.000Z',
-      hasPassword: true, recurringReminderEmails: true,
+      hasPassword: true, recurringReminderEmails: true, warrantyReminderEmails: true,
     });
     vi.spyOn(googleSheetsImportApi, 'getGoogleSheetConfig').mockResolvedValue(GOOGLE_SHEET_CONFIG_SIN_HOJA);
   });

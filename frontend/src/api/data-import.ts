@@ -50,6 +50,8 @@ export const DATA_TABLE_LABELS: Record<string, string> = {
   supermarkets: 'Comercios',
   products: 'Productos',
   receipts: 'Tickets y facturas',
+  receiptTags: 'Etiquetas de tickets',
+  receiptTagLinks: 'Etiquetas puestas en tickets',
   receiptLines: 'Líneas de tickets',
   receiptDocuments: 'Documentos de tickets',
   shoppingLists: 'Listas de la compra',

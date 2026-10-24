@@ -1,6 +1,8 @@
-import { Type } from 'class-transformer';
-import { IsArray, IsDateString, IsIn, IsOptional, IsString, IsUUID, MinLength, ValidateIf, ValidateNested } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsArray, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateIf, ValidateNested } from 'class-validator';
+import { MAX_NOTE_LENGTH, normalizeNote } from '../../groceries/dto/receipt-details.dto.js';
 import { IsMoneyAmount } from '../../common/is-money-amount.decorator.js';
+import { ReceiptTagsSelectionDto } from '../../groceries/dto/receipt-tag.dto.js';
 import { IsReceiptQuantity } from '../../common/is-receipt-quantity.decorator.js';
 import { IsReceiptUnitPrice } from '../../common/is-receipt-unit-price.decorator.js';
 
@@ -77,6 +79,19 @@ export class ConfirmReceiptDto {
  * sus propios endpoints.
  */
 export class ConfirmImportReceiptDto extends ConfirmReceiptDto {
+  /** Spec 051 H4 criterio 1: nota escrita al revisar la importación. */
+  @Transform(normalizeNote)
+  @ValidateIf((dto: ConfirmImportReceiptDto) => dto.note !== null && dto.note !== undefined)
+  @IsString()
+  @MaxLength(MAX_NOTE_LENGTH, { message: `La nota no puede tener más de ${MAX_NOTE_LENGTH} caracteres.` })
+  note?: string | null;
+
+  /** Spec 051 H1 criterio 5: etiquetas elegidas al revisar la importación. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ReceiptTagsSelectionDto)
+  tags?: ReceiptTagsSelectionDto;
+
   @IsOptional()
   @IsUUID()
   documentId?: string;

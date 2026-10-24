@@ -105,3 +105,62 @@ export function recurringRemindersEmail(params: {
       `<p style="color:#666;font-size:12px">Si no quieres recibir estos avisos, <a href="${profileUrl}">desactívalos en tu perfil</a>.</p>`,
   };
 }
+
+export interface WarrantyReminderItem {
+  merchant: string;
+  /** Fechas ya formateadas para leer (p. ej. "15 de octubre de 2026"). */
+  receiptDate: string;
+  warrantyUntil: string;
+  /** Días que quedan (0 = caduca hoy). */
+  daysLeft: number;
+  note: string | null;
+  receiptUrl: string;
+}
+
+/** Notas largas: en el email basta el principio. */
+function shortNote(note: string): string {
+  const flat = note.replace(/\s+/g, ' ').trim();
+  return flat.length > 140 ? `${flat.slice(0, 139)}…` : flat;
+}
+
+function daysLeftText(days: number): string {
+  if (days === 0) return 'caduca hoy';
+  return days === 1 ? 'queda 1 día' : `quedan ${days} días`;
+}
+
+/**
+ * Spec 051 H5 criterio 3: un email con las garantías que caducan en los
+ * próximos 30 días, con el comercio, la fecha del ticket, la nota y un
+ * enlace a cada ticket. Al pie, cómo desactivar los avisos (criterio 4).
+ * El comercio y la nota los escribe el usuario: se escapan en el HTML.
+ */
+export function warrantyRemindersEmail(params: { to: string; name: string; items: WarrantyReminderItem[]; profileUrl: string }): MailMessage {
+  const { to, name, items, profileUrl } = params;
+  const subject = items.length === 1 ? `La garantía de tu compra en ${items[0].merchant} caduca pronto` : `${items.length} garantías caducan pronto`;
+  const line = (i: WarrantyReminderItem) =>
+    `${i.merchant} (ticket del ${i.receiptDate}): garantía hasta el ${i.warrantyUntil}, ${daysLeftText(i.daysLeft)}`;
+
+  const textLines = items.map((i) => `- ${line(i)}${i.note ? `\n  Nota: ${shortNote(i.note)}` : ''}\n  ${i.receiptUrl}`).join('\n');
+  const htmlItems = items
+    .map(
+      (i) =>
+        `<li><a href="${i.receiptUrl}"><strong>${escapeHtml(i.merchant)}</strong></a> (ticket del ${escapeHtml(i.receiptDate)}): ` +
+        `garantía hasta el <strong>${escapeHtml(i.warrantyUntil)}</strong>, ${daysLeftText(i.daysLeft)}` +
+        (i.note ? `<br><span style="color:#666">Nota: ${escapeHtml(shortNote(i.note))}</span>` : '') +
+        `</li>`,
+    )
+    .join('');
+
+  return {
+    to,
+    subject,
+    text:
+      `Hola ${name},\n\nEstas garantías caducan pronto:\n${textLines}\n\n` +
+      `Si algo falla, todavía estás a tiempo de reclamar con el ticket.\n\n` +
+      `Si no quieres recibir estos avisos, desactívalos en tu perfil: ${profileUrl}`,
+    html:
+      `<p>Hola ${escapeHtml(name)},</p><p>Estas garantías caducan pronto:</p><ul>${htmlItems}</ul>` +
+      `<p>Si algo falla, todavía estás a tiempo de reclamar con el ticket.</p>` +
+      `<p style="color:#666;font-size:12px">Si no quieres recibir estos avisos, <a href="${profileUrl}">desactívalos en tu perfil</a>.</p>`,
+  };
+}

@@ -239,6 +239,13 @@
       "when": 1792773014875,
       "tag": "0033_receipt_documents_and_links",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792870048121,
+      "tag": "0034_receipt_manager",
+      "breakpoints": true
     }
   ]
 }
