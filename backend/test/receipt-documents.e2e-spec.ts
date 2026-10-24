@@ -13,10 +13,8 @@ import type { Database } from '../src/db/db.module.js';
 import { receiptDocuments, receipts, supermarkets, users } from '../src/db/schema/index.js';
 import { ReceiptOcrService } from '../src/receipt-import/receipt-ocr.service.js';
 import { ReceiptDocumentsService } from '../src/groceries/receipt-documents.service.js';
+import { JPEG, PDF } from './support/documents.js';
 
-/** Cabeceras reales de cada formato, con algo de relleno: el contenido no se interpreta salvo en HEIC. */
-export const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('jpeg de prueba')]);
-export const PDF = Buffer.from('%PDF-1.7\n1 0 obj << /Type /Page >> endobj\n2 0 obj << /Type /Page >> endobj\n%%EOF');
 const HEIC = readFileSync(new URL('../src/groceries/__fixtures__/ticket-pequeno.heic', import.meta.url));
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
 

@@ -82,7 +82,8 @@ export class ReceiptImportService {
       warnings.push(`El PDF tiene ${prepared.pageCount} páginas: solo se han leído las ${MAX_OCR_PDF_PAGES} primeras. El documento se guarda entero.`);
     }
 
-    const document = await this.documents.storePending(userId, prepared);
+    // Spec 051 H3 criterio 1: el texto reconocido se guarda con el documento.
+    const document = await this.documents.storePending(userId, prepared, text);
 
     return {
       document: { id: document.id, mimeType: document.mimeType, sizeBytes: document.sizeBytes, pageCount: document.pageCount },

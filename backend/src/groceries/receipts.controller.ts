@@ -9,6 +9,7 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Put,
   Query,
   Req,
@@ -121,6 +122,19 @@ export class ReceiptsController {
     if (!file) throw new BadRequestException('Falta el documento (campo "file").');
     const prepared = await this.documents.prepare(file.buffer, file.originalname);
     return this.documents.replace(req.user.id, id, prepared);
+  }
+
+  /** Spec 051 H3 criterio 5: el texto reconocido del documento. */
+  @Get(':id/document/text')
+  getDocumentText(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }) {
+    return this.documents.getText(req.user.id, id);
+  }
+
+  /** Spec 051 H3 criterio 3: vuelve a leer el texto (una llamada a Vision). */
+  @Post(':id/document/text')
+  @HttpCode(HttpStatus.OK)
+  readDocumentText(@Param('id', new ParseUUIDPipe()) id: string, @Req() req: Request & { user: RequestUser }) {
+    return this.documents.readText(req.user.id, id);
   }
 
   @Delete(':id/document')
