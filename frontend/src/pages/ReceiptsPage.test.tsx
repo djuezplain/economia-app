@@ -31,6 +31,7 @@ const RECEIPTS: ReceiptSummary[] = [
     total: '20.00',
     transactionId: null,
     document: null,
+  tags: [],
   },
   {
     id: 'r1',
@@ -42,6 +43,7 @@ const RECEIPTS: ReceiptSummary[] = [
     total: '10.00',
     transactionId: null,
     document: null,
+  tags: [],
   },
 ];
 
@@ -73,6 +75,16 @@ describe('ReceiptsPage', () => {
     expect(items[0]).toHaveTextContent('2026-04-15');
     expect(items[1]).toHaveTextContent('2026-04-01');
     expect(screen.getByRole('link', { name: '2026-04-15' })).toHaveAttribute('href', '/tickets/r2');
+  });
+
+  it('muestra las etiquetas de cada ticket y enlaza a la pantalla de etiquetas (spec 051 H1)', async () => {
+    vi.spyOn(groceriesApi, 'listReceipts').mockResolvedValue([{ ...RECEIPTS[0], tags: [{ id: 't1', name: 'Garantía', color: 'blue' }] }, RECEIPTS[1]]);
+
+    renderPage();
+
+    const items = await screen.findAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Garantía');
+    expect(screen.getByRole('link', { name: 'Etiquetas' })).toHaveAttribute('href', '/tickets/etiquetas');
   });
 
   it('sin tickets importados, muestra un mensaje en vez de una lista vacía', async () => {

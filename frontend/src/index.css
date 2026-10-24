@@ -1832,3 +1832,92 @@ details > summary {
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
+
+/* Spec 051 H1: etiquetas de tickets. Paleta fija (plan.md §0 decisión 5),
+   con el mismo tratamiento que `.tag-accent`: fondo y borde translúcidos
+   del color y texto claro, legible sobre el tema oscuro. */
+.receipt-tag {
+  --tag-color: var(--neutral-400);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tag-color) 40%, transparent);
+  background: color-mix(in srgb, var(--tag-color) 16%, transparent);
+  color: color-mix(in srgb, var(--tag-color) 35%, var(--text-h));
+  white-space: nowrap;
+}
+.receipt-tag[data-color='gray'] { --tag-color: #a1a1aa; }
+.receipt-tag[data-color='red'] { --tag-color: #ef4444; }
+.receipt-tag[data-color='orange'] { --tag-color: #f97316; }
+.receipt-tag[data-color='yellow'] { --tag-color: #eab308; }
+.receipt-tag[data-color='green'] { --tag-color: #22c55e; }
+.receipt-tag[data-color='teal'] { --tag-color: #14b8a6; }
+.receipt-tag[data-color='blue'] { --tag-color: #3b82f6; }
+.receipt-tag[data-color='purple'] { --tag-color: #a855f7; }
+.receipt-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.receipt-tag-remove {
+  background: none;
+  border: 0;
+  padding: 0 0 0 2px;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tag-picker-input {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.tag-picker-input .input {
+  flex: 1;
+  min-width: 0;
+}
+.tag-picker-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+.tag-suggestion {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.tag-create-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+.tag-manager-list {
+  list-style: none;
+  padding: 0;
+}
+.tag-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.tag-manager-actions .input {
+  width: auto;
+}
+.tag-rename-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ReceiptTag } from './receipt-tags';
 import type { ConfirmReceiptPayload } from './receipt-import';
 import type { Transaction } from './transactions';
 
@@ -47,6 +48,8 @@ export interface ReceiptSummary {
   transactionId: string | null;
   /** Spec 048 H1: el documento original (foto o PDF), o `null` si el ticket no tiene. */
   document: ReceiptDocumentInfo | null;
+  /** Spec 051 H1: sus etiquetas, por nombre. */
+  tags: ReceiptTag[];
 }
 
 /** Spec 048 H1: metadatos del documento de un ticket (el contenido se pide aparte). */

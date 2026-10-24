@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ReceiptTagsSelection } from './receipt-tags';
 
 // Spec 034 (H1-H5). Espejo de `ReceiptPreview`/`ReceiptPreviewLine` (backend,
 // `receipt-import/receipt-import.types.ts`) y de `ConfirmReceiptDto`.
@@ -55,6 +56,8 @@ export interface ConfirmReceiptPayload {
 /** Spec 048 H1 criterio 1: solo al confirmar una importación (no al editar un ticket guardado). */
 export interface ConfirmImportPayload extends ConfirmReceiptPayload {
   documentId?: string;
+  /** Spec 051 H1 criterio 5. */
+  tags?: ReceiptTagsSelection;
 }
 
 function fileFormData(file: File): FormData {

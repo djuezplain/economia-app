@@ -9,6 +9,7 @@ import * as usersApi from '../api/users';
 import * as receiptImportApi from '../api/receipt-import';
 import type { ReceiptPreview } from '../api/receipt-import';
 import * as groceriesApi from '../api/groceries';
+import * as tagsApi from '../api/receipt-tags';
 import { ApiError } from '../api/client';
 
 const PROFILE: usersApi.UserProfile = {
@@ -119,6 +120,23 @@ describe('ReceiptImportPage', () => {
         lines: expect.arrayContaining([expect.objectContaining({ description: 'Chocolate Classic corregido' })]),
       }),
     );
+  });
+
+  it('las etiquetas elegidas al revisar se envían al confirmar (spec 051 H1 criterio 5)', async () => {
+    vi.spyOn(tagsApi, 'listReceiptTags').mockResolvedValue([{ id: 't1', name: 'Garantía', color: 'blue', receiptCount: 2 }]);
+    vi.spyOn(receiptImportApi, 'previewReceiptImport').mockResolvedValue(PREVIEW_DOS_LINEAS);
+    const confirmSpy = vi.spyOn(receiptImportApi, 'confirmReceiptImport').mockResolvedValue({ receiptId: 'receipt-1' });
+
+    renderPage();
+    await userEvent.upload(await screen.findByLabelText('Foto o PDF del ticket'), buildImageFile());
+    await userEvent.click(screen.getByRole('button', { name: 'Reconocer' }));
+    await screen.findByRole('heading', { name: '2. Revisar y corregir' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Añadir la etiqueta Garantía' }));
+    await userEvent.type(screen.getByLabelText('Añadir una etiqueta'), 'Hogar{Enter}');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.objectContaining({ tags: { tagIds: ['t1'], newTags: ['Hogar'] } }));
   });
 
   it('borrar una línea la quita de lo que se envía al confirmar', async () => {

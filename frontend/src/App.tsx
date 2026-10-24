@@ -31,6 +31,7 @@ import { ReceiptDetailPage } from './pages/ReceiptDetailPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 import { ShoppingListsPage } from './pages/ShoppingListsPage';
+import { ReceiptTagsPage } from './pages/ReceiptTagsPage';
 import { ShoppingListDetailPage } from './pages/ShoppingListDetailPage';
 
 function App() {
@@ -62,6 +63,7 @@ function App() {
             <Route path="/tickets/productos" element={<ProductsPage />} />
             <Route path="/tickets/cesta/:id" element={<ShoppingListDetailPage />} />
             <Route path="/tickets/cesta" element={<ShoppingListsPage />} />
+            <Route path="/tickets/etiquetas" element={<ReceiptTagsPage />} />
             <Route path="/tickets/:id" element={<ReceiptDetailPage />} />
             <Route path="/tickets" element={<ReceiptsPage />} />
             <Route path="/import" element={<ImportPage />} />

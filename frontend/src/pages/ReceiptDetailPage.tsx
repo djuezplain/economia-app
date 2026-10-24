@@ -9,6 +9,7 @@ import { ApiError } from '../api/client';
 import { ReceiptFieldsEditor } from '../components/ReceiptFieldsEditor';
 import { ReceiptDocumentSection } from '../components/ReceiptDocumentSection';
 import { ReceiptMovementSection } from '../components/ReceiptMovementSection';
+import { ReceiptTagsSection } from '../components/ReceiptTagsSection';
 import { canSaveReceipt, NEW_OPTION_VALUE, newLineKey, NO_PRODUCT_VALUE, toConfirmLines } from '../components/receipt-line.types';
 import type { EditableLine } from '../components/receipt-line.types';
 
@@ -202,6 +203,12 @@ export function ReceiptDetailPage() {
             </p>
           )}
           {deleteError && <p role="alert">{deleteError}</p>}
+
+          <ReceiptTagsSection
+            receiptId={receipt.id}
+            tags={receipt.tags}
+            onChanged={(tags) => setReceipt((current) => (current ? { ...current, tags } : current))}
+          />
 
           {receipt.lines.length === 0 && <p className="card-meta">Sin desglose por líneas.</p>}
           {receipt.lines.length > 0 && (

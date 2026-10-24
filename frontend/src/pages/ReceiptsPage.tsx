@@ -5,6 +5,7 @@ import { useConnectivity } from '../hooks/useConnectivity';
 import { listReceipts, listSupermarkets, searchProducts } from '../api/groceries';
 import type { ListReceiptsFilters, Product, ReceiptSummary, Supermarket } from '../api/groceries';
 import { ApiError } from '../api/client';
+import { TagList } from '../components/TagChip';
 
 const EMPTY_FILTERS = { supermarketId: '', productId: '', dateFrom: '', dateTo: '', amountMin: '', amountMax: '' };
 
@@ -95,7 +96,7 @@ export function ReceiptsPage() {
     <main>
       <h1>Tickets y facturas</h1>
       <p>
-        <Link to="/tickets/importar">Importar un ticket nuevo</Link>
+        <Link to="/tickets/importar">Importar un ticket nuevo</Link> · <Link to="/tickets/etiquetas">Etiquetas</Link>
       </p>
 
       <section>
@@ -194,6 +195,7 @@ export function ReceiptsPage() {
                   </>
                 )}
               </p>
+              <TagList tags={receipt.tags} />
             </li>
           ))}
         </ul>
